@@ -48,7 +48,7 @@ public class SecEdgarClient
         return filings;
     }
 
-    public async Task<string> FetchFilingContentAsync(string url)
+    public virtual async Task<string> FetchFilingContentAsync(string url)
     {
         var response = await _http.GetStringAsync(url);
         return StripHtmlTags(response);
