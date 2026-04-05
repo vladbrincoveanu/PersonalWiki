@@ -214,7 +214,7 @@ public class VkeDbContext : IDisposable
             yield return (T)reader.GetValue(0);
     }
 
-    private static Source MapSource(DuckDBDataReader reader) => new()
+    public static Source MapSource(DuckDBDataReader reader) => new()
     {
         Id = reader.GetString(0),
         Url = reader.GetString(1),
@@ -227,6 +227,123 @@ public class VkeDbContext : IDisposable
         Domain = reader.IsDBNull(8) ? null : reader.GetString(8),
         IsActive = reader.IsDBNull(11) || reader.GetBoolean(11),
     };
+
+    private static Claim MapClaim(DuckDBDataReader reader) => new()
+    {
+        Id = reader.GetString(0),
+        Statement = reader.GetString(1),
+        Normalized = reader.GetString(2),
+        SourceId = reader.GetString(3),
+        Location = reader.IsDBNull(4) ? null : reader.GetString(4),
+        Domain = reader.IsDBNull(5) ? null : reader.GetString(5),
+        Verified = reader.GetBoolean(6),
+        VerificationScore = (decimal)reader.GetDouble(7),
+        Tier = reader.GetInt32(8),
+        IndependentSourceCount = reader.GetInt32(9),
+        FirstSeen = reader.GetDateTime(10),
+        LastVerified = reader.IsDBNull(11) ? null : reader.GetDateTime(11),
+        StaleAfter = reader.IsDBNull(12) ? null : reader.GetDateTime(12),
+        IsActive = reader.IsDBNull(13) || reader.GetBoolean(13),
+    };
+
+    public List<string> DetectCycles()
+    {
+        using var cmd = _connection.CreateCommand();
+        cmd.CommandText = @"
+            WITH RECURSIVE citation_chain AS (
+                SELECT 
+                    source_node AS start_node,
+                    target_node AS current_node,
+                    source_node || ',' || target_node AS path,
+                    1 AS depth,
+                    target_node = source_node AS is_cycle
+                FROM edges
+                WHERE relation = 'source_cites_source'
+                
+                UNION ALL
+                
+                SELECT
+                    cc.start_node,
+                    e.target_node AS current_node,
+                    cc.path || ',' || e.target_node AS path,
+                    cc.depth + 1,
+                    e.target_node = cc.start_node OR cc.path LIKE '%' || e.target_node || ',%' AS is_cycle
+                FROM citation_chain cc
+                JOIN edges e ON cc.current_node = e.source_node
+                WHERE e.relation = 'source_cites_source'
+                AND cc.depth < 10
+                AND cc.is_cycle = FALSE
+                AND cc.path NOT LIKE '%' || e.target_node || ',%'
+            )
+            SELECT DISTINCT start_node || '->' || REPLACE(path, ',', '->') AS cycle_path
+            FROM citation_chain
+            WHERE is_cycle = TRUE OR path LIKE '%' || start_node || ',%'
+            ORDER BY depth";
+        
+        var cycles = new List<string>();
+        using var reader = cmd.ExecuteReader();
+        while (reader.Read())
+            cycles.Add(reader.GetString(0));
+        return cycles;
+    }
+
+    public List<string> GetRootSourcesForClaim(string claimId)
+    {
+        using var cmd = _connection.CreateCommand();
+        cmd.CommandText = @"
+            WITH asserting_sources AS (
+                SELECT source_node AS source_id
+                FROM edges
+                WHERE target_node = ?
+                AND relation = 'source_asserts_claim'
+            ),
+            sources_citing_peers AS (
+                SELECT DISTINCT e.source_node AS source_id
+                FROM edges e
+                WHERE e.relation = 'source_cites_source'
+                AND e.source_node IN (SELECT source_id FROM asserting_sources)
+                AND e.target_node IN (SELECT source_id FROM asserting_sources)
+            )
+            SELECT a.source_id
+            FROM asserting_sources a
+            WHERE a.source_id NOT IN (SELECT source_id FROM sources_citing_peers)";
+        
+        cmd.Parameters.Add(new DuckDBParameter(claimId));
+        
+        var roots = new List<string>();
+        using var reader = cmd.ExecuteReader();
+        while (reader.Read())
+            roots.Add(reader.GetString(0));
+        return roots;
+    }
+
+    public void UpdateIndependenceScores(string claimId)
+    {
+        var roots = GetRootSourcesForClaim(claimId);
+        var count = roots.Count;
+        
+        using var cmd = _connection.CreateCommand();
+        cmd.CommandText = "UPDATE claims SET independent_source_count = ? WHERE id = ?";
+        cmd.Parameters.Add(new DuckDBParameter(count));
+        cmd.Parameters.Add(new DuckDBParameter(claimId));
+        cmd.ExecuteNonQuery();
+    }
+
+    public Claim? GetClaimById(string id)
+    {
+        using var cmd = _connection.CreateCommand();
+        cmd.CommandText = "SELECT * FROM claims WHERE id = ?";
+        cmd.Parameters.Add(new DuckDBParameter(id));
+        using var reader = cmd.ExecuteReader();
+        if (reader.Read())
+            return MapClaim(reader);
+        return null;
+    }
+
+    public System.Data.Common.DbCommand CreateCommand()
+    {
+        return _connection.CreateCommand();
+    }
 
     public void Dispose()
     {
