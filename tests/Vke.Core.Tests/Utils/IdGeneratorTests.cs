@@ -30,14 +30,17 @@ public class IdGeneratorTests
     }
 
     [Fact]
-    public void GenerateClaimId_CombinesNormalizedAndSourceId()
+    public void GenerateClaimId_DifferentSourceIds_ProduceDifferentIds()
     {
         var normalized = "apple's revenue was $394.3b in fy2024";
-        var sourceId = "abc123";
+        var sourceId1 = "abc123";
+        var sourceId2 = "xyz789";
         
-        var claimId = IdGenerator.GenerateClaimId(normalized, sourceId);
+        var claimId1 = IdGenerator.GenerateClaimId(normalized, sourceId1);
+        var claimId2 = IdGenerator.GenerateClaimId(normalized, sourceId2);
         
-        Assert.StartsWith("claim-", claimId);
-        Assert.Contains(sourceId, claimId);
+        Assert.NotEqual(claimId1, claimId2);
+        Assert.StartsWith("claim-", claimId1);
+        Assert.StartsWith("claim-", claimId2);
     }
 }
