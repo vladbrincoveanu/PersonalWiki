@@ -237,7 +237,7 @@ public class VkeDbContext : IDisposable
         Location = reader.IsDBNull(4) ? null : reader.GetString(4),
         Domain = reader.IsDBNull(5) ? null : reader.GetString(5),
         Verified = reader.GetBoolean(6),
-        VerificationScore = (decimal)reader.GetDouble(7),
+        VerificationScore = (decimal)reader.GetFloat(7),
         Tier = reader.GetInt32(8),
         IndependentSourceCount = reader.GetInt32(9),
         FirstSeen = reader.GetDateTime(10),
