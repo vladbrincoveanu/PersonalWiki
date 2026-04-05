@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Vke.Core/Vke.Core.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Vke.Core.Tests/Vke.Core.Tests.csproj" />
+  </Folder>
+</Solution>
