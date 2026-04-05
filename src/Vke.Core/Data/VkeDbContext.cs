@@ -32,7 +32,8 @@ public class VkeDbContext : IDisposable
                 domain          TEXT,
                 cites_urls      TEXT[],
                 cites_source_ids TEXT[],
-                is_active       BOOLEAN DEFAULT TRUE
+                is_active       BOOLEAN DEFAULT TRUE,
+                content         TEXT
             );
 
             CREATE TABLE IF NOT EXISTS claims (
@@ -112,8 +113,8 @@ public class VkeDbContext : IDisposable
     {
         using var cmd = _connection.CreateCommand();
         cmd.CommandText = @"
-            INSERT INTO sources (id, url, title, source_type, author, publication, published_at, fetched_at, domain, cites_urls, cites_source_ids, is_active)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+            INSERT INTO sources (id, url, title, source_type, author, publication, published_at, fetched_at, domain, cites_urls, cites_source_ids, is_active, content)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
         cmd.Parameters.Add(new DuckDBParameter(source.Id));
         cmd.Parameters.Add(new DuckDBParameter(source.Url));
         cmd.Parameters.Add(new DuckDBParameter(source.Title));
@@ -123,10 +124,22 @@ public class VkeDbContext : IDisposable
         cmd.Parameters.Add(new DuckDBParameter(source.PublishedAt?.ToString("yyyy-MM-dd")));
         cmd.Parameters.Add(new DuckDBParameter(source.FetchedAt));
         cmd.Parameters.Add(new DuckDBParameter(source.Domain));
-        cmd.Parameters.Add(new DuckDBParameter(source.CitesUrls.Count == 0 ? "[]" : "['" + string.Join("','", source.CitesUrls) + "']"));
-        cmd.Parameters.Add(new DuckDBParameter(source.CitesSourceIds.Count == 0 ? "[]" : "['" + string.Join("','", source.CitesSourceIds) + "']"));
+        cmd.Parameters.Add(new DuckDBParameter(source.CitesUrls.Count == 0 ? "[]" : "['" + string.Join("','", source.CitesUrls.Select(s => s.Replace("'", "''"))) + "']"));
+        cmd.Parameters.Add(new DuckDBParameter(source.CitesSourceIds.Count == 0 ? "[]" : "['" + string.Join("','", source.CitesSourceIds.Select(s => s.Replace("'", "''"))) + "']"));
         cmd.Parameters.Add(new DuckDBParameter(source.IsActive));
+        cmd.Parameters.Add(new DuckDBParameter(source.Content));
         cmd.ExecuteNonQuery();
+    }
+
+    public string? GetSourceIdByUrl(string url)
+    {
+        using var cmd = _connection.CreateCommand();
+        cmd.CommandText = "SELECT id FROM sources WHERE url = ?";
+        cmd.Parameters.Add(new DuckDBParameter(url));
+        using var reader = cmd.ExecuteReader();
+        if (reader.Read())
+            return reader.GetString(0);
+        return null;
     }
 
     public Source? GetSourceById(string id)
@@ -226,6 +239,7 @@ public class VkeDbContext : IDisposable
         FetchedAt = reader.GetDateTime(7),
         Domain = reader.IsDBNull(8) ? null : reader.GetString(8),
         IsActive = reader.IsDBNull(11) || reader.GetBoolean(11),
+        Content = reader.IsDBNull(12) ? null : reader.GetString(12),
     };
 
     private static Claim MapClaim(DuckDBDataReader reader) => new()

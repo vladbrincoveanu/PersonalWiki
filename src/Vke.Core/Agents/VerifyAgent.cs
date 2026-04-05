@@ -9,12 +9,16 @@ public class VerifyAgent
 {
     private readonly VkeDbContext _db;
     private readonly ILlmClient _llm;
+    private readonly WikiGenerator _wiki;
+    private readonly string _wikiPath;
     private const decimal VerificationThreshold = 0.5m;
 
-    public VerifyAgent(VkeDbContext db, ILlmClient llm)
+    public VerifyAgent(VkeDbContext db, ILlmClient llm, WikiGenerator? wiki = null, string wikiPath = "vault/wiki")
     {
         _db = db;
         _llm = llm;
+        _wiki = wiki ?? new WikiGenerator();
+        _wikiPath = wikiPath;
     }
 
     public async Task<VerifyResult> VerifyAndStoreAsync(string sourceId, List<Claim> claims)
@@ -28,7 +32,7 @@ public class VerifyAgent
 
         foreach (var claim in claims)
         {
-            var score = await _llm.VerifyClaimAsync(claim.Statement, source.Url);
+            var score = await _llm.VerifyClaimAsync(claim.Statement, source.Content ?? source.Url);
 
             if (score < VerificationThreshold)
             {
@@ -57,11 +61,38 @@ public class VerifyAgent
             });
 
             verifiedClaims.Add(claim.Id);
+            _db.UpdateIndependenceScores(claim.Id);
         }
 
         var cycles = _db.DetectCycles();
         if (cycles.Any())
             QuarantineCyclicClaims(cycles);
+
+        if (verifiedClaims.Any() && source != null)
+        {
+            var claimsForWiki = verifiedClaims
+                .Select(id => _db.GetClaimById(id))
+                .Where(c => c != null)
+                .Select(c => c!)
+                .ToList();
+            
+            _wiki.GenerateSourcePage(source, claimsForWiki, _wikiPath);
+            
+            var entities = claimsForWiki
+                .SelectMany(c => ExtractEntities(c.Statement))
+                .Distinct()
+                .ToList();
+            
+            foreach (var entity in entities)
+            {
+                var entityClaims = claimsForWiki
+                    .Where(c => c.Statement.Contains(entity, StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+                _wiki.GenerateEntityPage(entity, entityClaims, _wikiPath);
+            }
+            
+            _wiki.GenerateAlertsPage(cycles, new List<string>(), _wikiPath);
+        }
 
         return new VerifyResult
         {
@@ -81,7 +112,7 @@ public class VerifyAgent
         };
     }
 
-    private void QuarantineCyclicClaims(List<string> cycles)
+        private void QuarantineCyclicClaims(List<string> cycles)
     {
         foreach (var cycle in cycles)
         {
@@ -94,6 +125,31 @@ public class VerifyAgent
                 cmd.ExecuteNonQuery();
             }
         }
+    }
+
+    private static List<string> ExtractEntities(string statement)
+    {
+        var entities = new List<string>();
+        var words = statement.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var current = "";
+        foreach (var word in words)
+        {
+            if (word.Length > 2 && char.IsUpper(word[0]))
+            {
+                if (!string.IsNullOrEmpty(current) && current.Length > 2)
+                    entities.Add(current);
+                current = word.Trim(',', '.', ':');
+            }
+            else
+            {
+                if (!string.IsNullOrEmpty(current))
+                    entities.Add(current);
+                current = "";
+            }
+        }
+        if (!string.IsNullOrEmpty(current) && current.Length > 2)
+            entities.Add(current);
+        return entities.Distinct().ToList();
     }
 }
 
