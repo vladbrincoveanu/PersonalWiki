@@ -43,13 +43,17 @@ public class VkeDbContext : IDisposable
                 source_id       TEXT NOT NULL REFERENCES sources(id),
                 location        TEXT,
                 domain          TEXT,
-                verified        BOOLEAN DEFAULT FALSE,
+                status          INTEGER DEFAULT 0,
                 verification_score REAL,
+                wrong_reason    TEXT,
+                correct_value   TEXT,
+                correct_source  TEXT,
                 tier            INTEGER DEFAULT 4,
                 independent_source_count INTEGER DEFAULT 0,
                 first_seen      TIMESTAMP DEFAULT now(),
                 last_verified   TIMESTAMP,
                 stale_after     TIMESTAMP,
+                corrected_at    TIMESTAMP,
                 is_active       BOOLEAN DEFAULT TRUE
             );
 
@@ -157,21 +161,25 @@ public class VkeDbContext : IDisposable
     {
         using var cmd = _connection.CreateCommand();
         cmd.CommandText = @"
-            INSERT INTO claims (id, statement, normalized, source_id, location, domain, verified, verification_score, tier, independent_source_count, first_seen, last_verified, stale_after, is_active)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+            INSERT INTO claims (id, statement, normalized, source_id, location, domain, status, verification_score, wrong_reason, correct_value, correct_source, tier, independent_source_count, first_seen, last_verified, stale_after, corrected_at, is_active)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
         cmd.Parameters.Add(new DuckDBParameter(claim.Id));
         cmd.Parameters.Add(new DuckDBParameter(claim.Statement));
         cmd.Parameters.Add(new DuckDBParameter(claim.Normalized));
         cmd.Parameters.Add(new DuckDBParameter(claim.SourceId));
         cmd.Parameters.Add(new DuckDBParameter(claim.Location));
         cmd.Parameters.Add(new DuckDBParameter(claim.Domain));
-        cmd.Parameters.Add(new DuckDBParameter(claim.Verified));
+        cmd.Parameters.Add(new DuckDBParameter((int)claim.Status));
         cmd.Parameters.Add(new DuckDBParameter((double)claim.VerificationScore));
+        cmd.Parameters.Add(new DuckDBParameter(claim.WrongReason));
+        cmd.Parameters.Add(new DuckDBParameter(claim.CorrectValue));
+        cmd.Parameters.Add(new DuckDBParameter(claim.CorrectSource));
         cmd.Parameters.Add(new DuckDBParameter(claim.Tier));
         cmd.Parameters.Add(new DuckDBParameter(claim.IndependentSourceCount));
         cmd.Parameters.Add(new DuckDBParameter(claim.FirstSeen));
         cmd.Parameters.Add(new DuckDBParameter(claim.LastVerified));
         cmd.Parameters.Add(new DuckDBParameter(claim.StaleAfter));
+        cmd.Parameters.Add(new DuckDBParameter(claim.CorrectedAt));
         cmd.Parameters.Add(new DuckDBParameter(claim.IsActive));
         cmd.ExecuteNonQuery();
     }
@@ -250,14 +258,18 @@ public class VkeDbContext : IDisposable
         SourceId = reader.GetString(3),
         Location = reader.IsDBNull(4) ? null : reader.GetString(4),
         Domain = reader.IsDBNull(5) ? null : reader.GetString(5),
-        Verified = reader.GetBoolean(6),
-        VerificationScore = (decimal)reader.GetFloat(7),
-        Tier = reader.GetInt32(8),
-        IndependentSourceCount = reader.GetInt32(9),
-        FirstSeen = reader.GetDateTime(10),
-        LastVerified = reader.IsDBNull(11) ? null : reader.GetDateTime(11),
-        StaleAfter = reader.IsDBNull(12) ? null : reader.GetDateTime(12),
-        IsActive = reader.IsDBNull(13) || reader.GetBoolean(13),
+        Status = (VerificationStatus)reader.GetInt32(6),
+        VerificationScore = reader.IsDBNull(7) ? 0 : (decimal)reader.GetFloat(7),
+        WrongReason = reader.IsDBNull(8) ? null : reader.GetString(8),
+        CorrectValue = reader.IsDBNull(9) ? null : reader.GetString(9),
+        CorrectSource = reader.IsDBNull(10) ? null : reader.GetString(10),
+        Tier = reader.GetInt32(11),
+        IndependentSourceCount = reader.GetInt32(12),
+        FirstSeen = reader.GetDateTime(13),
+        LastVerified = reader.IsDBNull(14) ? null : reader.GetDateTime(14),
+        StaleAfter = reader.IsDBNull(15) ? null : reader.GetDateTime(15),
+        CorrectedAt = reader.IsDBNull(16) ? null : reader.GetDateTime(16),
+        IsActive = reader.IsDBNull(17) || reader.GetBoolean(17),
     };
 
     public List<string> DetectCycles()
@@ -349,6 +361,100 @@ public class VkeDbContext : IDisposable
         cmd.CommandText = "SELECT * FROM claims WHERE id = ?";
         cmd.Parameters.Add(new DuckDBParameter(id));
         using var reader = cmd.ExecuteReader();
+        if (reader.Read())
+            return MapClaim(reader);
+        return null;
+    }
+
+    public List<Claim> GetClaimsByStatus(VerificationStatus status)
+    {
+        using var cmd = _connection.CreateCommand();
+        cmd.CommandText = "SELECT * FROM claims WHERE status = ? AND is_active = TRUE";
+        cmd.Parameters.Add(new DuckDBParameter((int)status));
+        
+        var claims = new List<Claim>();
+        using var reader = (DuckDBDataReader)cmd.ExecuteReader();
+        while (reader.Read())
+            claims.Add(MapClaim(reader));
+        return claims;
+    }
+
+    public List<Claim> GetStaleClaims()
+    {
+        using var cmd = _connection.CreateCommand();
+        cmd.CommandText = @"
+            SELECT * FROM claims 
+            WHERE is_active = TRUE 
+            AND stale_after < ?
+            AND status IN (1, 2)";
+        cmd.Parameters.Add(new DuckDBParameter(DateTime.UtcNow));
+        
+        var claims = new List<Claim>();
+        using var reader = (DuckDBDataReader)cmd.ExecuteReader();
+        while (reader.Read())
+            claims.Add(MapClaim(reader));
+        return claims;
+    }
+
+    public List<(string claim1Id, string claim2Id, string statement1, string statement2, string value1, string value2)> FindContradictions()
+    {
+        using var cmd = _connection.CreateCommand();
+        cmd.CommandText = @"
+            SELECT c1.id, c2.id, c1.statement, c2.statement, COALESCE(c1.correct_value, c1.statement), COALESCE(c2.correct_value, c2.statement)
+            FROM claims c1
+            JOIN claims c2 ON c1.id < c2.id
+            WHERE c1.status IN (1, 2) AND c2.status IN (1, 2)
+            AND c1.is_active = TRUE AND c2.is_active = TRUE
+            AND c1.normalized = c2.normalized
+            AND COALESCE(c1.correct_value, c1.statement) != COALESCE(c2.correct_value, c2.statement)
+            LIMIT 100";
+        
+        var results = new List<(string, string, string, string, string, string)>();
+        using var reader = (DuckDBDataReader)cmd.ExecuteReader();
+        while (reader.Read())
+            results.Add((reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetString(3), reader.GetString(4), reader.GetString(5)));
+        return results;
+    }
+
+    public void UpdateClaim(Claim claim)
+    {
+        using var cmd = _connection.CreateCommand();
+        cmd.CommandText = @"
+            UPDATE claims SET
+                status = ?,
+                verification_score = ?,
+                wrong_reason = ?,
+                correct_value = ?,
+                correct_source = ?,
+                corrected_at = ?,
+                stale_after = ?,
+                is_active = ?
+            WHERE id = ?";
+        cmd.Parameters.Add(new DuckDBParameter((int)claim.Status));
+        cmd.Parameters.Add(new DuckDBParameter((double)claim.VerificationScore));
+        cmd.Parameters.Add(new DuckDBParameter(claim.WrongReason));
+        cmd.Parameters.Add(new DuckDBParameter(claim.CorrectValue));
+        cmd.Parameters.Add(new DuckDBParameter(claim.CorrectSource));
+        cmd.Parameters.Add(new DuckDBParameter(claim.CorrectedAt));
+        cmd.Parameters.Add(new DuckDBParameter(claim.StaleAfter));
+        cmd.Parameters.Add(new DuckDBParameter(claim.IsActive));
+        cmd.Parameters.Add(new DuckDBParameter(claim.Id));
+        cmd.ExecuteNonQuery();
+    }
+
+    public Claim? FindClaimByNormalized(string normalized)
+    {
+        using var cmd = _connection.CreateCommand();
+        cmd.CommandText = @"
+            SELECT * FROM claims 
+            WHERE normalized = ? 
+            AND status IN (1, 2)
+            AND is_active = TRUE
+            ORDER BY last_verified DESC
+            LIMIT 1";
+        cmd.Parameters.Add(new DuckDBParameter(normalized));
+        
+        using var reader = (DuckDBDataReader)cmd.ExecuteReader();
         if (reader.Read())
             return MapClaim(reader);
         return null;

@@ -53,6 +53,17 @@ public class VkeDbContextTests : IDisposable
         Assert.Equal(1, tier);
     }
 
+    [Fact]
+    public void ClaimsTable_HasVerificationStatusColumn()
+    {
+        var columns = _db.Query<string>("SELECT name FROM pragma_table_info('claims')").ToList();
+        Assert.Contains("status", columns);
+        Assert.Contains("wrong_reason", columns);
+        Assert.Contains("correct_value", columns);
+        Assert.Contains("correct_source", columns);
+        Assert.Contains("corrected_at", columns);
+    }
+
     public void Dispose()
     {
         _db.Dispose();

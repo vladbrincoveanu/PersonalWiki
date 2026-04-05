@@ -16,7 +16,7 @@ public class LintAgent
     public List<Claim> ScanStaleClaims()
     {
         using var cmd = _db.CreateCommand();
-        cmd.CommandText = "SELECT * FROM claims WHERE verified = TRUE AND is_active = TRUE AND stale_after < ?";
+        cmd.CommandText = "SELECT * FROM claims WHERE status IN (1, 2) AND is_active = TRUE AND stale_after < ?";
         cmd.Parameters.Add(new DuckDBParameter(DateTime.UtcNow));
         
         var claims = new List<Claim>();
@@ -47,7 +47,7 @@ public class LintAgent
         cmd.CommandText = @"
             SELECT c1.id, c2.id FROM claims c1
             JOIN claims c2 ON c1.id < c2.id
-            WHERE c1.verified = TRUE AND c2.verified = TRUE
+            WHERE c1.status IN (1, 2) AND c2.status IN (1, 2)
             AND c1.is_active = TRUE AND c2.is_active = TRUE
             AND c1.normalized LIKE c2.normalized || '%'
             AND c1.statement != c2.statement
@@ -60,6 +60,28 @@ public class LintAgent
         return contradictions;
     }
 
+    private static Claim MapClaim(DuckDBDataReader reader) => new()
+    {
+        Id = reader.GetString(0),
+        Statement = reader.GetString(1),
+        Normalized = reader.GetString(2),
+        SourceId = reader.GetString(3),
+        Location = reader.IsDBNull(4) ? null : reader.GetString(4),
+        Domain = reader.IsDBNull(5) ? null : reader.GetString(5),
+        Status = (VerificationStatus)reader.GetInt32(6),
+        VerificationScore = reader.IsDBNull(7) ? 0 : (decimal)reader.GetFloat(7),
+        WrongReason = reader.IsDBNull(8) ? null : reader.GetString(8),
+        CorrectValue = reader.IsDBNull(9) ? null : reader.GetString(9),
+        CorrectSource = reader.IsDBNull(10) ? null : reader.GetString(10),
+        Tier = reader.GetInt32(11),
+        IndependentSourceCount = reader.GetInt32(12),
+        FirstSeen = reader.GetDateTime(13),
+        LastVerified = reader.IsDBNull(14) ? null : reader.GetDateTime(14),
+        StaleAfter = reader.IsDBNull(15) ? null : reader.GetDateTime(15),
+        CorrectedAt = reader.IsDBNull(16) ? null : reader.GetDateTime(16),
+        IsActive = reader.IsDBNull(17) || reader.GetBoolean(17),
+    };
+
     public LintReport GenerateReport()
     {
         return new LintReport
@@ -70,24 +92,6 @@ public class LintAgent
             GeneratedAt = DateTime.UtcNow,
         };
     }
-
-    private static Claim MapClaim(DuckDBDataReader reader) => new()
-    {
-        Id = reader.GetString(0),
-        Statement = reader.GetString(1),
-        Normalized = reader.GetString(2),
-        SourceId = reader.GetString(3),
-        Location = reader.IsDBNull(4) ? null : reader.GetString(4),
-        Domain = reader.IsDBNull(5) ? null : reader.GetString(5),
-        Verified = reader.GetBoolean(6),
-        VerificationScore = (decimal)reader.GetFloat(7),
-        Tier = reader.GetInt32(8),
-        IndependentSourceCount = reader.GetInt32(9),
-        FirstSeen = reader.GetDateTime(10),
-        LastVerified = reader.IsDBNull(11) ? null : reader.GetDateTime(11),
-        StaleAfter = reader.IsDBNull(12) ? null : reader.GetDateTime(12),
-        IsActive = reader.IsDBNull(13) || reader.GetBoolean(13),
-    };
 }
 
 public class LintReport
