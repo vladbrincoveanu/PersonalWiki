@@ -1,8 +1,8 @@
 {
   "version": 2,
-  "dgSpecHash": "dJ5QZ18jgKM=",
+  "dgSpecHash": "pMt3Mgohc0A=",
   "success": true,
-  "projectFilePath": "/Users/vladbrincoveanu/Desktop/Startup/aiJurnalV2/src/Vke.Cli/Vke.Cli.csproj",
+  "projectFilePath": "/Users/vladbrincoveanu/Desktop/Startup/aiJurnalV2/.worktrees/code-review-fixes/src/Vke.Cli/Vke.Cli.csproj",
   "expectedPackageFiles": [
     "/Users/vladbrincoveanu/.nuget/packages/duckdb.net.bindings/1.5.0/duckdb.net.bindings.1.5.0.nupkg.sha512",
     "/Users/vladbrincoveanu/.nuget/packages/duckdb.net.data/1.5.0/duckdb.net.data.1.5.0.nupkg.sha512",

@@ -91,7 +91,7 @@ Only output the number.";
         var body = new
         {
             model = _model,
-            max_tokens = 256,
+            max_tokens = 8192,
             messages = new[] { new { role = "user", content = prompt } }
         };
 

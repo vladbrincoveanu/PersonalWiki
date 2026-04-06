@@ -4,7 +4,7 @@ namespace Vke.Core.Services;
 
 public class WikiGenerator
 {
-    public void GenerateEntityPage(string entityName, List<Claim> claims, string basePath, bool saveHistory = false)
+    public async Task GenerateEntityPage(string entityName, List<Claim> claims, string basePath, bool saveHistory = false)
     {
         var dir = Path.Combine(basePath, "entities");
         Directory.CreateDirectory(dir);
@@ -64,18 +64,41 @@ public class WikiGenerator
             md += "\n";
         }
         
-        File.WriteAllText(filePath, md);
+        var sourceIds = claims.Where(c => !string.IsNullOrEmpty(c.SourceId)).Select(c => c.SourceId).Distinct().ToList();
+        if (sourceIds.Any())
+        {
+            md += "## Sources\n";
+            foreach (var sourceId in sourceIds)
+                md += $"- [[sources/{ToFileName(sourceId)}.md|Source {sourceId}]]\n";
+            md += "\n";
+        }
+        
+        try
+        {
+            await File.WriteAllTextAsync(filePath, md);
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException($"Failed to write entity page for '{entityName}' to '{filePath}'", ex);
+        }
         
         if (saveHistory)
         {
             var historyDir = Path.Combine(dir, ToFileName(entityName));
             Directory.CreateDirectory(historyDir);
             var historyFile = Path.Combine(historyDir, $"{DateTime.UtcNow:yyyy-MM-dd}.md");
-            File.WriteAllText(historyFile, md);
+            try
+            {
+                await File.WriteAllTextAsync(historyFile, md);
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidOperationException($"Failed to write history page for '{entityName}' to '{historyFile}'", ex);
+            }
         }
     }
 
-    public void GenerateSourcePage(Source source, List<Claim> claims, string basePath)
+    public async Task GenerateSourcePage(Source source, List<Claim> claims, string basePath)
     {
         var dir = Path.Combine(basePath, "sources");
         Directory.CreateDirectory(dir);
@@ -118,10 +141,26 @@ public class WikiGenerator
                 md += $"- ~~{c.Statement}~~ [reason: {c.WrongReason}]\n";
         }
         
-        File.WriteAllText(filePath, md);
+        var entityNames = claims.Select(c => c.Normalized?.Split(':')[0] ?? "").Where(s => !string.IsNullOrEmpty(s)).Distinct().ToList();
+        if (entityNames.Any())
+        {
+            md += "## Entities\n";
+            foreach (var entity in entityNames)
+                md += $"- [[entities/{ToFileName(entity)}.md|{entity}]]\n";
+            md += "\n";
+        }
+        
+        try
+        {
+            await File.WriteAllTextAsync(filePath, md);
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException($"Failed to write source page for '{source.Title ?? source.Id}' to '{filePath}'", ex);
+        }
     }
 
-    public void GenerateAlertsPage(List<string> cycles, List<string> contradictions, string basePath, List<string>? pendingReviews = null, List<string>? staleClaims = null)
+    public async Task GenerateAlertsPage(List<string> cycles, List<string> contradictions, string basePath, List<string>? pendingReviews = null, List<string>? staleClaims = null)
     {
         var dir = Path.Combine(basePath, "alerts");
         Directory.CreateDirectory(dir);
@@ -133,7 +172,14 @@ public class WikiGenerator
             md += "_Last updated: " + DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss") + "_\n\n";
             foreach (var claimId in pendingReviews)
                 md += $"- Claim `{claimId}` requires human review\n";
-            File.WriteAllText(reviewPath, md);
+            try
+            {
+                await File.WriteAllTextAsync(reviewPath, md);
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidOperationException($"Failed to write pending reviews page to '{reviewPath}'", ex);
+            }
         }
         
         if (staleClaims?.Any() == true)
@@ -143,7 +189,14 @@ public class WikiGenerator
             md += "_Last updated: " + DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss") + "_\n\n";
             foreach (var claimId in staleClaims)
                 md += $"- Claim `{claimId}` is stale and should be re-verified\n";
-            File.WriteAllText(stalePath, md);
+            try
+            {
+                await File.WriteAllTextAsync(stalePath, md);
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidOperationException($"Failed to write stale claims page to '{stalePath}'", ex);
+            }
         }
         
         if (cycles.Any())
@@ -152,7 +205,14 @@ public class WikiGenerator
             var md = "# Circular Citation Alerts\n\n";
             foreach (var cycle in cycles)
                 md += $"- {cycle}\n";
-            File.WriteAllText(cyclePath, md);
+            try
+            {
+                await File.WriteAllTextAsync(cyclePath, md);
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidOperationException($"Failed to write cycles page to '{cyclePath}'", ex);
+            }
         }
         
         if (contradictions.Any())
@@ -161,7 +221,14 @@ public class WikiGenerator
             var md = "# Contradictions Detected\n\n";
             foreach (var c in contradictions)
                 md += $"- {c}\n";
-            File.WriteAllText(contraPath, md);
+            try
+            {
+                await File.WriteAllTextAsync(contraPath, md);
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidOperationException($"Failed to write contradictions page to '{contraPath}'", ex);
+            }
         }
     }
 

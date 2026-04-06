@@ -2,12 +2,15 @@ using Vke.Core.Agents;
 using Vke.Core.Data;
 using Vke.Core.Services;
 
+var vaultBase = Environment.GetEnvironmentVariable("VKE_VAULT_BASE") 
+    ?? "/openclaw/research";
+
 var dbPath = args.Contains("--db") 
     ? args[Array.IndexOf(args, "--db") + 1] 
-    : "vault/vke.duckdb";
+    : Path.Combine(vaultBase, "vke.duckdb");
 
 Directory.CreateDirectory(Path.GetDirectoryName(dbPath)!);
-var db = new VkeDbContext(dbPath);
+using var db = new VkeDbContext(dbPath);
 db.InitializeDatabase();
 
 var apiKey = Environment.GetEnvironmentVariable("ANTHROPIC_AUTH_TOKEN") ?? "";
@@ -21,15 +24,18 @@ if (string.IsNullOrEmpty(apiKey))
     return 1;
 }
 
-var http = new HttpClient();
+using var http = new HttpClient();
 http.Timeout = TimeSpan.FromMinutes(5);
 http.DefaultRequestHeaders.Add("x-api-key", apiKey);
 http.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey);
+http.DefaultRequestHeaders.Add("User-Agent", "VKE Research v1 (your@email.com)");
 
 var llm = new LlmClient(http, baseUrl, model);
 var secEdgar = new SecEdgarClient(http);
 var semScholar = new SemanticScholarClient(http);
 var wikiGen = new WikiGenerator();
+var fileScanner = new FileScanner();
+var indexGen = new IndexGenerator();
 
 var command = args.FirstOrDefault() ?? "help";
 
@@ -67,7 +73,7 @@ switch (command)
         var (sourceId, claims) = await ingestAgent.IngestAsync(url, sourceType, domain);
         Console.WriteLine($"Extracted {claims.Count} claims, verifying with LLM...");
         
-        var wikiPath = args.GetValue("--wiki") ?? "vault/wiki";
+        var wikiPath = args.GetValue("--wiki") ?? Path.Combine(vaultBase, "wiki");
         var verifyAgent = new VerifyAgent(db, llm, wikiGen, wikiPath);
         var result = await verifyAgent.VerifyAndStoreAsync(sourceId, claims);
         
@@ -75,6 +81,12 @@ switch (command)
         Console.WriteLine($"Verified: {result.Verified}, Corrected: {result.Corrected}, False: {result.False}");
         Console.WriteLine($"Disputed: {result.Disputed}, Unverifiable: {result.Unverifiable}");
         Console.WriteLine($"Wiki written to: {wikiPath}/sources/ and {wikiPath}/entities/");
+        
+        Console.WriteLine("Scanning for new files...");
+        await fileScanner.ScanAndIndexAsync(vaultBase, db);
+        Console.WriteLine("Updating index...");
+        await indexGen.GenerateIndexAsync(vaultBase, db);
+        Console.WriteLine($"Index updated at {vaultBase}/index.md");
         break;
     
     case "lint":
@@ -83,6 +95,11 @@ switch (command)
         Console.WriteLine($"Stale claims: {lintReport.StaleClaims.Count}");
         Console.WriteLine($"Orphan sources: {lintReport.OrphanSources.Count}");
         Console.WriteLine($"Contradictions: {lintReport.Contradictions.Count}");
+        
+        Console.WriteLine("Scanning for new files...");
+        await fileScanner.ScanAndIndexAsync(vaultBase, db);
+        Console.WriteLine("Updating index...");
+        await indexGen.GenerateIndexAsync(vaultBase, db);
         break;
     
     case "correct":
@@ -90,7 +107,7 @@ switch (command)
     {
         Console.WriteLine("Searching for correct values...");
         
-        var correctDbPath = Path.Combine("vault", "vke.duckdb");
+        var correctDbPath = Path.Combine(vaultBase, "vke.duckdb");
         if (!File.Exists(correctDbPath))
         {
             Console.WriteLine($"Error: Database not found at {correctDbPath}. Run 'vke ingest' first.");
@@ -98,7 +115,7 @@ switch (command)
         }
         
         using var correctDb = new VkeDbContext(correctDbPath);
-        var correctHttpClient = new HttpClient();
+        using var correctHttpClient = new HttpClient();
         var yahooFinance = new YahooFinanceClient(correctHttpClient);
         var correctionAgent = new CorrectionAgent(correctDb, yahooFinance);
         
@@ -120,6 +137,11 @@ switch (command)
                 Console.WriteLine();
             }
         }
+        
+        Console.WriteLine("Scanning for new files...");
+        await fileScanner.ScanAndIndexAsync(vaultBase, correctDb);
+        Console.WriteLine("Updating index...");
+        await indexGen.GenerateIndexAsync(vaultBase, correctDb);
         break;
     }
     

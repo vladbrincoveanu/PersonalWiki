@@ -13,7 +13,6 @@ public class SecEdgarClient
     public SecEdgarClient(HttpClient http)
     {
         _http = http;
-        _http.DefaultRequestHeaders.Add("User-Agent", "VKE Research v1 (your@email.com)");
     }
 
     public async Task<string> GetCompanyCikAsync(string ticker)
