@@ -67,7 +67,12 @@ public class WikiGenerator
         File.WriteAllText(filePath, md);
     }
 
-    public void GenerateAlertsPage(List<string> cycles, List<string> contradictions, string basePath)
+    public void GenerateAlertsPage(
+        List<string> cycles, 
+        List<string> contradictions, 
+        string basePath,
+        List<string> pendingReviews = null,
+        List<string> staleClaims = null)
     {
         var dir = Path.Combine(basePath, "alerts");
         Directory.CreateDirectory(dir);
@@ -88,6 +93,24 @@ public class WikiGenerator
             foreach (var c in contradictions)
                 md += $"- {c}\n";
             File.WriteAllText(contraPath, md);
+        }
+
+        if (pendingReviews?.Any() == true)
+        {
+            var pendingPath = Path.Combine(dir, "pending_reviews.md");
+            var md = "# Pending Reviews\n\n";
+            foreach (var id in pendingReviews)
+                md += $"- {id}\n";
+            File.WriteAllText(pendingPath, md);
+        }
+
+        if (staleClaims?.Any() == true)
+        {
+            var stalePath = Path.Combine(dir, "stale_claims.md");
+            var md = "# Stale Claims\n\n";
+            foreach (var id in staleClaims)
+                md += $"- {id}\n";
+            File.WriteAllText(stalePath, md);
         }
     }
 

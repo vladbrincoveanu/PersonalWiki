@@ -43,12 +43,12 @@ public class VerifyAgentTests : IDisposable
         var result = await agent.VerifyAndStoreAsync("source-1", claims);
         
         Assert.Equal(1, result.Verified);
-        Assert.Equal(0, result.Quarantined);
+        Assert.Equal(0, result.False);
         
         var claimId = IdGenerator.GenerateClaimId("apples revenue was 3943b in fy2024", "source-1");
         var stored = _db.GetClaimById(claimId);
         Assert.NotNull(stored);
-        Assert.True(stored.Verified);
+        Assert.Equal(VerificationStatus.Verified, stored.Status);
     }
 
     [Fact]
@@ -75,7 +75,70 @@ public class VerifyAgentTests : IDisposable
         var result = await agent.VerifyAndStoreAsync("source-1", claims);
         
         Assert.Equal(0, result.Verified);
-        Assert.Equal(1, result.Quarantined);
+        Assert.Equal(1, result.False);
+    }
+
+    [Fact]
+    public async Task VerifyAndStore_ClaimMatchesGroundTruth_SetsStatusVerified()
+    {
+        var gtSource = new Source 
+        { 
+            Id = "gt-1", 
+            Url = "http://sec.gov/10k", 
+            SourceType = "sec_10k", 
+            Domain = "financial",
+            Content = "Apple reported revenue of $394.3 billion in FY2024."
+        };
+        _db.InsertSource(gtSource);
+        
+        var claim = new Claim 
+        { 
+            Statement = "Apple revenue was $394.3B in FY2024",
+            Normalized = "apple revenue was 394.3b in fy2024",
+            SourceId = "gt-1",
+            Status = VerificationStatus.Unverified
+        };
+        
+        var mockLlm = new Mock<ILlmClient>();
+        mockLlm.Setup(x => x.VerifyClaimAsync(It.IsAny<string>(), It.IsAny<string>()))
+            .ReturnsAsync(0.9m);
+        
+        var agent = new VerifyAgent(_db, mockLlm.Object);
+        var result = await agent.VerifyAndStoreAsync("gt-1", new List<Claim> { claim });
+        
+        Assert.Equal(VerificationStatus.Verified, claim.Status);
+    }
+
+    [Fact]
+    public async Task VerifyAndStore_ClaimDoesNotMatchGroundTruth_SetsStatusFalse()
+    {
+        var gtSource = new Source 
+        { 
+            Id = "gt-1", 
+            Url = "http://sec.gov/10k", 
+            SourceType = "sec_10k", 
+            Domain = "financial",
+            Content = "Apple reported revenue of $394.3 billion in FY2024."
+        };
+        _db.InsertSource(gtSource);
+        
+        var claim = new Claim 
+        { 
+            Statement = "Apple revenue was $394 billion in FY2024",
+            Normalized = "apple revenue was 394 billion in fy2024",
+            SourceId = "gt-1",
+            Status = VerificationStatus.Unverified
+        };
+        
+        var mockLlm = new Mock<ILlmClient>();
+        mockLlm.Setup(x => x.VerifyClaimAsync(It.IsAny<string>(), It.IsAny<string>()))
+            .ReturnsAsync(0.3m);
+        
+        var agent = new VerifyAgent(_db, mockLlm.Object);
+        var result = await agent.VerifyAndStoreAsync("gt-1", new List<Claim> { claim });
+        
+        Assert.Equal(VerificationStatus.False, claim.Status);
+        Assert.NotNull(claim.WrongReason);
     }
 
     public void Dispose()
