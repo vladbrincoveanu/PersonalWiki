@@ -21,7 +21,7 @@ public class ValidationTests
         var secEdgar = new Vke.Core.Services.SecEdgarClient(http);
         var semScholar = new Vke.Core.Services.SemanticScholarClient(http);
         
-        var ingestAgent = new Vke.Core.Agents.IngestAgent(db, llm, secEdgar, semScholar);
+        var ingestAgent = new Vke.Core.Agents.IngestAgent(db, llm, secEdgar, semScholar, null);
         var verifyAgent = new Vke.Core.Agents.VerifyAgent(db, llm);
         
         var (secId, secClaims) = await ingestAgent.IngestAsync(

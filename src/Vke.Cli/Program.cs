@@ -63,7 +63,7 @@ switch (command)
         var domain = args.GetValue("--domain") ?? "financial";
         
         Console.WriteLine($"Ingesting {sourceType} from {url}...");
-        var ingestAgent = new IngestAgent(db, llm, secEdgar, semScholar);
+        var ingestAgent = new IngestAgent(db, llm, secEdgar, semScholar, null);
         var (sourceId, claims) = await ingestAgent.IngestAsync(url, sourceType, domain);
         Console.WriteLine($"Extracted {claims.Count} claims, verifying with LLM...");
         

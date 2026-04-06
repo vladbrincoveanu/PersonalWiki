@@ -11,13 +11,15 @@ public class IngestAgent
     private readonly ILlmClient _llm;
     private readonly SecEdgarClient? _secEdgar;
     private readonly SemanticScholarClient? _semanticScholar;
+    private readonly GenericUrlClient? _genericUrl;
 
-    public IngestAgent(VkeDbContext db, ILlmClient llm, SecEdgarClient? secEdgar, SemanticScholarClient? semanticScholar)
+    public IngestAgent(VkeDbContext db, ILlmClient llm, SecEdgarClient? secEdgar, SemanticScholarClient? semanticScholar, GenericUrlClient? genericUrl)
     {
         _db = db;
         _llm = llm;
         _secEdgar = secEdgar;
         _semanticScholar = semanticScholar;
+        _genericUrl = genericUrl;
     }
 
     public async Task<(string sourceId, List<Claim> claims)> IngestAsync(string url, string sourceType, string domain)
@@ -69,7 +71,12 @@ public class IngestAgent
             var citesUrls = paper.References.Select(r => r.PaperId ?? "").Where(s => !string.IsNullOrEmpty(s)).ToList();
             return (paper.Abstract ?? "", paper.Title, paper.Authors.FirstOrDefault()?.Name, null, citesUrls);
         }
-        
+        else if (_genericUrl != null)
+        {
+            var (content, title, author, publishedAt) = await _genericUrl.FetchAsync(url);
+            return (content, title, author, publishedAt, new List<string>());
+        }
+
         throw new NotSupportedException($"Source type {sourceType} not supported");
     }
 

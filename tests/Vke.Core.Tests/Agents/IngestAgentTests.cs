@@ -26,7 +26,7 @@ public class IngestAgentTests
         mockSec.Setup(x => x.FetchFilingContentAsync(It.IsAny<string>()))
             .ReturnsAsync("Apple reported revenue of $394.3 billion in fiscal year 2024...");
         
-        var agent = new IngestAgent(db, mockLlm.Object, mockSec.Object, null);
+        var agent = new IngestAgent(db, mockLlm.Object, mockSec.Object, null, null);
         
         var (sourceId, claims) = await agent.IngestAsync("https://www.sec.gov/...10k.html", "sec_10k", "financial");
         
