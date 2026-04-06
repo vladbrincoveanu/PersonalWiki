@@ -5,7 +5,7 @@ namespace Vke.Core.Tests.Data;
 
 public class VkeDbContextTests : IDisposable
 {
-    private readonly string _dbPath = Path.Combine(Path.GetTempPath(), $"vke_test_{Guid.NewGuid()}.duckdb");
+    private readonly string _dbPath = Path.Combine(Path.GetTempPath(), $"vke_test_{Guid.NewGuid()}.db");
     private readonly VkeDbContext _db;
 
     public VkeDbContextTests()
@@ -17,11 +17,12 @@ public class VkeDbContextTests : IDisposable
     [Fact]
     public void InitializeDatabase_CreatesAllTables()
     {
-        var tables = _db.Query<string>("SHOW TABLES").ToList();
+        var tables = _db.Query<string>("SELECT name FROM sqlite_master WHERE type='table'").ToList();
         Assert.Contains("sources", tables);
         Assert.Contains("claims", tables);
         Assert.Contains("edges", tables);
         Assert.Contains("source_types", tables);
+        Assert.Contains("raw_files", tables);
     }
 
     [Fact]
