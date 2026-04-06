@@ -76,6 +76,20 @@ public class VkeDbContext : IDisposable
                 description     TEXT,
                 examples        TEXT
             );
+
+            CREATE TABLE IF NOT EXISTS raw_files (
+                id              TEXT PRIMARY KEY,
+                filename        TEXT NOT NULL,
+                full_path       TEXT NOT NULL,
+                folder          TEXT NOT NULL,
+                file_type       TEXT,
+                size_bytes      BIGINT,
+                modified_at     TIMESTAMP,
+                indexed_at      TIMESTAMP DEFAULT now(),
+                linked_entity   TEXT,
+                linked_source   TEXT,
+                status          TEXT DEFAULT 'pending'
+            );
         ";
         cmd.ExecuteNonQuery();
         
@@ -463,6 +477,74 @@ public class VkeDbContext : IDisposable
     public System.Data.Common.DbCommand CreateCommand()
     {
         return _connection.CreateCommand();
+    }
+
+    public void InsertRawFile(RawFile file)
+    {
+        using var cmd = _connection.CreateCommand();
+        cmd.CommandText = @"
+            INSERT INTO raw_files (id, filename, full_path, folder, file_type, size_bytes, modified_at, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                modified_at = excluded.modified_at,
+                size_bytes = excluded.size_bytes,
+                status = excluded.status
+        ";
+        cmd.Parameters.Add(new DuckDBParameter(file.Id));
+        cmd.Parameters.Add(new DuckDBParameter(file.Filename));
+        cmd.Parameters.Add(new DuckDBParameter(file.FullPath));
+        cmd.Parameters.Add(new DuckDBParameter(file.Folder));
+        cmd.Parameters.Add(new DuckDBParameter(file.FileType ?? (object)DBNull.Value));
+        cmd.Parameters.Add(new DuckDBParameter(file.SizeBytes));
+        cmd.Parameters.Add(new DuckDBParameter(file.ModifiedAt));
+        cmd.Parameters.Add(new DuckDBParameter(file.Status));
+        cmd.ExecuteNonQuery();
+    }
+
+    public List<RawFile> GetRawFiles(string? folder = null)
+    {
+        var files = new List<RawFile>();
+        using var cmd = _connection.CreateCommand();
+        cmd.CommandText = folder == null
+            ? "SELECT * FROM raw_files ORDER BY folder, filename"
+            : "SELECT * FROM raw_files WHERE folder = ? ORDER BY filename";
+        if (folder != null)
+            cmd.Parameters.Add(new DuckDBParameter(folder));
+        
+        using var reader = cmd.ExecuteReader();
+        while (reader.Read())
+        {
+            files.Add(new RawFile
+            {
+                Id = reader.GetString(0),
+                Filename = reader.GetString(1),
+                FullPath = reader.GetString(2),
+                Folder = reader.GetString(3),
+                FileType = reader.IsDBNull(4) ? null : reader.GetString(4),
+                SizeBytes = reader.IsDBNull(5) ? null : reader.GetInt64(5),
+                ModifiedAt = reader.IsDBNull(6) ? null : reader.GetDateTime(6),
+                IndexedAt = reader.GetDateTime(7),
+                LinkedEntity = reader.IsDBNull(8) ? null : reader.GetString(8),
+                LinkedSource = reader.IsDBNull(9) ? null : reader.GetString(9),
+                Status = reader.GetString(10)
+            });
+        }
+        return files;
+    }
+
+    public void UpdateRawFileStatus(string id, string status, string? linkedEntity = null, string? linkedSource = null)
+    {
+        using var cmd = _connection.CreateCommand();
+        cmd.CommandText = @"
+            UPDATE raw_files 
+            SET status = ?, linked_entity = ?, linked_source = ?
+            WHERE id = ?
+        ";
+        cmd.Parameters.Add(new DuckDBParameter(status));
+        cmd.Parameters.Add(new DuckDBParameter(linkedEntity ?? (object)DBNull.Value));
+        cmd.Parameters.Add(new DuckDBParameter(linkedSource ?? (object)DBNull.Value));
+        cmd.Parameters.Add(new DuckDBParameter(id));
+        cmd.ExecuteNonQuery();
     }
 
     public void Dispose()
