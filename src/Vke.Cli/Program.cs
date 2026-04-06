@@ -21,7 +21,7 @@ if (string.IsNullOrEmpty(apiKey))
     return 1;
 }
 
-var http = new HttpClient();
+using var http = new HttpClient();
 http.Timeout = TimeSpan.FromMinutes(5);
 http.DefaultRequestHeaders.Add("x-api-key", apiKey);
 http.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey);
@@ -99,7 +99,7 @@ switch (command)
         }
         
         using var correctDb = new VkeDbContext(correctDbPath);
-        var correctHttpClient = new HttpClient();
+        using var correctHttpClient = new HttpClient();
         var yahooFinance = new YahooFinanceClient(correctHttpClient);
         var correctionAgent = new CorrectionAgent(correctDb, yahooFinance);
         
