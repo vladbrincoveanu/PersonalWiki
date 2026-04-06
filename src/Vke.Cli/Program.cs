@@ -25,6 +25,7 @@ var http = new HttpClient();
 http.Timeout = TimeSpan.FromMinutes(5);
 http.DefaultRequestHeaders.Add("x-api-key", apiKey);
 http.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey);
+http.DefaultRequestHeaders.Add("User-Agent", "VKE Research v1 (your@email.com)");
 
 var llm = new LlmClient(http, baseUrl, model);
 var secEdgar = new SecEdgarClient(http);

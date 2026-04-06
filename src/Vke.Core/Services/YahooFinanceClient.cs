@@ -32,8 +32,9 @@ public class YahooFinanceClient : IYahooFinanceClient
                 return (formatted, $"https://finance.yahoo.com/quote/{ticker}");
             }
         }
-        catch (Exception)
+        catch (Exception ex)
         {
+            Console.Error.WriteLine($"Error fetching revenue for {ticker}: {ex.Message}");
         }
         
         return null;
@@ -53,8 +54,9 @@ public class YahooFinanceClient : IYahooFinanceClient
                 return (price.Value.ToString("C"), $"https://finance.yahoo.com/quote/{ticker}");
             }
         }
-        catch (Exception)
+        catch (Exception ex)
         {
+            Console.Error.WriteLine($"Error fetching stock price for {ticker}: {ex.Message}");
         }
         
         return null;
