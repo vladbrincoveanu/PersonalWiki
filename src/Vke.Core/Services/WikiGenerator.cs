@@ -4,7 +4,7 @@ namespace Vke.Core.Services;
 
 public class WikiGenerator
 {
-    public void GenerateEntityPage(string entityName, List<Claim> claims, string basePath)
+    public void GenerateEntityPage(string entityName, List<Claim> claims, string basePath, bool saveHistory = false)
     {
         var dir = Path.Combine(basePath, "entities");
         Directory.CreateDirectory(dir);
@@ -12,37 +12,67 @@ public class WikiGenerator
         var fileName = ToFileName(entityName) + ".md";
         var filePath = Path.Combine(dir, fileName);
         
-        var md = $"# {entityName}\n\n## Verified Claims\n\n";
+        var md = $"# {entityName}\n\n";
+        md += $"_Last updated: {DateTime.UtcNow:yyyy-MM-dd HH:mm:ss} UTC_\n\n";
         
-        var tier1 = claims.Where(c => c.Tier == 1).ToList();
-        var tier2 = claims.Where(c => c.Tier == 2).ToList();
-        var tier3 = claims.Where(c => c.Tier == 3).ToList();
+        var verified = claims.Where(c => c.Status == VerificationStatus.Verified).ToList();
+        var corrected = claims.Where(c => c.Status == VerificationStatus.Corrected).ToList();
+        var disputed = claims.Where(c => c.Status == VerificationStatus.Disputed).ToList();
+        var falseClaims = claims.Where(c => c.Status == VerificationStatus.False).ToList();
         
-        if (tier1.Any())
+        if (verified.Any())
         {
-            md += "### Tier 1 (Primary Sources)\n";
-            foreach (var c in tier1)
-                md += $"- {c.Statement} (score: {c.VerificationScore:F2})\n";
+            md += "## Verified Claims\n";
+            foreach (var c in verified)
+                md += $"- {c.Statement} [score: {c.VerificationScore:F2}]\n";
             md += "\n";
         }
         
-        if (tier2.Any())
+        if (corrected.Any())
         {
-            md += "### Tier 2 (Credible Secondary)\n";
-            foreach (var c in tier2)
-                md += $"- {c.Statement} (score: {c.VerificationScore:F2})\n";
+            md += "## Corrected Claims\n";
+            foreach (var c in corrected)
+            {
+                md += $"- ~~{c.Statement}~~ [CORRECTED to: {c.CorrectValue}]\n";
+                md += $"  - Reason: {c.WrongReason}\n";
+                md += $"  - Corrected by: {c.CorrectSource}\n";
+            }
             md += "\n";
         }
         
-        if (tier3.Any())
+        if (disputed.Any())
         {
-            md += "### Tier 3 (Useful but Unverified)\n";
-            foreach (var c in tier3)
-                md += $"- {c.Statement} (score: {c.VerificationScore:F2})\n";
+            md += "## Disputed Claims\n";
+            foreach (var c in disputed)
+            {
+                md += $"- {c.Statement} [DISPUTED]\n";
+                md += $"  - Reason: {c.WrongReason}\n";
+            }
+            md += "\n";
+        }
+        
+        if (falseClaims.Any())
+        {
+            md += "## False Claims (Rejected)\n";
+            foreach (var c in falseClaims)
+            {
+                md += $"- ~~{c.Statement}~~ [FALSE]\n";
+                md += $"  - Reason: {c.WrongReason}\n";
+                if (!string.IsNullOrEmpty(c.CorrectValue))
+                    md += $"  - Correct value: {c.CorrectValue}\n";
+            }
             md += "\n";
         }
         
         File.WriteAllText(filePath, md);
+        
+        if (saveHistory)
+        {
+            var historyDir = Path.Combine(dir, ToFileName(entityName));
+            Directory.CreateDirectory(historyDir);
+            var historyFile = Path.Combine(historyDir, $"{DateTime.UtcNow:yyyy-MM-dd}.md");
+            File.WriteAllText(historyFile, md);
+        }
     }
 
     public void GenerateSourcePage(Source source, List<Claim> claims, string basePath)
@@ -58,24 +88,63 @@ public class WikiGenerator
         md += $"- **Type:** {source.SourceType}\n";
         md += $"- **Author:** {source.Author ?? "Unknown"}\n";
         md += $"- **Published:** {source.PublishedAt?.ToString() ?? "Unknown"}\n";
-        md += $"- **Domain:** {source.Domain}\n\n";
+        md += $"- **Domain:** {source.Domain}\n";
+        md += $"- **Fetched:** {source.FetchedAt:yyyy-MM-dd HH:mm:ss}\n\n";
         
-        md += "## Claims\n";
-        foreach (var c in claims)
-            md += $"- {c.Statement} (tier: {c.Tier}, score: {c.VerificationScore:F2})\n";
+        md += "## Claims\n\n";
+        
+        var verified = claims.Where(c => c.Status == VerificationStatus.Verified).ToList();
+        var corrected = claims.Where(c => c.Status == VerificationStatus.Corrected).ToList();
+        var falseClaims = claims.Where(c => c.Status == VerificationStatus.False).ToList();
+        
+        if (verified.Any())
+        {
+            md += "### Verified\n";
+            foreach (var c in verified)
+                md += $"- {c.Statement} (tier: {c.Tier}, score: {c.VerificationScore:F2})\n";
+        }
+        
+        if (corrected.Any())
+        {
+            md += "### Corrected\n";
+            foreach (var c in corrected)
+                md += $"- ~~{c.Statement}~~ → {c.CorrectValue} (source: {c.CorrectSource})\n";
+        }
+        
+        if (falseClaims.Any())
+        {
+            md += "### False/Rejected\n";
+            foreach (var c in falseClaims)
+                md += $"- ~~{c.Statement}~~ [reason: {c.WrongReason}]\n";
+        }
         
         File.WriteAllText(filePath, md);
     }
 
-    public void GenerateAlertsPage(
-        List<string> cycles, 
-        List<string> contradictions, 
-        string basePath,
-        List<string> pendingReviews = null,
-        List<string> staleClaims = null)
+    public void GenerateAlertsPage(List<string> cycles, List<string> contradictions, string basePath, List<string>? pendingReviews = null, List<string>? staleClaims = null)
     {
         var dir = Path.Combine(basePath, "alerts");
         Directory.CreateDirectory(dir);
+        
+        if (pendingReviews?.Any() == true)
+        {
+            var reviewPath = Path.Combine(dir, "pending-reviews.md");
+            var md = "# Claims Pending Human Review\n\n";
+            md += "_Last updated: " + DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss") + "_\n\n";
+            foreach (var claimId in pendingReviews)
+                md += $"- Claim `{claimId}` requires human review\n";
+            File.WriteAllText(reviewPath, md);
+        }
+        
+        if (staleClaims?.Any() == true)
+        {
+            var stalePath = Path.Combine(dir, "stale-claims.md");
+            var md = "# Stale Claims (Need Re-verification)\n\n";
+            md += "_Last updated: " + DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss") + "_\n\n";
+            foreach (var claimId in staleClaims)
+                md += $"- Claim `{claimId}` is stale and should be re-verified\n";
+            File.WriteAllText(stalePath, md);
+        }
         
         if (cycles.Any())
         {
@@ -93,24 +162,6 @@ public class WikiGenerator
             foreach (var c in contradictions)
                 md += $"- {c}\n";
             File.WriteAllText(contraPath, md);
-        }
-
-        if (pendingReviews?.Any() == true)
-        {
-            var pendingPath = Path.Combine(dir, "pending_reviews.md");
-            var md = "# Pending Reviews\n\n";
-            foreach (var id in pendingReviews)
-                md += $"- {id}\n";
-            File.WriteAllText(pendingPath, md);
-        }
-
-        if (staleClaims?.Any() == true)
-        {
-            var stalePath = Path.Combine(dir, "stale_claims.md");
-            var md = "# Stale Claims\n\n";
-            foreach (var id in staleClaims)
-                md += $"- {id}\n";
-            File.WriteAllText(stalePath, md);
         }
     }
 
