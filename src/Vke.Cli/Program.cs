@@ -34,6 +34,8 @@ var llm = new LlmClient(http, baseUrl, model);
 var secEdgar = new SecEdgarClient(http);
 var semScholar = new SemanticScholarClient(http);
 var wikiGen = new WikiGenerator();
+var fileScanner = new FileScanner();
+var indexGen = new IndexGenerator();
 
 var command = args.FirstOrDefault() ?? "help";
 
@@ -79,6 +81,12 @@ switch (command)
         Console.WriteLine($"Verified: {result.Verified}, Corrected: {result.Corrected}, False: {result.False}");
         Console.WriteLine($"Disputed: {result.Disputed}, Unverifiable: {result.Unverifiable}");
         Console.WriteLine($"Wiki written to: {wikiPath}/sources/ and {wikiPath}/entities/");
+        
+        Console.WriteLine("Scanning for new files...");
+        await fileScanner.ScanAndIndexAsync(vaultBase, db);
+        Console.WriteLine("Updating index...");
+        await indexGen.GenerateIndexAsync(vaultBase, db);
+        Console.WriteLine($"Index updated at {vaultBase}/index.md");
         break;
     
     case "lint":
@@ -87,6 +95,11 @@ switch (command)
         Console.WriteLine($"Stale claims: {lintReport.StaleClaims.Count}");
         Console.WriteLine($"Orphan sources: {lintReport.OrphanSources.Count}");
         Console.WriteLine($"Contradictions: {lintReport.Contradictions.Count}");
+        
+        Console.WriteLine("Scanning for new files...");
+        await fileScanner.ScanAndIndexAsync(vaultBase, db);
+        Console.WriteLine("Updating index...");
+        await indexGen.GenerateIndexAsync(vaultBase, db);
         break;
     
     case "correct":
@@ -124,6 +137,11 @@ switch (command)
                 Console.WriteLine();
             }
         }
+        
+        Console.WriteLine("Scanning for new files...");
+        await fileScanner.ScanAndIndexAsync(vaultBase, correctDb);
+        Console.WriteLine("Updating index...");
+        await indexGen.GenerateIndexAsync(vaultBase, correctDb);
         break;
     }
     
