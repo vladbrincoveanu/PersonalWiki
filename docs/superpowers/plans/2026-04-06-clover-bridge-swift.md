@@ -797,11 +797,10 @@ final class InboxWatcher {
     }
 
     deinit {
-        stop()
         // Release the retained self pointer passed to FSEventStreamContext.info
-        if eventStream != nil {
-            Unmanaged.passUnretained(self).release()
-        }
+        // (must happen before stop() sets eventStream to nil)
+        Unmanaged.passUnretained(self).release()
+        stop()
     }
 
     // MARK: - FSEventStream
@@ -1211,11 +1210,10 @@ final class AppState: ObservableObject {
             },
             onError: { [weak self] message in
                 guard let self else { return }
-                await MainActor.run {
-                    let item = ArticleItem(id: UUID(), title: message, url: nil, receivedAt: Date())
-                    self.articles.insert(item, at: 0)
-                    if self.articles.count > 10 { self.articles = Array(self.articles.prefix(10)) }
-                }
+                // @MainActor class — assign directly on main actor
+                let item = ArticleItem(id: UUID(), title: message, url: nil, receivedAt: Date())
+                self.articles.insert(item, at: 0)
+                if self.articles.count > 10 { self.articles = Array(self.articles.prefix(10)) }
             }
         )
         watcher.start()
@@ -1231,10 +1229,12 @@ final class AppState: ObservableObject {
                 botToken: config.botToken
             )
             watcher.fileDidSend(path: url.path)
-            await MainActor.run { connectionState = .healthy; lastSuccessDate = Date() }
+            // Already on @MainActor — assign directly, no MainActor.run needed
+            connectionState = .healthy
+            lastSuccessDate = Date()
         } catch {
             watcher.fileDidFail(path: url.path)
-            await MainActor.run { connectionState = .error }
+            connectionState = .error
         }
     }
 
@@ -1257,13 +1257,12 @@ final class AppState: ObservableObject {
                 offset: config.lastUpdateOffset,
                 botToken: config.botToken
             )
-            await MainActor.run {
-                self.processUpdates(updates)
-                self.connectionState = .healthy
-                self.lastSuccessDate = Date()
-            }
+            // Already on @MainActor — assign directly
+            processUpdates(updates)
+            connectionState = .healthy
+            lastSuccessDate = Date()
         } catch {
-            await MainActor.run { connectionState = .error }
+            connectionState = .error
         }
     }
 
@@ -1327,7 +1326,7 @@ struct CloverBridgeApp: App {
             .environmentObject(appState)
         }
         .menuBarExtraStyle(.window)
-        .onChange(of: scenePhase) { phase in
+        .onChange(of: scenePhase) { _, phase in
             switch phase {
             case .active:   appState.resumePollTimer()
             default:        appState.suspendPollTimer()
@@ -1430,6 +1429,5 @@ git commit -m "feat: CloverBridge v1.0 — two-way Telegram bridge menu bar app"
 
 ## Notes
 
-- **`TelegramClient` instance:** In Task 9, `TelegramClient()` is instantiated but the class was written as a collection of static/instance methods. The `sendDocument` and `getUpdates` methods can be either `static` or `instance` — make them `static` if you want to avoid the instance, or keep them `instance` if you prefer. Update the call sites accordingly.
-- **`inboxWatcher` lifetime:** The `inboxWatcher` local variable in `startInboxWatcher()` will be deallocated. For production, store it in a `@StateObject` class-based `AppState` object. For now, hold it in a singleton or a class property.
-- **Staleness tracking:** The 15s refresh timer in `setupRefreshTimer()` is a stub for triggering SwiftUI redraws. Full staleness (healthy → stale after 2min) requires storing `lastSuccessDate: Date` in state and comparing in the timer handler.
+- **`TelegramClient` methods:** `sendDocument` and `getUpdates` are written as instance methods in Task 5. `AppState` instantiates `TelegramClient()` and calls them as instance methods — this is consistent throughout the plan.
+- **`dd` unit on macOS:** `bs=1m` uses lowercase `m` (megabytes) — correct for macOS/BSD `dd`. GNU `dd` uses `M`. The command in Task 10 Step 5 is correct for macOS.
