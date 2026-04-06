@@ -13,6 +13,9 @@ obj/
 # OS
 .DS_Store
 
+# Worktrees
+.worktrees/
+
 # DuckDB
 *.duckdb
 vault/
