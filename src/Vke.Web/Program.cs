@@ -10,6 +10,7 @@ var dbPath = Path.Combine(vaultBase, "vke.duckdb");
 var rawPath = Path.Combine(vaultBase, "raw");
 var wikiPath = Path.Combine(vaultBase, "wiki");
 
+Directory.CreateDirectory(vaultBase);
 Directory.CreateDirectory(Path.GetDirectoryName(dbPath)!);
 Directory.CreateDirectory(rawPath);
 Directory.CreateDirectory(wikiPath);
