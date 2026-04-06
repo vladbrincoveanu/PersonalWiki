@@ -483,8 +483,8 @@ public class VkeDbContext : IDisposable
     {
         using var cmd = _connection.CreateCommand();
         cmd.CommandText = @"
-            INSERT INTO raw_files (id, filename, full_path, folder, file_type, size_bytes, modified_at, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO raw_files (id, filename, full_path, folder, file_type, size_bytes, modified_at, indexed_at, linked_entity, linked_source, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
                 modified_at = excluded.modified_at,
                 size_bytes = excluded.size_bytes,
@@ -497,6 +497,9 @@ public class VkeDbContext : IDisposable
         cmd.Parameters.Add(new DuckDBParameter(file.FileType ?? (object)DBNull.Value));
         cmd.Parameters.Add(new DuckDBParameter(file.SizeBytes));
         cmd.Parameters.Add(new DuckDBParameter(file.ModifiedAt));
+        cmd.Parameters.Add(new DuckDBParameter(file.IndexedAt));
+        cmd.Parameters.Add(new DuckDBParameter(file.LinkedEntity ?? (object)DBNull.Value));
+        cmd.Parameters.Add(new DuckDBParameter(file.LinkedSource ?? (object)DBNull.Value));
         cmd.Parameters.Add(new DuckDBParameter(file.Status));
         cmd.ExecuteNonQuery();
     }

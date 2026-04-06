@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("Vke.Cli")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+c21816f456d21ba952fb8920d98e403b3acad12c")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+2c9ad25a4f46b9d1ac785594ffc412ed0f47c50a")]
 [assembly: System.Reflection.AssemblyProductAttribute("Vke.Cli")]
 [assembly: System.Reflection.AssemblyTitleAttribute("Vke.Cli")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

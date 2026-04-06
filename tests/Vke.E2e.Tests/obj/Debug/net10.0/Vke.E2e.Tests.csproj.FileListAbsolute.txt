@@ -226,3 +226,4 @@
 /Users/vladbrincoveanu/Desktop/Startup/aiJurnalV2/.worktrees/code-review-fixes/tests/Vke.E2e.Tests/obj/Debug/net10.0/Vke.E2e.Tests.pdb
 /Users/vladbrincoveanu/Desktop/Startup/aiJurnalV2/.worktrees/code-review-fixes/tests/Vke.E2e.Tests/obj/Debug/net10.0/Vke.E2e.Tests.genruntimeconfig.cache
 /Users/vladbrincoveanu/Desktop/Startup/aiJurnalV2/.worktrees/code-review-fixes/tests/Vke.E2e.Tests/obj/Debug/net10.0/ref/Vke.E2e.Tests.dll
+/Users/vladbrincoveanu/Desktop/Startup/aiJurnalV2/.worktrees/code-review-fixes/tests/Vke.E2e.Tests/obj/Debug/net10.0/Vke.E2e.Tests.sourcelink.json
