@@ -133,7 +133,7 @@ public class VerifyAgent
             else if (score >= 0.5m)
                 return (VerificationStatus.Disputed, score, "Claim contradicts established ground truth", existingClaim.CorrectValue ?? existingClaim.Statement, existingClaim.Id);
             else
-                return (VerificationStatus.False, score, "Claim contradicts ground truth", existingClaim.CorrectValue ?? existingClaim.Statement, existingClaim.Id);
+                return (VerificationStatus.False, score, "Claim contradicts ground truth", null, existingClaim.Id);
         }
 
         var sourceScore = await _llm.VerifyClaimAsync(claim.Statement, source.Content ?? source.Url);
@@ -183,7 +183,7 @@ public class VerifyAgent
     private async Task WriteToWikiAsync(Source source, List<Claim> verified, List<Claim> corrected)
     {
         var allClaims = verified.Concat(corrected).ToList();
-        if (!allClaims.Any()) return;
+        if (allClaims.Count == 0) return;
 
         _wiki.GenerateSourcePage(source, allClaims, _wikiPath);
 

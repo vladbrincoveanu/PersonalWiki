@@ -1,0 +1,10 @@
+**/bin/
+**/obj/
+**/.git/
+**/.vs/
+**/.idea/
+**/node_modules/
+**/.env
+**/vault/
+*.md
+!README.md

@@ -44,8 +44,9 @@ public class SecEdgarClient
                 }
             }
         }
-        catch
+        catch (Exception ex)
         {
+            Console.Error.WriteLine($"Warning: Failed to load CIK cache: {ex.Message}");
             _cikCache = new Dictionary<string, string>();
         }
     }
@@ -89,8 +90,9 @@ public class SecEdgarClient
             }
             return filings.OrderByDescending(f => f.FilingDate).ToList();
         }
-        catch
+        catch (Exception ex)
         {
+            Console.Error.WriteLine($"Warning: Failed to fetch filings for {ticker}: {ex.Message}");
             return new List<SecFiling>();
         }
     }

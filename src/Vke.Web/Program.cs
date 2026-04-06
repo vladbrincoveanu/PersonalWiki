@@ -62,11 +62,11 @@ app.MapPost("/api/ingest", async (HttpContext ctx, IHttpClientFactory httpClient
     }
     catch (ArgumentException ex)
     {
-        return VkeResults.BadRequest(new { error = "Invalid request: " + ex.Message });
+        return VkeResults.BadRequest(new { error = "Invalid request parameters" });
     }
     catch (InvalidOperationException ex)
     {
-        return VkeResults.BadRequest(new { error = "Operation failed: " + ex.Message });
+        return VkeResults.BadRequest(new { error = "Operation failed" });
     }
     catch (Exception)
     {

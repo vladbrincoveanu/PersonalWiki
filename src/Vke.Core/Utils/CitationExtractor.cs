@@ -4,12 +4,23 @@ namespace Vke.Core.Utils;
 
 public static class CitationExtractor
 {
+    private static readonly Regex UrlPattern = new(
+        @"https?://[^\s<>""']+\.htm[l]?(?=[^\s<>""']*)",
+        RegexOptions.Compiled);
+    
+    private static readonly Regex DoiPattern = new(
+        @"10\.\d{4,}/[^\s]+",
+        RegexOptions.Compiled);
+    
+    private static readonly Regex ArxivPattern = new(
+        @"arXiv:(\d+\.\d+)",
+        RegexOptions.Compiled);
+
     public static List<string> ExtractFromSecFiling(string content)
     {
         var urls = new List<string>();
         
-        var urlPattern = @"https?://[^\s<>""']+\.htm[l]?(?=[^\s<>""']*)";
-        urls.AddRange(Regex.Matches(content, urlPattern)
+        urls.AddRange(UrlPattern.Matches(content)
             .Select(m => m.Value)
             .Where(u => u.Contains("sec.gov") || u.Contains("arxiv.org") || u.Contains("doi.org")));
         
@@ -20,12 +31,10 @@ public static class CitationExtractor
     {
         var urls = new List<string>();
         
-        var doiPattern = @"10\.\d{4,}/[^\s]+";
-        urls.AddRange(Regex.Matches(content, doiPattern)
+        urls.AddRange(DoiPattern.Matches(content)
             .Select(m => $"https://doi.org/{m.Value}"));
         
-        var arxivPattern = @"arXiv:(\d+\.\d+)";
-        urls.AddRange(Regex.Matches(content, arxivPattern)
+        urls.AddRange(ArxivPattern.Matches(content)
             .Select(m => $"https://arxiv.org/abs/{m.Groups[1].Value}"));
         
         return urls.Distinct().ToList();

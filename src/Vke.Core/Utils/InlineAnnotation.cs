@@ -71,9 +71,19 @@ public static class InlineAnnotation
         return annotations;
     }
 
+    private static readonly Regex AttrPattern = new(
+        @"(?<name>\w+)=""(?<value>[^""]*)""",
+        RegexOptions.Compiled);
+    
     private static string? ExtractAttr(string attrs, string name)
     {
-        var match = Regex.Match(attrs, $@"{name}=""([^""]*)""");
-        return match.Success ? match.Groups[1].Value : null;
+        var match = AttrPattern.Match(attrs);
+        while (match.Success)
+        {
+            if (match.Groups["name"].Value == name)
+                return match.Groups["value"].Value;
+            match = match.NextMatch();
+        }
+        return null;
     }
 }

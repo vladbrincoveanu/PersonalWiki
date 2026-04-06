@@ -1,10 +1,11 @@
+using System.Text;
 using Vke.Core.Data.Models;
 
 namespace Vke.Core.Services;
 
 public class WikiGenerator
 {
-    public async Task GenerateEntityPage(string entityName, List<Claim> claims, string basePath, bool saveHistory = false)
+    public void GenerateEntityPage(string entityName, List<Claim> claims, string basePath, bool saveHistory = false)
     {
         var dir = Path.Combine(basePath, "entities");
         Directory.CreateDirectory(dir);
@@ -12,70 +13,74 @@ public class WikiGenerator
         var fileName = ToFileName(entityName) + ".md";
         var filePath = Path.Combine(dir, fileName);
         
-        var md = $"# {entityName}\n\n";
-        md += $"_Last updated: {DateTime.UtcNow:yyyy-MM-dd HH:mm:ss} UTC_\n\n";
+        var sb = new StringBuilder();
+        sb.AppendLine($"# {entityName}");
+        sb.AppendLine();
+        sb.AppendLine($"_Last updated: {DateTime.UtcNow:yyyy-MM-dd HH:mm:ss} UTC_");
+        sb.AppendLine();
         
         var verified = claims.Where(c => c.Status == VerificationStatus.Verified).ToList();
         var corrected = claims.Where(c => c.Status == VerificationStatus.Corrected).ToList();
         var disputed = claims.Where(c => c.Status == VerificationStatus.Disputed).ToList();
         var falseClaims = claims.Where(c => c.Status == VerificationStatus.False).ToList();
         
-        if (verified.Any())
+        if (verified.Count > 0)
         {
-            md += "## Verified Claims\n";
+            sb.AppendLine("## Verified Claims");
             foreach (var c in verified)
-                md += $"- {c.Statement} [score: {c.VerificationScore:F2}]\n";
-            md += "\n";
+                sb.AppendLine($"- {c.Statement} [score: {c.VerificationScore:F2}]");
+            sb.AppendLine();
         }
         
-        if (corrected.Any())
+        if (corrected.Count > 0)
         {
-            md += "## Corrected Claims\n";
+            sb.AppendLine("## Corrected Claims");
             foreach (var c in corrected)
             {
-                md += $"- ~~{c.Statement}~~ [CORRECTED to: {c.CorrectValue}]\n";
-                md += $"  - Reason: {c.WrongReason}\n";
-                md += $"  - Corrected by: {c.CorrectSource}\n";
+                sb.AppendLine($"- ~~{c.Statement}~~ [CORRECTED to: {c.CorrectValue}]");
+                sb.AppendLine($"  - Reason: {c.WrongReason}");
+                sb.AppendLine($"  - Corrected by: {c.CorrectSource}");
             }
-            md += "\n";
+            sb.AppendLine();
         }
         
-        if (disputed.Any())
+        if (disputed.Count > 0)
         {
-            md += "## Disputed Claims\n";
+            sb.AppendLine("## Disputed Claims");
             foreach (var c in disputed)
             {
-                md += $"- {c.Statement} [DISPUTED]\n";
-                md += $"  - Reason: {c.WrongReason}\n";
+                sb.AppendLine($"- {c.Statement} [DISPUTED]");
+                sb.AppendLine($"  - Reason: {c.WrongReason}");
             }
-            md += "\n";
+            sb.AppendLine();
         }
         
-        if (falseClaims.Any())
+        if (falseClaims.Count > 0)
         {
-            md += "## False Claims (Rejected)\n";
+            sb.AppendLine("## False Claims (Rejected)");
             foreach (var c in falseClaims)
             {
-                md += $"- ~~{c.Statement}~~ [FALSE]\n";
-                md += $"  - Reason: {c.WrongReason}\n";
+                sb.AppendLine($"- ~~{c.Statement}~~ [FALSE]");
+                sb.AppendLine($"  - Reason: {c.WrongReason}");
                 if (!string.IsNullOrEmpty(c.CorrectValue))
-                    md += $"  - Correct value: {c.CorrectValue}\n";
+                    sb.AppendLine($"  - Correct value: {c.CorrectValue}");
             }
-            md += "\n";
+            sb.AppendLine();
         }
         
         var sourceIds = claims.Where(c => !string.IsNullOrEmpty(c.SourceId)).Select(c => c.SourceId).Distinct().ToList();
-        if (sourceIds.Any())
+        if (sourceIds.Count > 0)
         {
-            md += "## Sources\n";
+            sb.AppendLine("## Sources");
             foreach (var sourceId in sourceIds)
-                md += $"- [[sources/{ToFileName(sourceId)}.md|Source {sourceId}]]\n";
-            md += "\n";
+                sb.AppendLine($"- [[sources/{ToFileName(sourceId)}.md|Source {sourceId}]]");
+            sb.AppendLine();
         }
         
+        var md = sb.ToString();
         try
         {
-            await File.WriteAllTextAsync(filePath, md);
+            File.WriteAllText(filePath, md);
         }
         catch (Exception ex)
         {
@@ -89,7 +94,7 @@ public class WikiGenerator
             var historyFile = Path.Combine(historyDir, $"{DateTime.UtcNow:yyyy-MM-dd}.md");
             try
             {
-                await File.WriteAllTextAsync(historyFile, md);
+                File.WriteAllText(historyFile, md);
             }
             catch (Exception ex)
             {
@@ -106,53 +111,56 @@ public class WikiGenerator
         var fileName = ToFileName(source.Title ?? source.Id) + ".md";
         var filePath = Path.Combine(dir, fileName);
         
-        var md = $"# {source.Title ?? source.Id}\n\n";
-        md += $"- **URL:** {source.Url}\n";
-        md += $"- **Type:** {source.SourceType}\n";
-        md += $"- **Author:** {source.Author ?? "Unknown"}\n";
-        md += $"- **Published:** {source.PublishedAt?.ToString() ?? "Unknown"}\n";
-        md += $"- **Domain:** {source.Domain}\n";
-        md += $"- **Fetched:** {source.FetchedAt:yyyy-MM-dd HH:mm:ss}\n\n";
-        
-        md += "## Claims\n\n";
+        var sb = new StringBuilder();
+        sb.AppendLine($"# {source.Title ?? source.Id}");
+        sb.AppendLine();
+        sb.AppendLine($"- **URL:** {source.Url}");
+        sb.AppendLine($"- **Type:** {source.SourceType}");
+        sb.AppendLine($"- **Author:** {source.Author ?? "Unknown"}");
+        sb.AppendLine($"- **Published:** {source.PublishedAt?.ToString() ?? "Unknown"}");
+        sb.AppendLine($"- **Domain:** {source.Domain}");
+        sb.AppendLine($"- **Fetched:** {source.FetchedAt:yyyy-MM-dd HH:mm:ss}");
+        sb.AppendLine();
+        sb.AppendLine("## Claims");
+        sb.AppendLine();
         
         var verified = claims.Where(c => c.Status == VerificationStatus.Verified).ToList();
         var corrected = claims.Where(c => c.Status == VerificationStatus.Corrected).ToList();
         var falseClaims = claims.Where(c => c.Status == VerificationStatus.False).ToList();
         
-        if (verified.Any())
+        if (verified.Count > 0)
         {
-            md += "### Verified\n";
+            sb.AppendLine("### Verified");
             foreach (var c in verified)
-                md += $"- {c.Statement} (tier: {c.Tier}, score: {c.VerificationScore:F2})\n";
+                sb.AppendLine($"- {c.Statement} (tier: {c.Tier}, score: {c.VerificationScore:F2})");
         }
         
-        if (corrected.Any())
+        if (corrected.Count > 0)
         {
-            md += "### Corrected\n";
+            sb.AppendLine("### Corrected");
             foreach (var c in corrected)
-                md += $"- ~~{c.Statement}~~ → {c.CorrectValue} (source: {c.CorrectSource})\n";
+                sb.AppendLine($"- ~~{c.Statement}~~ → {c.CorrectValue} (source: {c.CorrectSource})");
         }
         
-        if (falseClaims.Any())
+        if (falseClaims.Count > 0)
         {
-            md += "### False/Rejected\n";
+            sb.AppendLine("### False/Rejected");
             foreach (var c in falseClaims)
-                md += $"- ~~{c.Statement}~~ [reason: {c.WrongReason}]\n";
+                sb.AppendLine($"- ~~{c.Statement}~~ [reason: {c.WrongReason}]");
         }
         
         var entityNames = claims.Select(c => c.Normalized?.Split(':')[0] ?? "").Where(s => !string.IsNullOrEmpty(s)).Distinct().ToList();
-        if (entityNames.Any())
+        if (entityNames.Count > 0)
         {
-            md += "## Entities\n";
+            sb.AppendLine("## Entities");
             foreach (var entity in entityNames)
-                md += $"- [[entities/{ToFileName(entity)}.md|{entity}]]\n";
-            md += "\n";
+                sb.AppendLine($"- [[entities/{ToFileName(entity)}.md|{entity}]]");
+            sb.AppendLine();
         }
         
         try
         {
-            await File.WriteAllTextAsync(filePath, md);
+            await File.WriteAllTextAsync(filePath, sb.ToString());
         }
         catch (Exception ex)
         {
@@ -168,13 +176,16 @@ public class WikiGenerator
         if (pendingReviews?.Any() == true)
         {
             var reviewPath = Path.Combine(dir, "pending-reviews.md");
-            var md = "# Claims Pending Human Review\n\n";
-            md += "_Last updated: " + DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss") + "_\n\n";
+            var sb = new StringBuilder();
+            sb.AppendLine("# Claims Pending Human Review");
+            sb.AppendLine();
+            sb.AppendLine($"_Last updated: {DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}_");
+            sb.AppendLine();
             foreach (var claimId in pendingReviews)
-                md += $"- Claim `{claimId}` requires human review\n";
+                sb.AppendLine($"- Claim `{claimId}` requires human review");
             try
             {
-                await File.WriteAllTextAsync(reviewPath, md);
+                await File.WriteAllTextAsync(reviewPath, sb.ToString());
             }
             catch (Exception ex)
             {
@@ -185,13 +196,16 @@ public class WikiGenerator
         if (staleClaims?.Any() == true)
         {
             var stalePath = Path.Combine(dir, "stale-claims.md");
-            var md = "# Stale Claims (Need Re-verification)\n\n";
-            md += "_Last updated: " + DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss") + "_\n\n";
+            var sb = new StringBuilder();
+            sb.AppendLine("# Stale Claims (Need Re-verification)");
+            sb.AppendLine();
+            sb.AppendLine($"_Last updated: {DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}_");
+            sb.AppendLine();
             foreach (var claimId in staleClaims)
-                md += $"- Claim `{claimId}` is stale and should be re-verified\n";
+                sb.AppendLine($"- Claim `{claimId}` is stale and should be re-verified");
             try
             {
-                await File.WriteAllTextAsync(stalePath, md);
+                await File.WriteAllTextAsync(stalePath, sb.ToString());
             }
             catch (Exception ex)
             {
@@ -202,12 +216,14 @@ public class WikiGenerator
         if (cycles.Any())
         {
             var cyclePath = Path.Combine(dir, "cycles.md");
-            var md = "# Circular Citation Alerts\n\n";
+            var sb = new StringBuilder();
+            sb.AppendLine("# Circular Citation Alerts");
+            sb.AppendLine();
             foreach (var cycle in cycles)
-                md += $"- {cycle}\n";
+                sb.AppendLine($"- {cycle}");
             try
             {
-                await File.WriteAllTextAsync(cyclePath, md);
+                await File.WriteAllTextAsync(cyclePath, sb.ToString());
             }
             catch (Exception ex)
             {
@@ -218,12 +234,14 @@ public class WikiGenerator
         if (contradictions.Any())
         {
             var contraPath = Path.Combine(dir, "contradictions.md");
-            var md = "# Contradictions Detected\n\n";
+            var sb = new StringBuilder();
+            sb.AppendLine("# Contradictions Detected");
+            sb.AppendLine();
             foreach (var c in contradictions)
-                md += $"- {c}\n";
+                sb.AppendLine($"- {c}");
             try
             {
-                await File.WriteAllTextAsync(contraPath, md);
+                await File.WriteAllTextAsync(contraPath, sb.ToString());
             }
             catch (Exception ex)
             {

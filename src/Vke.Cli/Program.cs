@@ -108,13 +108,18 @@ switch (command)
         Console.WriteLine("Searching for correct values...");
         
         var correctDbPath = Path.Combine(vaultBase, "vke.duckdb");
-        if (!File.Exists(correctDbPath))
+        VkeDbContext correctDb;
+        try
         {
-            Console.WriteLine($"Error: Database not found at {correctDbPath}. Run 'vke ingest' first.");
+            correctDb = new VkeDbContext(correctDbPath);
+            correctDb.InitializeDatabase();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error: Database not found or cannot be opened at {correctDbPath}. Run 'vke ingest' first. Details: {ex.Message}");
             return 1;
         }
         
-        using var correctDb = new VkeDbContext(correctDbPath);
         using var correctHttpClient = new HttpClient();
         var yahooFinance = new YahooFinanceClient(correctHttpClient);
         var correctionAgent = new CorrectionAgent(correctDb, yahooFinance);

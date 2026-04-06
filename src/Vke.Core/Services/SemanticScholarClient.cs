@@ -26,8 +26,10 @@ public class SemanticScholarClient
         var response = await _http.SendAsync(request);
         response.EnsureSuccessStatusCode();
         
-        return await response.Content.ReadFromJsonAsync<SemanticScholarPaper>() 
-            ?? throw new InvalidOperationException("Failed to deserialize paper response");
+        var paper = await response.Content.ReadFromJsonAsync<SemanticScholarPaper>();
+        if (paper == null)
+            throw new InvalidOperationException("Failed to deserialize paper response");
+        return paper;
     }
 }
 

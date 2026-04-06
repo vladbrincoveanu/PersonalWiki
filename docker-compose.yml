@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  vke:
+    build: .
+    image: aijurnalv2/vke:latest
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./vault:/app/vault
+    environment:
+      - ANTHROPIC_BASE_URL=${ANTHROPIC_BASE_URL:-https://api.minimax.io/anthropic}
+      - ANTHROPIC_MODEL=${ANTHROPIC_MODEL:-MiniMax-M2.7-highspeed}
+    env_file:
+      - .env
+    mem_limit: 512m
+    cpus: '1.0'
+    restart: unless-stopped

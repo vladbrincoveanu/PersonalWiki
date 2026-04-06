@@ -1,3 +1,4 @@
+using System.Text;
 using Vke.Core.Data;
 using Vke.Core.Data.Models;
 
@@ -8,86 +9,94 @@ public class IndexGenerator
     public async Task GenerateIndexAsync(string basePath, VkeDbContext db)
     {
         var indexPath = Path.Combine(basePath, "index.md");
-        var md = "# Research Vault Index\n\n";
-        md += $"_Last updated: {DateTime.UtcNow:yyyy-MM-dd HH:mm:ss} UTC_\n\n";
+        var sb = new StringBuilder();
+        sb.AppendLine("# Research Vault Index");
+        sb.AppendLine();
+        sb.AppendLine($"_Last updated: {DateTime.UtcNow:yyyy-MM-dd HH:mm:ss} UTC_");
+        sb.AppendLine();
 
-        md += "## Entities\n\n";
+        sb.AppendLine("## Entities");
+        sb.AppendLine();
         var entities = GetEntitySummary(db);
-        if (entities.Any())
+        if (entities.Count > 0)
         {
-            md += "| Entity | Tier | Claims | Last Updated |\n";
-            md += "|--------|------|--------|---------------|\n";
+            sb.AppendLine("| Entity | Tier | Claims | Last Updated |");
+            sb.AppendLine("|--------|------|--------|---------------|");
             foreach (var e in entities)
-                md += $"| [[entities/{e.Key}.md|{e.Key}]] | {e.Tier} | {e.Count} | {e.LastUpdated:yyyy-MM-dd} |\n";
+                sb.AppendLine($"| [[entities/{e.Key}.md|{e.Key}]] | {e.Tier} | {e.Count} | {e.LastUpdated:yyyy-MM-dd} |");
         }
         else
         {
-            md += "_No entities yet._\n";
+            sb.AppendLine("_No entities yet._");
         }
-        md += "\n";
+        sb.AppendLine();
 
-        md += "## Sources\n\n";
+        sb.AppendLine("## Sources");
+        sb.AppendLine();
         var sources = GetSourceSummary(db);
-        if (sources.Any())
+        if (sources.Count > 0)
         {
-            md += "| Source | Type | Domain | Claims |\n";
-            md += "|--------|------|--------|--------|\n";
+            sb.AppendLine("| Source | Type | Domain | Claims |");
+            sb.AppendLine("|--------|------|--------|--------|");
             foreach (var s in sources)
-                md += $"| [[sources/{ToFileName(s.Key)}.md|{s.Key}]] | {s.Type} | {s.Domain} | {s.Count} |\n";
+                sb.AppendLine($"| [[sources/{ToFileName(s.Key)}.md|{s.Key}]] | {s.Type} | {s.Domain} | {s.Count} |");
         }
         else
         {
-            md += "_No sources yet._\n";
+            sb.AppendLine("_No sources yet._");
         }
-        md += "\n";
+        sb.AppendLine();
 
-        md += "## Raw Files\n\n";
+        sb.AppendLine("## Raw Files");
+        sb.AppendLine();
         var rawFiles = db.GetRawFiles("raw");
-        if (rawFiles.Any())
+        if (rawFiles.Count > 0)
         {
-            md += "| File | Modified | Status |\n";
-            md += "|------|----------|--------|\n";
+            sb.AppendLine("| File | Modified | Status |");
+            sb.AppendLine("|------|----------|--------|");
             foreach (var f in rawFiles)
-                md += $"| [[raw/{f.Filename}|{f.Filename}]] | {(f.ModifiedAt?.ToString("yyyy-MM-dd") ?? "unknown")} | {f.Status} |\n";
+                sb.AppendLine($"| [[raw/{f.Filename}|{f.Filename}]] | {(f.ModifiedAt?.ToString("yyyy-MM-dd") ?? "unknown")} | {f.Status} |");
         }
         else
         {
-            md += "_No raw files indexed._\n";
+            sb.AppendLine("_No raw files indexed._");
         }
-        md += "\n";
+        sb.AppendLine();
 
-        md += "## Interesting\n\n";
+        sb.AppendLine("## Interesting");
+        sb.AppendLine();
         var interesting = db.GetRawFiles("interesting");
-        if (interesting.Any())
+        if (interesting.Count > 0)
         {
-            md += "| File | Modified | Status |\n";
-            md += "|------|----------|--------|\n";
+            sb.AppendLine("| File | Modified | Status |");
+            sb.AppendLine("|------|----------|--------|");
             foreach (var f in interesting)
-                md += $"| [[interesting/{f.Filename}|{f.Filename}]] | {(f.ModifiedAt?.ToString("yyyy-MM-dd") ?? "unknown")} | {f.Status} |\n";
+                sb.AppendLine($"| [[interesting/{f.Filename}|{f.Filename}]] | {(f.ModifiedAt?.ToString("yyyy-MM-dd") ?? "unknown")} | {f.Status} |");
         }
         else
         {
-            md += "_No interesting files indexed._\n";
+            sb.AppendLine("_No interesting files indexed._");
         }
-        md += "\n";
+        sb.AppendLine();
 
-        md += "## Trusted\n\n";
+        sb.AppendLine("## Trusted");
+        sb.AppendLine();
         var trusted = db.GetRawFiles("trusted");
-        if (trusted.Any())
+        if (trusted.Count > 0)
         {
-            md += "| File | Modified | Status |\n";
-            md += "|------|----------|--------|\n";
+            sb.AppendLine("| File | Modified | Status |");
+            sb.AppendLine("|------|----------|--------|");
             foreach (var f in trusted)
-                md += $"| [[trusted/{f.Filename}|{f.Filename}]] | {(f.ModifiedAt?.ToString("yyyy-MM-dd") ?? "unknown")} | {f.Status} |\n";
+                sb.AppendLine($"| [[trusted/{f.Filename}|{f.Filename}]] | {(f.ModifiedAt?.ToString("yyyy-MM-dd") ?? "unknown")} | {f.Status} |");
         }
         else
         {
-            md += "_No trusted files indexed._\n";
+            sb.AppendLine("_No trusted files indexed._");
         }
 
         try
         {
-            await File.WriteAllTextAsync(indexPath, md);
+            await File.WriteAllTextAsync(indexPath, sb.ToString());
         }
         catch (Exception ex)
         {
