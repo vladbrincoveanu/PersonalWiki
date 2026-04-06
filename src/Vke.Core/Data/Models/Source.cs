@@ -15,4 +15,5 @@ public class Source
     public List<string> CitesSourceIds { get; set; } = new();
     public bool IsActive { get; set; } = true;
     public int IndependentSourceCount { get; set; }
+    public string? Content { get; set; }
 }

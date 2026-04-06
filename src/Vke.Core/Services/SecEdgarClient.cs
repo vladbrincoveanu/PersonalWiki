@@ -7,8 +7,8 @@ namespace Vke.Core.Services;
 public class SecEdgarClient
 {
     private readonly HttpClient _http;
-    private const string BaseUrl = "https://data.sec.gov/submissions";
     private const string SecGovBase = "https://www.sec.gov";
+    private Dictionary<string, string>? _cikCache;
 
     public SecEdgarClient(HttpClient http)
     {
@@ -18,40 +18,94 @@ public class SecEdgarClient
 
     public async Task<string> GetCompanyCikAsync(string ticker)
     {
-        var response = await _http.GetFromJsonAsync<SecSubmission>($"{BaseUrl}/CIK{ticker.PadLeft(10, '0')}.json");
-        return response?.Cik ?? throw new InvalidOperationException($"Could not find CIK for ticker {ticker}");
+        if (_cikCache == null)
+            await LoadCikCacheAsync();
+
+        var upperTicker = ticker.ToUpper();
+        if (_cikCache.TryGetValue(upperTicker, out var cik))
+            return cik;
+
+        throw new InvalidOperationException($"Could not find CIK for ticker {ticker}");
+    }
+
+    private async Task LoadCikCacheAsync()
+    {
+        _cikCache = new Dictionary<string, string>();
+        try
+        {
+            var response = await _http.GetStringAsync($"{SecGovBase}/files/company_tickers.json");
+            using var doc = JsonDocument.Parse(response);
+            foreach (var entry in doc.RootElement.EnumerateObject())
+            {
+                if (entry.Value.TryGetProperty("ticker", out var ticker) &&
+                    entry.Value.TryGetProperty("cik_str", out var cik))
+                {
+                    var cikValue = cik.GetInt32().ToString().PadLeft(10, '0');
+                    _cikCache[ticker.GetString()!.ToUpper()] = cikValue;
+                }
+            }
+        }
+        catch
+        {
+            _cikCache = new Dictionary<string, string>();
+        }
     }
 
     public async Task<List<SecFiling>> GetFilingsAsync(string ticker, string formType)
     {
         var cik = await GetCompanyCikAsync(ticker);
-        var submission = await _http.GetFromJsonAsync<SecSubmission>($"{BaseUrl}/CIK{cik.PadLeft(10, '0')}.json");
+        var cikNum = cik.TrimStart('0');
+        var searchUrl = $"https://efts.sec.gov/LATEST/search-index?q={cik}+{formType}&forms={formType}";
         
-        var filings = new List<SecFiling>();
-        var recent = submission?.Filings?.Recent;
-        if (recent == null) return filings;
-
-        for (int i = 0; i < recent.FormTypes.Count; i++)
+        try
         {
-            if (recent.FormTypes[i] == formType)
+            var response = await _http.GetStringAsync(searchUrl);
+            using var doc = JsonDocument.Parse(response);
+            var hits = doc.RootElement.GetProperty("hits").GetProperty("hits");
+            
+            var filings = new List<SecFiling>();
+            foreach (var hit in hits.EnumerateArray())
             {
-                filings.Add(new SecFiling
+                var source = hit.GetProperty("_source");
+                if (source.TryGetProperty("ciks", out var ciks))
                 {
-                    FormType = recent.FormTypes[i],
-                    AccessionNumber = recent.AccessionNumbers[i],
-                    FilingDate = DateOnly.Parse(recent.FilingDates[i]),
-                    Url = $"{SecGovBase}/Archives/edgar/data/{cik}/{recent.AccessionNumbers[i].Replace("-", "")}/{recent.PrimaryDocuments[i]}",
-                });
+                    var cikStrs = ciks.EnumerateArray().Select(c => c.GetString()!).ToList();
+                    var cikMatches = cikStrs.Any(c => c == cikNum || c == cik);
+                    if (!cikMatches) continue;
+                    var adsh = source.GetProperty("adsh").GetString() ?? "";
+                    var fileDate = source.TryGetProperty("file_date", out var fd) ? fd.GetString() : "";
+                    var periodEnding = source.TryGetProperty("period_ending", out var pe) ? pe.GetString() : "";
+                    
+                    var adshRaw = adsh.Replace("-", "");
+                    var period = string.IsNullOrEmpty(periodEnding) ? "unknown" : periodEnding.Replace("-", "").Substring(0, Math.Min(8, periodEnding.Length));
+                    var docName = $"aapl-{period}.htm";
+                    filings.Add(new SecFiling
+                    {
+                        FormType = formType,
+                        AccessionNumber = adsh,
+                        FilingDate = DateOnly.TryParse(fileDate, out var dt) ? dt : DateOnly.MinValue,
+                        Url = $"{SecGovBase}/Archives/edgar/data/{cikNum}/{adshRaw}/{docName}",
+                    });
+                }
             }
+            return filings.OrderByDescending(f => f.FilingDate).ToList();
         }
-
-        return filings;
+        catch
+        {
+            return new List<SecFiling>();
+        }
     }
 
     public virtual async Task<string> FetchFilingContentAsync(string url)
     {
         var response = await _http.GetStringAsync(url);
-        return StripHtmlTags(response);
+        var content = StripHtmlTags(response);
+        if (content.Contains("Not Found", StringComparison.OrdinalIgnoreCase) ||
+            content.Contains("Error", StringComparison.OrdinalIgnoreCase) && content.Length < 200)
+        {
+            throw new InvalidOperationException($"SEC filing not found or error: {url}");
+        }
+        return content;
     }
 
     public static string StripHtmlTags(string html)

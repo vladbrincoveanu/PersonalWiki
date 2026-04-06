@@ -36,6 +36,7 @@ public class IngestAgent
             Domain = domain,
             CitesUrls = citesUrls,
             FetchedAt = DateTime.UtcNow,
+            Content = content,
         };
         
         _db.InsertSource(source);
@@ -76,8 +77,7 @@ public class IngestAgent
     {
         foreach (var citedUrl in citesUrls)
         {
-            var existingSources = _db.Query<string>($"SELECT id FROM sources WHERE url = '{citedUrl.Replace("'", "''")}'");
-            var existingId = existingSources.FirstOrDefault();
+            var existingId = _db.GetSourceIdByUrl(citedUrl);
             
             if (!string.IsNullOrEmpty(existingId))
             {

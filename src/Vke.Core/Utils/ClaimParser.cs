@@ -27,6 +27,20 @@ public static class ClaimParser
                 claims.Add(currentClaim);
                 currentClaim = null;
             }
+            else if (!trimmed.StartsWith("CLAIM:", StringComparison.OrdinalIgnoreCase) && 
+                     !trimmed.StartsWith("LOCATION:", StringComparison.OrdinalIgnoreCase) &&
+                     !trimmed.StartsWith("Thinking:", StringComparison.OrdinalIgnoreCase) &&
+                     !string.IsNullOrWhiteSpace(trimmed) &&
+                     currentClaim == null &&
+                     trimmed.Length > 10)
+            {
+                currentClaim = new Claim
+                {
+                    Statement = trimmed,
+                    Normalized = Normalize(trimmed),
+                };
+                claims.Add(currentClaim);
+            }
         }
 
         return claims;

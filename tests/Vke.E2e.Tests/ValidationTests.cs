@@ -15,7 +15,9 @@ public class ValidationTests
         db.InitializeDatabase();
         
         var http = new HttpClient();
-        var llm = new Vke.Core.Services.LlmClient(http, "http://localhost:1234/v1");
+        http.DefaultRequestHeaders.Add("x-api-key", Environment.GetEnvironmentVariable("ANTHROPIC_AUTH_TOKEN") ?? "");
+        http.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", Environment.GetEnvironmentVariable("ANTHROPIC_AUTH_TOKEN") ?? "");
+        var llm = new Vke.Core.Services.LlmClient(http, "https://api.minimax.io/anthropic", "MiniMax-M2.7");
         var secEdgar = new Vke.Core.Services.SecEdgarClient(http);
         var semScholar = new Vke.Core.Services.SemanticScholarClient(http);
         

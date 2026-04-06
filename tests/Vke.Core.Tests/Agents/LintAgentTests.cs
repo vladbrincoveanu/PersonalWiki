@@ -29,7 +29,7 @@ public class LintAgentTests : IDisposable
             Normalized = "old claim",
             SourceId = "s1",
             StaleAfter = staleDate,
-            Verified = true,
+            Status = VerificationStatus.Verified,
         });
         
         var agent = new LintAgent(_db);

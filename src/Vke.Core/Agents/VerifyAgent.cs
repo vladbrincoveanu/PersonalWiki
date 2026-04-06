@@ -31,6 +31,7 @@ public class VerifyAgent
         var correctedClaims = new List<Claim>();
         var falseClaims = new List<Claim>();
         var disputedClaims = new List<Claim>();
+        var unverifiableClaims = new List<Claim>();
 
         foreach (var claim in claims)
         {
@@ -78,6 +79,7 @@ public class VerifyAgent
                     claim.WrongReason = reason;
                     claim.Tier = 4;
                     claim.StaleAfter = DateTime.UtcNow.AddDays(30);
+                    unverifiableClaims.Add(claim);
                     break;
             }
 
@@ -113,6 +115,7 @@ public class VerifyAgent
             Corrected = correctedClaims.Count,
             False = falseClaims.Count,
             Disputed = disputedClaims.Count,
+            Unverifiable = unverifiableClaims.Count,
         };
     }
 
@@ -230,4 +233,5 @@ public class VerifyResult
     public int Corrected { get; set; }
     public int False { get; set; }
     public int Disputed { get; set; }
+    public int Unverifiable { get; set; }
 }

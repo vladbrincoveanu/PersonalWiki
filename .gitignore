@@ -1,0 +1,18 @@
+# Environment variables (API keys)
+.env
+*.env
+
+# Build outputs
+bin/
+obj/
+
+# IDE
+.vs/
+*.user
+
+# OS
+.DS_Store
+
+# DuckDB
+*.duckdb
+vault/

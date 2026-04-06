@@ -10,8 +10,23 @@ Directory.CreateDirectory(Path.GetDirectoryName(dbPath)!);
 var db = new VkeDbContext(dbPath);
 db.InitializeDatabase();
 
+var apiKey = Environment.GetEnvironmentVariable("ANTHROPIC_AUTH_TOKEN") ?? "";
+var baseUrl = Environment.GetEnvironmentVariable("ANTHROPIC_BASE_URL") ?? "https://api.minimax.io/anthropic";
+var model = Environment.GetEnvironmentVariable("ANTHROPIC_MODEL") ?? "MiniMax-M2.7";
+
+if (string.IsNullOrEmpty(apiKey))
+{
+    Console.WriteLine("Error: ANTHROPIC_AUTH_TOKEN environment variable not set.");
+    Console.WriteLine("Run: export ANTHROPIC_AUTH_TOKEN=your-key && dotnet run --project src/Vke.Cli");
+    return 1;
+}
+
 var http = new HttpClient();
-var llm = new LlmClient(http, "http://localhost:1234/v1");
+http.Timeout = TimeSpan.FromMinutes(5);
+http.DefaultRequestHeaders.Add("x-api-key", apiKey);
+http.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey);
+
+var llm = new LlmClient(http, baseUrl, model);
 var secEdgar = new SecEdgarClient(http);
 var semScholar = new SemanticScholarClient(http);
 var wikiGen = new WikiGenerator();
@@ -21,18 +36,44 @@ var command = args.FirstOrDefault() ?? "help";
 switch (command)
 {
     case "ingest":
-        var url = args.GetValue("--url") ?? throw new ArgumentException("--url required");
+        var ticker = args.GetValue("--ticker");
+        var url = args.GetValue("--url");
+        
+        if (!string.IsNullOrEmpty(ticker))
+        {
+            Console.WriteLine($"Looking up {ticker} filings...");
+            var filings = await secEdgar.GetFilingsAsync(ticker.ToUpper(), "10-K");
+            if (filings.Count == 0)
+            {
+                Console.WriteLine($"No 10-K filings found for {ticker}");
+                return 1;
+            }
+            var latest = filings.OrderByDescending(f => f.FilingDate).First();
+            url = latest.Url;
+            Console.WriteLine($"Found {filings.Count} filings, using most recent: {latest.FilingDate} ({latest.Url.Split('/').Last()})");
+        }
+        
+        if (string.IsNullOrEmpty(url))
+        {
+            Console.WriteLine("Error: --url or --ticker required");
+            return 1;
+        }
+        
         var sourceType = args.GetValue("--type") ?? "sec_10k";
         var domain = args.GetValue("--domain") ?? "financial";
         
+        Console.WriteLine($"Ingesting {sourceType} from {url}...");
         var ingestAgent = new IngestAgent(db, llm, secEdgar, semScholar);
         var (sourceId, claims) = await ingestAgent.IngestAsync(url, sourceType, domain);
+        Console.WriteLine($"Extracted {claims.Count} claims, verifying with LLM...");
         
-        var verifyAgent = new VerifyAgent(db, llm);
+        var wikiPath = args.GetValue("--wiki") ?? "vault/wiki";
+        var verifyAgent = new VerifyAgent(db, llm, wikiGen, wikiPath);
         var result = await verifyAgent.VerifyAndStoreAsync(sourceId, claims);
         
-        Console.WriteLine($"Ingested source {sourceId}");
+        Console.WriteLine($"Source ID: {sourceId}");
         Console.WriteLine($"Verified: {result.Verified}, Quarantined: {result.Quarantined}, Cycles: {result.CyclesDetected}");
+        Console.WriteLine($"Wiki written to: {wikiPath}/sources/ and {wikiPath}/entities/");
         break;
     
     case "lint":
@@ -46,17 +87,26 @@ switch (command)
     case "query":
         var queryText = args.GetValue("--q") ?? "";
         Console.WriteLine($"Query: {queryText}");
+        Console.WriteLine("(Query not yet implemented - see v2)");
         break;
     
     case "help":
     default:
         Console.WriteLine("VKE CLI - Verified Knowledge Engine");
+        Console.WriteLine("Usage:");
+        Console.WriteLine("  export ANTHROPIC_AUTH_TOKEN=your-key");
+        Console.WriteLine("  dotnet run --project src/Vke.Cli -- <command>");
+        Console.WriteLine();
         Console.WriteLine("Commands:");
-        Console.WriteLine("  vke ingest --url <url> --type <type> --domain <domain>");
-        Console.WriteLine("  vke lint");
-        Console.WriteLine("  vke query --q <text>");
+        Console.WriteLine("  ingest --ticker AAPL --type sec_10k --domain financial");
+        Console.WriteLine("  ingest --url 'https://www.sec.gov/...' --type sec_10k --domain financial");
+        Console.WriteLine("  Note: If both --ticker and --url provided, --ticker takes precedence");
+        Console.WriteLine("  lint");
+        Console.WriteLine("  query --q <text>");
         break;
 }
+
+return 0;
 
 static class ArgsExtensions
 {

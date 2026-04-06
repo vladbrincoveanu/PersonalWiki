@@ -1,4 +1,5 @@
-using System.Net.Http.Json;
+using System.Net.Http.Headers;
+using System.Text;
 using System.Text.Json;
 using Vke.Core.Data.Models;
 using Vke.Core.Utils;
@@ -15,12 +16,14 @@ public class LlmClient : ILlmClient
 {
     private readonly HttpClient _http;
     private readonly string _baseUrl;
+    private readonly string _model;
     private readonly JsonSerializerOptions _jsonOptions = new() { PropertyNameCaseInsensitive = true };
 
-    public LlmClient(HttpClient http, string baseUrl)
+    public LlmClient(HttpClient http, string baseUrl, string model)
     {
         _http = http;
         _baseUrl = baseUrl.TrimEnd('/');
+        _model = model;
     }
 
     public async Task<List<Claim>> ExtractClaimsAsync(string content, string sourceType)
@@ -40,19 +43,10 @@ CLAIM: [the atomic claim]
 LOCATION: [section or page where found]
 
 Document:
-{content[..Math.Min(content.Length, 8000)]}";
+{content[..Math.Min(content.Length, 4000)]}";
 
-        var response = await _http.PostAsJsonAsync($"{_baseUrl}/chat/completions", new
-        {
-            model = "local",
-            messages = new[] { new { role = "user", content = prompt } },
-            temperature = 0.1m,
-        });
-
-        var result = await response.Content.ReadFromJsonAsync<LlmChatResponse>(_jsonOptions);
-        var llmContent = result?.Choices?.FirstOrDefault()?.Message?.Content ?? "";
-
-        return ClaimParser.ParseLlmOutput(llmContent);
+        var responseText = await SendAnthropicMessageAsync(prompt);
+        return ClaimParser.ParseLlmOutput(responseText);
     }
 
     public async Task<decimal> VerifyClaimAsync(string claim, string sourceContent)
@@ -70,31 +64,42 @@ Respond with a single number between 0.0 and 1.0 representing how well the claim
 
 Only output the number.";
 
-        var response = await _http.PostAsJsonAsync($"{_baseUrl}/chat/completions", new
-        {
-            model = "local",
-            messages = new[] { new { role = "user", content = prompt } },
-            temperature = 0.1m,
-        });
-
-        var result = await response.Content.ReadFromJsonAsync<LlmChatResponse>(_jsonOptions);
-        var scoreText = result?.Choices?.FirstOrDefault()?.Message?.Content?.Trim() ?? "0";
-
+        var responseText = await SendAnthropicMessageAsync(prompt);
+        var scoreText = responseText.Trim();
         return decimal.TryParse(scoreText, out var score) ? score : 0m;
+    }
+
+    private async Task<string> SendAnthropicMessageAsync(string prompt)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Post, $"{_baseUrl}/v1/messages");
+        request.Headers.Add("anthropic-version", "2023-06-01");
+
+        var body = new
+        {
+            model = _model,
+            max_tokens = 4096,
+            messages = new[] { new { role = "user", content = prompt } }
+        };
+
+        var json = JsonSerializer.Serialize(body);
+        request.Content = new StringContent(json, Encoding.UTF8, "application/json");
+
+        var response = await _http.SendAsync(request);
+        response.EnsureSuccessStatusCode();
+
+        var responseJson = await response.Content.ReadAsStringAsync();
+        var result = JsonSerializer.Deserialize<AnthropicResponse>(responseJson, _jsonOptions);
+        return result?.Content?.FirstOrDefault(c => c.Type == "text")?.Text ?? "";
     }
 }
 
-internal class LlmChatResponse
+public class AnthropicResponse
 {
-    public List<LlmChoice>? Choices { get; set; }
+    public List<AnthropicContentBlock>? Content { get; set; }
 }
 
-internal class LlmChoice
+public class AnthropicContentBlock
 {
-    public LlmMessage? Message { get; set; }
-}
-
-internal class LlmMessage
-{
-    public string? Content { get; set; }
+    public string? Type { get; set; }
+    public string? Text { get; set; }
 }
