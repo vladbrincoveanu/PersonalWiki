@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("Vke.E2e.Tests")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+0736b907bacdfa23fc1c7a9fd7ce04ee13c2beb5")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+38435e8c61c1cf6a726548d98e9086b1a0d96543")]
 [assembly: System.Reflection.AssemblyProductAttribute("Vke.E2e.Tests")]
 [assembly: System.Reflection.AssemblyTitleAttribute("Vke.E2e.Tests")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

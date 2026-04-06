@@ -1,8 +1,8 @@
 {
   "version": 2,
-  "dgSpecHash": "ZltbhnfoDAY=",
+  "dgSpecHash": "ejqlgpwsSFY=",
   "success": true,
-  "projectFilePath": "/Users/vladbrincoveanu/Desktop/Startup/aiJurnalV2/tests/Vke.E2e.Tests/Vke.E2e.Tests.csproj",
+  "projectFilePath": "/Users/vladbrincoveanu/Desktop/Startup/aiJurnalV2/.worktrees/code-review-fixes/tests/Vke.E2e.Tests/Vke.E2e.Tests.csproj",
   "expectedPackageFiles": [
     "/Users/vladbrincoveanu/.nuget/packages/coverlet.collector/6.0.4/coverlet.collector.6.0.4.nupkg.sha512",
     "/Users/vladbrincoveanu/.nuget/packages/duckdb.net.bindings/1.5.0/duckdb.net.bindings.1.5.0.nupkg.sha512",

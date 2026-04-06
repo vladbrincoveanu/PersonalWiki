@@ -2,9 +2,12 @@ using Vke.Core.Agents;
 using Vke.Core.Data;
 using Vke.Core.Services;
 
+var icloudVaultBase = Environment.GetEnvironmentVariable("VKE_VAULT_BASE") 
+    ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Personal), "Library/Mobile Documents/com~apple~CloudDocs/obsidian/vault");
+
 var dbPath = args.Contains("--db") 
     ? args[Array.IndexOf(args, "--db") + 1] 
-    : "vault/vke.duckdb";
+    : Path.Combine(icloudVaultBase, "vke.duckdb");
 
 Directory.CreateDirectory(Path.GetDirectoryName(dbPath)!);
 using var db = new VkeDbContext(dbPath);
@@ -68,7 +71,7 @@ switch (command)
         var (sourceId, claims) = await ingestAgent.IngestAsync(url, sourceType, domain);
         Console.WriteLine($"Extracted {claims.Count} claims, verifying with LLM...");
         
-        var wikiPath = args.GetValue("--wiki") ?? "vault/wiki";
+        var wikiPath = args.GetValue("--wiki") ?? Path.Combine(icloudVaultBase, "wiki");
         var verifyAgent = new VerifyAgent(db, llm, wikiGen, wikiPath);
         var result = await verifyAgent.VerifyAndStoreAsync(sourceId, claims);
         
@@ -91,7 +94,7 @@ switch (command)
     {
         Console.WriteLine("Searching for correct values...");
         
-        var correctDbPath = Path.Combine("vault", "vke.duckdb");
+        var correctDbPath = Path.Combine(icloudVaultBase, "vke.duckdb");
         if (!File.Exists(correctDbPath))
         {
             Console.WriteLine($"Error: Database not found at {correctDbPath}. Run 'vke ingest' first.");
