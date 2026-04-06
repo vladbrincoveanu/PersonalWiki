@@ -1,4 +1,3 @@
-using Microsoft.Extensions.Http;
 using Vke.Core.Data;
 using Vke.Core.Data.Models;
 using Vke.Core.Services;
@@ -6,16 +5,10 @@ using Vke.Core.Services;
 var builder = WebApplication.CreateBuilder(args);
 var app = builder.Build();
 
-var dbPath = Path.Combine(Directory.GetCurrentDirectory(), "vault", "vke.duckdb");
-var rawPath = Path.Combine(Directory.GetCurrentDirectory(), "vault", "raw");
-var wikiPath = Path.Combine(Directory.GetCurrentDirectory(), "vault", "wiki");
-
-builder.Services.AddHttpClient("LlmClient")
-    .ConfigureHttpClient((sp, client) => client.Timeout = TimeSpan.FromMinutes(5));
-builder.Services.AddHttpClient<SecEdgarClient>()
-    .ConfigureHttpClient((sp, client) => client.DefaultRequestHeaders.Add("User-Agent", "VKE Research v1 (your@email.com)"));
-builder.Services.AddHttpClient<SemanticScholarClient>();
-builder.Services.AddHttpClient<GenericUrlClient>();
+var vaultBase = Environment.GetEnvironmentVariable("OBSIDIAN_VAULT_PATH") ?? Path.Combine(Directory.GetCurrentDirectory(), "vault");
+var dbPath = Path.Combine(vaultBase, "vke.duckdb");
+var rawPath = Path.Combine(vaultBase, "raw");
+var wikiPath = Path.Combine(vaultBase, "wiki");
 
 Directory.CreateDirectory(Path.GetDirectoryName(dbPath)!);
 Directory.CreateDirectory(rawPath);
@@ -25,7 +18,7 @@ app.MapGet("/", () => VkeResults.Redirect("/index.html"));
 
 app.MapGet("/index.html", () => VkeResults.Html(GetHtml()));
 
-app.MapPost("/api/ingest", async (HttpContext ctx, IHttpClientFactory httpClientFactory, SecEdgarClient secEdgar, SemanticScholarClient semScholar, GenericUrlClient genericUrl) =>
+app.MapPost("/api/ingest", async (HttpContext ctx) =>
 {
     var body = await ctx.Request.ReadFromJsonAsync<IngestRequest>();
     if (string.IsNullOrEmpty(body?.Url))
@@ -41,7 +34,12 @@ app.MapPost("/api/ingest", async (HttpContext ctx, IHttpClientFactory httpClient
 
         var baseUrl = Environment.GetEnvironmentVariable("ANTHROPIC_BASE_URL") ?? "https://api.minimax.io/anthropic";
         var model = Environment.GetEnvironmentVariable("ANTHROPIC_MODEL") ?? "MiniMax-M2.7-highspeed";
-        var llm = new LlmClient(httpClientFactory.CreateClient("LlmClient"), baseUrl, model);
+        using var http = new HttpClient();
+        http.Timeout = TimeSpan.FromMinutes(5);
+        var llm = new LlmClient(http, baseUrl, model);
+        var secEdgar = new SecEdgarClient(http);
+        var semScholar = new SemanticScholarClient(http);
+        var genericUrl = new GenericUrlClient(http);
 
         var ingestAgent = new Vke.Core.Agents.IngestAgent(db, llm, secEdgar, semScholar, genericUrl);
         var wikiGen = new Vke.Core.Services.WikiGenerator();
@@ -60,11 +58,11 @@ app.MapPost("/api/ingest", async (HttpContext ctx, IHttpClientFactory httpClient
             unverifiable = result.Unverifiable
         });
     }
-    catch (ArgumentException ex)
+    catch (ArgumentException)
     {
         return VkeResults.BadRequest(new { error = "Invalid request parameters" });
     }
-    catch (InvalidOperationException ex)
+    catch (InvalidOperationException)
     {
         return VkeResults.BadRequest(new { error = "Operation failed" });
     }
