@@ -7,7 +7,7 @@ var dbPath = args.Contains("--db")
     : "vault/vke.duckdb";
 
 Directory.CreateDirectory(Path.GetDirectoryName(dbPath)!);
-var db = new VkeDbContext(dbPath);
+using var db = new VkeDbContext(dbPath);
 db.InitializeDatabase();
 
 var apiKey = Environment.GetEnvironmentVariable("ANTHROPIC_AUTH_TOKEN") ?? "";
