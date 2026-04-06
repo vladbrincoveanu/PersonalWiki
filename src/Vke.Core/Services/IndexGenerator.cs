@@ -98,7 +98,7 @@ public class IndexGenerator
     private List<(string Key, int Tier, int Count, DateTime LastUpdated)> GetEntitySummary(VkeDbContext db)
     {
         var summary = new List<(string, int, int, DateTime)>();
-        using var cmd = db.GetConnection().CreateCommand();
+        using var cmd = db.CreateCommand();
         cmd.CommandText = @"
             SELECT c.normalized, MIN(s.source_type), COUNT(*), MAX(c.last_verified)
             FROM claims c
@@ -122,7 +122,7 @@ public class IndexGenerator
     private List<(string Key, string Type, string Domain, int Count)> GetSourceSummary(VkeDbContext db)
     {
         var summary = new List<(string, string, string, int)>();
-        using var cmd = db.GetConnection().CreateCommand();
+        using var cmd = db.CreateCommand();
         cmd.CommandText = @"
             SELECT s.id, s.source_type, s.domain, COUNT(c.id)
             FROM sources s
