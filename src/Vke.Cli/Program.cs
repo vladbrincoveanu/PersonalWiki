@@ -1,6 +1,9 @@
+using Microsoft.Extensions.DependencyInjection;
 using Vke.Core.Agents;
 using Vke.Core.Data;
 using Vke.Core.Services;
+
+var services = new ServiceCollection();
 
 var vaultBase = Environment.GetEnvironmentVariable("VKE_VAULT_BASE") 
     ?? "/openclaw/research";
@@ -24,15 +27,20 @@ if (string.IsNullOrEmpty(apiKey))
     return 1;
 }
 
-using var http = new HttpClient();
-http.Timeout = TimeSpan.FromMinutes(5);
-http.DefaultRequestHeaders.Add("x-api-key", apiKey);
-http.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey);
-http.DefaultRequestHeaders.Add("User-Agent", "VKE Research v1 (your@email.com)");
+services.AddHttpClient("api", client =>
+{
+    client.Timeout = TimeSpan.FromMinutes(5);
+    client.DefaultRequestHeaders.Add("x-api-key", apiKey);
+    client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey);
+    client.DefaultRequestHeaders.Add("User-Agent", "VKE Research v1 (your@email.com)");
+});
 
-var llm = new LlmClient(http, baseUrl, model);
-var secEdgar = new SecEdgarClient(http);
-var semScholar = new SemanticScholarClient(http);
+var serviceProvider = services.BuildServiceProvider();
+var httpClientFactory = serviceProvider.GetRequiredService<IHttpClientFactory>();
+
+var llm = new LlmClient(httpClientFactory.CreateClient("api"), baseUrl, model);
+var secEdgar = new SecEdgarClient(httpClientFactory.CreateClient("api"));
+var semScholar = new SemanticScholarClient(httpClientFactory.CreateClient("api"));
 var wikiGen = new WikiGenerator();
 var fileScanner = new FileScanner();
 var indexGen = new IndexGenerator();
@@ -120,8 +128,7 @@ switch (command)
             return 1;
         }
         
-        using var correctHttpClient = new HttpClient();
-        var yahooFinance = new YahooFinanceClient(correctHttpClient);
+        var yahooFinance = new YahooFinanceClient(httpClientFactory.CreateClient("api"));
         var correctionAgent = new CorrectionAgent(correctDb, yahooFinance);
         
         var correctResults = await correctionAgent.ProcessStaleAndFalseClaimsAsync();
