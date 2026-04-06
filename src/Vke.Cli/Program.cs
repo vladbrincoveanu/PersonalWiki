@@ -72,17 +72,56 @@ switch (command)
         var result = await verifyAgent.VerifyAndStoreAsync(sourceId, claims);
         
         Console.WriteLine($"Source ID: {sourceId}");
-        Console.WriteLine($"Verified: {result.Verified}, Quarantined: {result.Quarantined}, Cycles: {result.CyclesDetected}");
+        Console.WriteLine($"Verified: {result.Verified}, Corrected: {result.Corrected}, False: {result.False}");
+        Console.WriteLine($"Disputed: {result.Disputed}, Unverifiable: {result.Unverifiable}");
         Console.WriteLine($"Wiki written to: {wikiPath}/sources/ and {wikiPath}/entities/");
         break;
     
     case "lint":
         var lintAgent = new LintAgent(db);
-        var report = lintAgent.GenerateReport();
-        Console.WriteLine($"Stale claims: {report.StaleClaims.Count}");
-        Console.WriteLine($"Orphan sources: {report.OrphanSources.Count}");
-        Console.WriteLine($"Contradictions: {report.Contradictions.Count}");
+        var lintReport = lintAgent.GenerateReport();
+        Console.WriteLine($"Stale claims: {lintReport.StaleClaims.Count}");
+        Console.WriteLine($"Orphan sources: {lintReport.OrphanSources.Count}");
+        Console.WriteLine($"Contradictions: {lintReport.Contradictions.Count}");
         break;
+    
+    case "correct":
+    case "fix":
+    {
+        Console.WriteLine("Searching for correct values...");
+        
+        var correctDbPath = Path.Combine("vault", "vke.duckdb");
+        if (!File.Exists(correctDbPath))
+        {
+            Console.WriteLine($"Error: Database not found at {correctDbPath}. Run 'vke ingest' first.");
+            return 1;
+        }
+        
+        using var correctDb = new VkeDbContext(correctDbPath);
+        var correctHttpClient = new HttpClient();
+        var yahooFinance = new YahooFinanceClient(correctHttpClient);
+        var correctionAgent = new CorrectionAgent(correctDb, yahooFinance);
+        
+        var correctResults = await correctionAgent.ProcessStaleAndFalseClaimsAsync();
+        
+        if (correctResults.Count == 0)
+        {
+            Console.WriteLine("No corrections needed.");
+        }
+        else
+        {
+            Console.WriteLine($"\nCorrected {correctResults.Count} claims:");
+            foreach (var r in correctResults)
+            {
+                Console.WriteLine($"  - {r.ClaimId}");
+                Console.WriteLine($"    Original: {r.OriginalValue}");
+                Console.WriteLine($"    Corrected: {r.CorrectValue}");
+                Console.WriteLine($"    Source: {r.Source}");
+                Console.WriteLine();
+            }
+        }
+        break;
+    }
     
     case "query":
         var queryText = args.GetValue("--q") ?? "";
