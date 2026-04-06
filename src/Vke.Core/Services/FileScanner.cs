@@ -19,7 +19,7 @@ public class FileScanner
         }
     }
 
-    private async Task ScanFolderAsync(string folderPath, string folder, VkeDbContext db)
+    private Task ScanFolderAsync(string folderPath, string folder, VkeDbContext db)
     {
         var files = Directory.GetFiles(folderPath, "*", SearchOption.AllDirectories);
         
@@ -43,6 +43,8 @@ public class FileScanner
             
             db.InsertRawFile(rawFile);
         }
+        
+        return Task.CompletedTask;
     }
 
     public static string ComputeFileId(string filePath, string folder)
