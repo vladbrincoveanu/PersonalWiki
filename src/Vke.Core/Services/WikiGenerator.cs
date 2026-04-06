@@ -64,14 +64,28 @@ public class WikiGenerator
             md += "\n";
         }
         
-        await File.WriteAllTextAsync(filePath, md);
+        try
+        {
+            await File.WriteAllTextAsync(filePath, md);
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException($"Failed to write entity page for '{entityName}' to '{filePath}'", ex);
+        }
         
         if (saveHistory)
         {
             var historyDir = Path.Combine(dir, ToFileName(entityName));
             Directory.CreateDirectory(historyDir);
             var historyFile = Path.Combine(historyDir, $"{DateTime.UtcNow:yyyy-MM-dd}.md");
-            await File.WriteAllTextAsync(historyFile, md);
+            try
+            {
+                await File.WriteAllTextAsync(historyFile, md);
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidOperationException($"Failed to write history page for '{entityName}' to '{historyFile}'", ex);
+            }
         }
     }
 
@@ -118,7 +132,14 @@ public class WikiGenerator
                 md += $"- ~~{c.Statement}~~ [reason: {c.WrongReason}]\n";
         }
         
-        await File.WriteAllTextAsync(filePath, md);
+        try
+        {
+            await File.WriteAllTextAsync(filePath, md);
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException($"Failed to write source page for '{source.Title ?? source.Id}' to '{filePath}'", ex);
+        }
     }
 
     public async Task GenerateAlertsPage(List<string> cycles, List<string> contradictions, string basePath, List<string>? pendingReviews = null, List<string>? staleClaims = null)
@@ -133,7 +154,14 @@ public class WikiGenerator
             md += "_Last updated: " + DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss") + "_\n\n";
             foreach (var claimId in pendingReviews)
                 md += $"- Claim `{claimId}` requires human review\n";
-            await File.WriteAllTextAsync(reviewPath, md);
+            try
+            {
+                await File.WriteAllTextAsync(reviewPath, md);
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidOperationException($"Failed to write pending reviews page to '{reviewPath}'", ex);
+            }
         }
         
         if (staleClaims?.Any() == true)
@@ -143,7 +171,14 @@ public class WikiGenerator
             md += "_Last updated: " + DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss") + "_\n\n";
             foreach (var claimId in staleClaims)
                 md += $"- Claim `{claimId}` is stale and should be re-verified\n";
-            await File.WriteAllTextAsync(stalePath, md);
+            try
+            {
+                await File.WriteAllTextAsync(stalePath, md);
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidOperationException($"Failed to write stale claims page to '{stalePath}'", ex);
+            }
         }
         
         if (cycles.Any())
@@ -152,7 +187,14 @@ public class WikiGenerator
             var md = "# Circular Citation Alerts\n\n";
             foreach (var cycle in cycles)
                 md += $"- {cycle}\n";
-            await File.WriteAllTextAsync(cyclePath, md);
+            try
+            {
+                await File.WriteAllTextAsync(cyclePath, md);
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidOperationException($"Failed to write cycles page to '{cyclePath}'", ex);
+            }
         }
         
         if (contradictions.Any())
@@ -161,7 +203,14 @@ public class WikiGenerator
             var md = "# Contradictions Detected\n\n";
             foreach (var c in contradictions)
                 md += $"- {c}\n";
-            await File.WriteAllTextAsync(contraPath, md);
+            try
+            {
+                await File.WriteAllTextAsync(contraPath, md);
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidOperationException($"Failed to write contradictions page to '{contraPath}'", ex);
+            }
         }
     }
 
