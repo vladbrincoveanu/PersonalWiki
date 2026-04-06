@@ -3,7 +3,7 @@ using Vke.Core.Data;
 using Vke.Core.Services;
 
 var vaultBase = Environment.GetEnvironmentVariable("VKE_VAULT_BASE") 
-    ?? Path.Combine(Directory.GetCurrentDirectory(), "vault");
+    ?? "/openclaw/research";
 
 var dbPath = args.Contains("--db") 
     ? args[Array.IndexOf(args, "--db") + 1] 
