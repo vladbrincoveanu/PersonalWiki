@@ -64,6 +64,15 @@ public class WikiGenerator
             md += "\n";
         }
         
+        var sourceIds = claims.Where(c => !string.IsNullOrEmpty(c.SourceId)).Select(c => c.SourceId).Distinct().ToList();
+        if (sourceIds.Any())
+        {
+            md += "## Sources\n";
+            foreach (var sourceId in sourceIds)
+                md += $"- [[sources/{ToFileName(sourceId)}.md|Source {sourceId}]]\n";
+            md += "\n";
+        }
+        
         try
         {
             await File.WriteAllTextAsync(filePath, md);
@@ -130,6 +139,15 @@ public class WikiGenerator
             md += "### False/Rejected\n";
             foreach (var c in falseClaims)
                 md += $"- ~~{c.Statement}~~ [reason: {c.WrongReason}]\n";
+        }
+        
+        var entityNames = claims.Select(c => c.Normalized?.Split(':')[0] ?? "").Where(s => !string.IsNullOrEmpty(s)).Distinct().ToList();
+        if (entityNames.Any())
+        {
+            md += "## Entities\n";
+            foreach (var entity in entityNames)
+                md += $"- [[entities/{ToFileName(entity)}.md|{entity}]]\n";
+            md += "\n";
         }
         
         try
