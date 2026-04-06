@@ -28,6 +28,9 @@ public class LlmClient : ILlmClient
 
     public async Task<List<Claim>> ExtractClaimsAsync(string content, string sourceType)
     {
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        Console.WriteLine($"[LlmClient] ExtractClaims started at {DateTime.UtcNow:HH:mm:ss.fff}");
+        
         var prompt = $@"You are a factual claim extractor. Extract all verifiable claims from this document.
 
 Rules:
@@ -45,12 +48,18 @@ LOCATION: [section or page where found]
 Document:
 {content[..Math.Min(content.Length, 4000)]}";
 
+        Console.WriteLine($"[LlmClient] Prompt ready, sending request... elapsed={sw.ElapsedMilliseconds}ms");
         var responseText = await SendAnthropicMessageAsync(prompt);
+        sw.Stop();
+        Console.WriteLine($"[LlmClient] ExtractClaims completed in {sw.ElapsedMilliseconds}ms");
         return ClaimParser.ParseLlmOutput(responseText);
     }
 
     public async Task<decimal> VerifyClaimAsync(string claim, string sourceContent)
     {
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        Console.WriteLine($"[LlmClient] VerifyClaim started at {DateTime.UtcNow:HH:mm:ss.fff}");
+        
         var prompt = $@"Verify this claim against the source document.
 
 CLAIM: {claim}
@@ -65,29 +74,38 @@ Respond with a single number between 0.0 and 1.0 representing how well the claim
 Only output the number.";
 
         var responseText = await SendAnthropicMessageAsync(prompt);
+        sw.Stop();
+        Console.WriteLine($"[LlmClient] VerifyClaim completed in {sw.ElapsedMilliseconds}ms");
         var scoreText = responseText.Trim();
         return decimal.TryParse(scoreText, out var score) ? score : 0m;
     }
 
     private async Task<string> SendAnthropicMessageAsync(string prompt)
     {
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        Console.WriteLine($"[LlmClient] SendAnthropicMessageAsync sending request at {DateTime.UtcNow:HH:mm:ss.fff}");
+        
         var request = new HttpRequestMessage(HttpMethod.Post, $"{_baseUrl}/v1/messages");
         request.Headers.Add("anthropic-version", "2023-06-01");
 
         var body = new
         {
             model = _model,
-            max_tokens = 4096,
+            max_tokens = 256,
             messages = new[] { new { role = "user", content = prompt } }
         };
 
         var json = JsonSerializer.Serialize(body);
         request.Content = new StringContent(json, Encoding.UTF8, "application/json");
 
+        Console.WriteLine($"[LlmClient] HTTP request start... elapsed={sw.ElapsedMilliseconds}ms");
         var response = await _http.SendAsync(request);
+        sw.Stop();
+        Console.WriteLine($"[LlmClient] HTTP response received in {sw.ElapsedMilliseconds}ms, status={response.StatusCode}");
         response.EnsureSuccessStatusCode();
 
         var responseJson = await response.Content.ReadAsStringAsync();
+        Console.WriteLine($"[LlmClient] Response parsed in {sw.ElapsedMilliseconds}ms");
         var result = JsonSerializer.Deserialize<AnthropicResponse>(responseJson, _jsonOptions);
         return result?.Content?.FirstOrDefault(c => c.Type == "text")?.Text ?? "";
     }
