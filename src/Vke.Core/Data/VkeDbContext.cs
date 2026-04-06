@@ -171,6 +171,17 @@ public class VkeDbContext : IDisposable
         return null;
     }
 
+    public List<Source> GetAllSources(int limit = 20)
+    {
+        var sources = new List<Source>();
+        using var cmd = _connection.CreateCommand();
+        cmd.CommandText = $"SELECT * FROM sources WHERE is_active = TRUE ORDER BY fetched_at DESC LIMIT {limit}";
+        using var reader = cmd.ExecuteReader();
+        while (reader.Read())
+            sources.Add(MapSource(reader));
+        return sources;
+    }
+
     public void InsertClaim(Claim claim)
     {
         using var cmd = _connection.CreateCommand();
