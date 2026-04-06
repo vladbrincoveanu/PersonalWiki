@@ -107,7 +107,10 @@ Only output the number.";
         var responseJson = await response.Content.ReadAsStringAsync();
         Console.WriteLine($"[LlmClient] Response parsed in {sw.ElapsedMilliseconds}ms");
         var result = JsonSerializer.Deserialize<AnthropicResponse>(responseJson, _jsonOptions);
-        return result?.Content?.FirstOrDefault(c => c.Type == "text")?.Text ?? throw new InvalidOperationException("LLM response missing text content");
+        var text = result?.Content?.FirstOrDefault(c => c.Type == "text")?.Text;
+        if (string.IsNullOrEmpty(text))
+            throw new InvalidOperationException("LLM response missing text content");
+        return text;
     }
 }
 

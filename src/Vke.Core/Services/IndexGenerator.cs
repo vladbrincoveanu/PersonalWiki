@@ -1,6 +1,7 @@
 using System.Text;
 using Vke.Core.Data;
 using Vke.Core.Data.Models;
+using Vke.Core.Utils;
 
 namespace Vke.Core.Services;
 
@@ -39,7 +40,7 @@ public class IndexGenerator
             sb.AppendLine("| Source | Type | Domain | Claims |");
             sb.AppendLine("|--------|------|--------|--------|");
             foreach (var s in sources)
-                sb.AppendLine($"| [[sources/{ToFileName(s.Key)}.md|{s.Key}]] | {s.Type} | {s.Domain} | {s.Count} |");
+                sb.AppendLine($"| [[sources/{StringUtils.ToFileName(s.Key)}.md|{s.Key}]] | {s.Type} | {s.Domain} | {s.Count} |");
         }
         else
         {
@@ -166,13 +167,4 @@ public class IndexGenerator
         };
     }
 
-    private static string ToFileName(string text)
-    {
-        return text.ToLowerInvariant()
-            .Replace(" ", "-")
-            .Replace(".", "")
-            .Replace(",", "")
-            .Replace("'", "")
-            .Replace(":", "");
-    }
 }

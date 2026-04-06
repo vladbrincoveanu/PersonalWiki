@@ -1,0 +1,273 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TestRun id="d385c848-dfd6-4cd3-a752-8558f278f5de" name="@Mac 2026-04-06 14:46:10" xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">
+  <Times creation="2026-04-06T14:46:10.2367350+02:00" queuing="2026-04-06T14:46:10.2367350+02:00" start="2026-04-06T14:46:09.5997970+02:00" finish="2026-04-06T14:46:10.5386170+02:00" />
+  <TestSettings name="default" id="ec33ecb8-25d0-4291-bb32-295bd354197b">
+    <Deployment runDeploymentRoot="_Mac_2026-04-06_14_46_10" />
+  </TestSettings>
+  <Results>
+    <UnitTestResult executionId="982b8d87-c463-455e-a88c-bd895ae49f6d" testId="8486c1dc-73dd-7eb8-92ac-b16e3bb8617f" testName="Vke.Core.Tests.Agents.LintAgentTests.FindOrphans_ReturnsSourcesWithNoClaims" computerName="Mac" duration="00:00:00.0327923" startTime="2026-04-06T14:46:10.2374850+02:00" endTime="2026-04-06T14:46:10.2699750+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="982b8d87-c463-455e-a88c-bd895ae49f6d" />
+    <UnitTestResult executionId="bacbca14-0bf5-4e14-8ddc-3ed558aec6f5" testId="decb1fa3-2022-bab2-87d6-f6475f6bb833" testName="Vke.Core.Tests.Services.SecEdgarClientTests.GetCompanyCik_ReturnsCorrectCik" computerName="Mac" duration="00:00:00.0008405" startTime="2026-04-06T14:46:10.2074300+02:00" endTime="2026-04-06T14:46:10.2074500+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="bacbca14-0bf5-4e14-8ddc-3ed558aec6f5" />
+    <UnitTestResult executionId="eb83f9c2-4faa-4a18-9ab7-346f23a4d65c" testId="d5c0b8f2-22cf-2ceb-504b-71bda8c31383" testName="Vke.Core.Tests.Agents.VerifyAgentTests.VerifyAndStore_ClaimMatchesGroundTruth_SetsStatusVerified" computerName="Mac" duration="00:00:00.1050646" startTime="2026-04-06T14:46:10.2149300+02:00" endTime="2026-04-06T14:46:10.2895440+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="eb83f9c2-4faa-4a18-9ab7-346f23a4d65c" />
+    <UnitTestResult executionId="7a16b1ad-503e-40ec-aec7-848d7fe74532" testId="ad84a0d5-c7ce-e515-77dc-0ea65048769c" testName="Vke.Core.Tests.Agents.CorrectionAgentTests.FindCorrectValue_ForFinancialClaim_QueriesAuthoritativeSource" computerName="Mac" duration="00:00:00.0371678" startTime="2026-04-06T14:46:10.2443330+02:00" endTime="2026-04-06T14:46:10.2809700+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="7a16b1ad-503e-40ec-aec7-848d7fe74532" />
+    <UnitTestResult executionId="fbf6b965-5498-4ed4-b244-6266fcac9d29" testId="128528d5-8653-94fb-db58-f9e80e384bf9" testName="Vke.Core.Tests.Agents.IngestAgentTests.IngestSecFiling_StoresSourceAndClaims" computerName="Mac" duration="00:00:00.1092147" startTime="2026-04-06T14:46:10.1820760+02:00" endTime="2026-04-06T14:46:10.2752410+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="fbf6b965-5498-4ed4-b244-6266fcac9d29" />
+    <UnitTestResult executionId="bcfbb50c-3442-4b2e-a64e-1dacb19d61cb" testId="9cc2dec0-f48f-4bf0-1ef6-31785c8002cf" testName="Vke.Core.Tests.Agents.LintAgentTests.ScanStaleClaims_ReturnsClaimsPastStaleDate" computerName="Mac" duration="00:00:00.0656994" startTime="2026-04-06T14:46:10.2072090+02:00" endTime="2026-04-06T14:46:10.2368180+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="bcfbb50c-3442-4b2e-a64e-1dacb19d61cb" />
+    <UnitTestResult executionId="02156fc3-8a0f-4ba7-a176-c9ba2903c14b" testId="1d139bc0-6cf3-2ace-9f79-b2786517624d" testName="Vke.Core.Tests.Agents.VerifyAgentTests.VerifyAndStore_ClaimDoesNotMatchGroundTruth_SetsStatusFalse" computerName="Mac" duration="00:00:00.0322002" startTime="2026-04-06T14:46:10.2901850+02:00" endTime="2026-04-06T14:46:10.3222770+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="02156fc3-8a0f-4ba7-a176-c9ba2903c14b" />
+    <UnitTestResult executionId="c880379f-1431-4f0f-9bf8-2e7c8f9d38f4" testId="3d616140-3d4e-752c-3b20-92d3a852d31f" testName="Vke.Core.Tests.Data.CircularCitationTests.GetRootSources_ThreeSourcesCitingUpstream_ReturnsOneRoot" computerName="Mac" duration="00:00:00.0380239" startTime="2026-04-06T14:46:10.2387460+02:00" endTime="2026-04-06T14:46:10.2762410+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="c880379f-1431-4f0f-9bf8-2e7c8f9d38f4" />
+    <UnitTestResult executionId="28721e22-ae3a-435a-a1f8-f8160d0f4770" testId="2a5b25db-246b-2297-9c63-75cdc7a1d11f" testName="Vke.Core.Tests.Data.ClaimModelTests.Claim_CanStoreCorrectValue_WhenVerifiedFalse" computerName="Mac" duration="00:00:00.0015410" startTime="2026-04-06T14:46:10.1814010+02:00" endTime="2026-04-06T14:46:10.1858790+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="28721e22-ae3a-435a-a1f8-f8160d0f4770" />
+    <UnitTestResult executionId="0fa97b7a-1c82-486e-b145-c398b855db59" testId="46f60d42-bfa5-b39b-3ce3-e63542412612" testName="Vke.Core.Tests.Services.LlmClientTests.ExtractClaims_ReturnsListOfClaims" computerName="Mac" duration="00:00:00.0008327" startTime="2026-04-06T14:46:10.2169140+02:00" endTime="2026-04-06T14:46:10.2172120+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="0fa97b7a-1c82-486e-b145-c398b855db59" />
+    <UnitTestResult executionId="255f4ccb-de21-4e78-a762-9466e77bdb7f" testId="a096921e-efcf-044d-38cc-51062aab9856" testName="Vke.Core.Tests.Utils.IdGeneratorTests.GenerateClaimId_DifferentSourceIds_ProduceDifferentIds" computerName="Mac" duration="00:00:00.0027835" startTime="2026-04-06T14:46:10.2159530+02:00" endTime="2026-04-06T14:46:10.2159700+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="255f4ccb-de21-4e78-a762-9466e77bdb7f" />
+    <UnitTestResult executionId="1194ba36-9979-485a-b1ca-cbf1e6ab9434" testId="6d5d6256-00f8-5036-6e2a-438fde8b890d" testName="Vke.Core.Tests.Agents.VerifyAgentTests.VerifyAndStore_ClaimPassesThreshold_StoresVerifiedClaim" computerName="Mac" duration="00:00:00.0319792" startTime="2026-04-06T14:46:10.3495360+02:00" endTime="2026-04-06T14:46:10.3810300+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="1194ba36-9979-485a-b1ca-cbf1e6ab9434" />
+    <UnitTestResult executionId="57ab3a63-8150-44f5-88dd-da88c65a6316" testId="3a6375f4-f787-0ee7-8243-d708dcfb55fe" testName="Vke.Core.Tests.Data.VkeDbContextTests.InsertSourceType_Lookup_ReturnsCorrectTier" computerName="Mac" duration="00:00:00.0615708" startTime="2026-04-06T14:46:10.2070950+02:00" endTime="2026-04-06T14:46:10.2329160+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="57ab3a63-8150-44f5-88dd-da88c65a6316" />
+    <UnitTestResult executionId="a57369f3-ab05-497e-97ce-512000af301a" testId="91a16b7a-c180-c324-e414-44ede2868fa6" testName="Vke.Core.Tests.UnitTest1.Test1" computerName="Mac" duration="00:00:00.0016083" startTime="2026-04-06T14:46:10.1820060+02:00" endTime="2026-04-06T14:46:10.1825930+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="a57369f3-ab05-497e-97ce-512000af301a" />
+    <UnitTestResult executionId="0d5e6684-1512-4d4a-9af1-dc7253d97a9b" testId="8fc2b8dc-81dd-afbe-b22e-47f0a33ba908" testName="Vke.Core.Tests.Utils.IdGeneratorTests.GenerateSourceId_DifferentInputs_ProducesDifferentId" computerName="Mac" duration="00:00:00.0000594" startTime="2026-04-06T14:46:10.2161420+02:00" endTime="2026-04-06T14:46:10.2161600+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="0d5e6684-1512-4d4a-9af1-dc7253d97a9b" />
+    <UnitTestResult executionId="ae1c35d4-575c-4b50-8a55-8f951b9529c3" testId="81e26380-2ca7-e394-4547-47b1308ec25b" testName="Vke.Core.Tests.Agents.CorrectionAgentTests.ProcessStaleAndFalseClaims_UpdatesClaimsWithCorrectValues" computerName="Mac" duration="00:00:00.0707362" startTime="2026-04-06T14:46:10.2076600+02:00" endTime="2026-04-06T14:46:10.2437150+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="ae1c35d4-575c-4b50-8a55-8f951b9529c3" />
+    <UnitTestResult executionId="1207dc8a-06bd-406c-8917-e81f916fc088" testId="79f0f799-f84a-d932-2bcf-0594429986d7" testName="Vke.Core.Tests.Utils.InlineAnnotationTests.Annotate_InsertsVerificationMarker_AtCorrectLocation" computerName="Mac" duration="00:00:00.0048369" startTime="2026-04-06T14:46:10.1820590+02:00" endTime="2026-04-06T14:46:10.1920560+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="1207dc8a-06bd-406c-8917-e81f916fc088" />
+    <UnitTestResult executionId="6e8557bc-cc07-46b5-860e-a308a52c35ba" testId="a192dba3-2f12-7f7d-aab8-40c551508170" testName="Vke.Core.Tests.Utils.IdGeneratorTests.GenerateSourceId_SameInputs_ProducesSameId" computerName="Mac" duration="00:00:00.0007202" startTime="2026-04-06T14:46:10.2157480+02:00" endTime="2026-04-06T14:46:10.2157690+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="6e8557bc-cc07-46b5-860e-a308a52c35ba" />
+    <UnitTestResult executionId="7afe2077-044d-4e28-9374-576aba595f53" testId="6d236531-e278-3796-76d4-2b1359c02678" testName="Vke.Core.Tests.Data.SourceModelTests.Source_DefaultValues_AreCorrect" computerName="Mac" duration="00:00:00.0033347" startTime="2026-04-06T14:46:10.1820690+02:00" endTime="2026-04-06T14:46:10.1899030+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="7afe2077-044d-4e28-9374-576aba595f53" />
+    <UnitTestResult executionId="bce4159f-5b6d-4261-a8a4-209765280c2c" testId="22548982-4158-8bc3-4cf6-f58f24a435a6" testName="Vke.Core.Tests.Data.ClaimModelTests.Claim_DefaultVerificationStatus_IsUnverified" computerName="Mac" duration="00:00:00.0011743" startTime="2026-04-06T14:46:10.1910570+02:00" endTime="2026-04-06T14:46:10.2066320+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="bce4159f-5b6d-4261-a8a4-209765280c2c" />
+    <UnitTestResult executionId="838dbe82-9c45-44b4-a766-95f19e279393" testId="276d8466-9085-5273-e97f-f97de0246339" testName="Vke.Core.Tests.Data.VkeDbContextTests.InsertAndQuery_Source_RoundTrips" computerName="Mac" duration="00:00:00.0323695" startTime="2026-04-06T14:46:10.2667630+02:00" endTime="2026-04-06T14:46:10.2985380+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="838dbe82-9c45-44b4-a766-95f19e279393" />
+    <UnitTestResult executionId="075852f3-4084-4c9f-bf1b-0e9b46e0c48e" testId="7ac73491-d72c-2095-f2f8-3409010003d2" testName="Vke.Core.Tests.Data.CircularCitationTests.DetectCycles_CircularChain_ReturnsCycle" computerName="Mac" duration="00:00:00.0731871" startTime="2026-04-06T14:46:10.1820490+02:00" endTime="2026-04-06T14:46:10.2381680+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="075852f3-4084-4c9f-bf1b-0e9b46e0c48e" />
+    <UnitTestResult executionId="70fb4552-fd23-480b-8bac-45a924b9ec05" testId="0401c233-d70d-4370-3b1a-d35ba4be5dad" testName="Vke.Core.Tests.Services.WikiGeneratorTests.GenerateEntityPage_CreatesHistorySnapshot" computerName="Mac" duration="00:00:00.0013390" startTime="2026-04-06T14:46:10.2145060+02:00" endTime="2026-04-06T14:46:10.2145440+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="70fb4552-fd23-480b-8bac-45a924b9ec05">
+      <Output>
+        <ErrorInfo>
+          <Message>Assert.True() Failure
+Expected: True
+Actual:   False</Message>
+          <StackTrace>   at Vke.Core.Tests.Services.WikiGeneratorTests.GenerateEntityPage_CreatesHistorySnapshot() in /Users/vladbrincoveanu/Desktop/Startup/aiJurnalV2/tests/Vke.Core.Tests/Services/WikiGeneratorTests.cs:line 54
+   at System.Reflection.MethodBaseInvoker.InterpretedInvoke_Method(Object obj, IntPtr* args)
+   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="1adbca5d-4fec-4f17-8a9e-063fcf2b378a" testId="689c2a8d-5ca4-aa32-d5ae-2b70b42adb25" testName="Vke.Core.Tests.Services.SecEdgarClientTests.FetchFilingContent_StripsHtmlTags" computerName="Mac" duration="00:00:00.0010300" startTime="2026-04-06T14:46:10.2069770+02:00" endTime="2026-04-06T14:46:10.2072230+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="1adbca5d-4fec-4f17-8a9e-063fcf2b378a" />
+    <UnitTestResult executionId="45d01778-1db0-4601-b69e-d3431756a95a" testId="2d3c5c85-10dd-a243-8ea8-7d60fba7a9c4" testName="Vke.Core.Tests.Data.VkeDbContextTests.InitializeDatabase_CreatesAllTables" computerName="Mac" duration="00:00:00.0229041" startTime="2026-04-06T14:46:10.2991980+02:00" endTime="2026-04-06T14:46:10.3214830+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="45d01778-1db0-4601-b69e-d3431756a95a" />
+    <UnitTestResult executionId="f6440892-49c9-4deb-ad53-703d53c63d41" testId="fdac3149-e6a3-718c-0019-4c7d93e7ee1d" testName="Vke.Core.Tests.Data.VkeDbContextTests.ClaimsTable_HasVerificationStatusColumn" computerName="Mac" duration="00:00:00.0332710" startTime="2026-04-06T14:46:10.2334040+02:00" endTime="2026-04-06T14:46:10.2660610+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="f6440892-49c9-4deb-ad53-703d53c63d41" />
+    <UnitTestResult executionId="cecdfb56-62eb-4c37-acf6-739b43ddf060" testId="f6c23649-401b-954f-6dda-d6c9cfb4a832" testName="Vke.Core.Tests.Services.SemanticScholarClientTests.GetPaperAsync_DeserializesCorrectly" computerName="Mac" duration="00:00:00.0227686" startTime="2026-04-06T14:46:10.1820280+02:00" endTime="2026-04-06T14:46:10.2169630+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="cecdfb56-62eb-4c37-acf6-739b43ddf060" />
+    <UnitTestResult executionId="88e1d157-88e3-4aa6-bcf2-cc5c827f6490" testId="93710f09-0f9f-33c4-2dc3-dadbb4838c08" testName="Vke.Core.Tests.Agents.CorrectionAgentTests.FindCorrectValue_UnknownTicker_ReturnsNull" computerName="Mac" duration="00:00:00.0274936" startTime="2026-04-06T14:46:10.2813050+02:00" endTime="2026-04-06T14:46:10.3085850+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="88e1d157-88e3-4aa6-bcf2-cc5c827f6490" />
+    <UnitTestResult executionId="5a291e60-2077-4c26-9dc2-3c2419939cd2" testId="da6d730f-449b-ce3f-2b08-4c24390be388" testName="Vke.Core.Tests.Services.WikiGeneratorTests.GenerateEntityPage_CreatesValidMarkdown" computerName="Mac" duration="00:00:00.0063465" startTime="2026-04-06T14:46:10.1820410+02:00" endTime="2026-04-06T14:46:10.2078530+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="5a291e60-2077-4c26-9dc2-3c2419939cd2">
+      <Output>
+        <ErrorInfo>
+          <Message>Assert.Contains() Failure: Sub-string not found
+String:    ""
+Not found: "Apple Inc."</Message>
+          <StackTrace>   at Vke.Core.Tests.Services.WikiGeneratorTests.GenerateEntityPage_CreatesValidMarkdown() in /Users/vladbrincoveanu/Desktop/Startup/aiJurnalV2/tests/Vke.Core.Tests/Services/WikiGeneratorTests.cs:line 26
+   at System.Reflection.MethodBaseInvoker.InterpretedInvoke_Method(Object obj, IntPtr* args)
+   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="c094b3db-5671-4c87-b705-2706b677c166" testId="8148ad45-fd16-27df-b3f7-d636d5041e40" testName="Vke.Core.Tests.Agents.VerifyAgentTests.VerifyAndStore_ClaimFailsThreshold_QuarantinesClaim" computerName="Mac" duration="00:00:00.0264313" startTime="2026-04-06T14:46:10.3225390+02:00" endTime="2026-04-06T14:46:10.3489230+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="c094b3db-5671-4c87-b705-2706b677c166" />
+    <UnitTestResult executionId="090f633a-2bce-4551-b170-6b53c2c81ce2" testId="77490921-659a-6ad3-3909-ce12862fa1f3" testName="Vke.Core.Tests.Utils.InlineAnnotationTests.ExtractAnnotations_ParsesAllMarkers_FromContent" computerName="Mac" duration="00:00:00.0128805" startTime="2026-04-06T14:46:10.2063220+02:00" endTime="2026-04-06T14:46:10.2149460+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="090f633a-2bce-4551-b170-6b53c2c81ce2" />
+    <UnitTestResult executionId="e7cd808d-6eff-41a5-a45c-eca73a29fd6e" testId="edd03514-6c9e-fb01-5016-1b1661c214a8" testName="Vke.Core.Tests.Services.LlmClientTests.VerifyClaim_ReturnsScoreBetween0And1" computerName="Mac" duration="00:00:00.0005315" startTime="2026-04-06T14:46:10.2163510+02:00" endTime="2026-04-06T14:46:10.2163700+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="e7cd808d-6eff-41a5-a45c-eca73a29fd6e" />
+  </Results>
+  <TestDefinitions>
+    <UnitTest name="Vke.Core.Tests.Data.ClaimModelTests.Claim_DefaultVerificationStatus_IsUnverified" storage="/users/vladbrincoveanu/desktop/startup/aijurnalv2/tests/vke.core.tests/bin/debug/net10.0/vke.core.tests.dll" id="22548982-4158-8bc3-4cf6-f58f24a435a6">
+      <Execution id="bce4159f-5b6d-4261-a8a4-209765280c2c" />
+      <TestMethod codeBase="/Users/vladbrincoveanu/Desktop/Startup/aiJurnalV2/tests/Vke.Core.Tests/bin/Debug/net10.0/Vke.Core.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="Vke.Core.Tests.Data.ClaimModelTests" name="Claim_DefaultVerificationStatus_IsUnverified" />
+    </UnitTest>
+    <UnitTest name="Vke.Core.Tests.Agents.CorrectionAgentTests.FindCorrectValue_UnknownTicker_ReturnsNull" storage="/users/vladbrincoveanu/desktop/startup/aijurnalv2/tests/vke.core.tests/bin/debug/net10.0/vke.core.tests.dll" id="93710f09-0f9f-33c4-2dc3-dadbb4838c08">
+      <Execution id="88e1d157-88e3-4aa6-bcf2-cc5c827f6490" />
+      <TestMethod codeBase="/Users/vladbrincoveanu/Desktop/Startup/aiJurnalV2/tests/Vke.Core.Tests/bin/Debug/net10.0/Vke.Core.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="Vke.Core.Tests.Agents.CorrectionAgentTests" name="FindCorrectValue_UnknownTicker_ReturnsNull" />
+    </UnitTest>
+    <UnitTest name="Vke.Core.Tests.Services.LlmClientTests.VerifyClaim_ReturnsScoreBetween0And1" storage="/users/vladbrincoveanu/desktop/startup/aijurnalv2/tests/vke.core.tests/bin/debug/net10.0/vke.core.tests.dll" id="edd03514-6c9e-fb01-5016-1b1661c214a8">
+      <Execution id="e7cd808d-6eff-41a5-a45c-eca73a29fd6e" />
+      <TestMethod codeBase="/Users/vladbrincoveanu/Desktop/Startup/aiJurnalV2/tests/Vke.Core.Tests/bin/Debug/net10.0/Vke.Core.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="Vke.Core.Tests.Services.LlmClientTests" name="VerifyClaim_ReturnsScoreBetween0And1" />
+    </UnitTest>
+    <UnitTest name="Vke.Core.Tests.UnitTest1.Test1" storage="/users/vladbrincoveanu/desktop/startup/aijurnalv2/tests/vke.core.tests/bin/debug/net10.0/vke.core.tests.dll" id="91a16b7a-c180-c324-e414-44ede2868fa6">
+      <Execution id="a57369f3-ab05-497e-97ce-512000af301a" />
+      <TestMethod codeBase="/Users/vladbrincoveanu/Desktop/Startup/aiJurnalV2/tests/Vke.Core.Tests/bin/Debug/net10.0/Vke.Core.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="Vke.Core.Tests.UnitTest1" name="Test1" />
+    </UnitTest>
+    <UnitTest name="Vke.Core.Tests.Agents.VerifyAgentTests.VerifyAndStore_ClaimDoesNotMatchGroundTruth_SetsStatusFalse" storage="/users/vladbrincoveanu/desktop/startup/aijurnalv2/tests/vke.core.tests/bin/debug/net10.0/vke.core.tests.dll" id="1d139bc0-6cf3-2ace-9f79-b2786517624d">
+      <Execution id="02156fc3-8a0f-4ba7-a176-c9ba2903c14b" />
+      <TestMethod codeBase="/Users/vladbrincoveanu/Desktop/Startup/aiJurnalV2/tests/Vke.Core.Tests/bin/Debug/net10.0/Vke.Core.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="Vke.Core.Tests.Agents.VerifyAgentTests" name="VerifyAndStore_ClaimDoesNotMatchGroundTruth_SetsStatusFalse" />
+    </UnitTest>
+    <UnitTest name="Vke.Core.Tests.Agents.VerifyAgentTests.VerifyAndStore_ClaimMatchesGroundTruth_SetsStatusVerified" storage="/users/vladbrincoveanu/desktop/startup/aijurnalv2/tests/vke.core.tests/bin/debug/net10.0/vke.core.tests.dll" id="d5c0b8f2-22cf-2ceb-504b-71bda8c31383">
+      <Execution id="eb83f9c2-4faa-4a18-9ab7-346f23a4d65c" />
+      <TestMethod codeBase="/Users/vladbrincoveanu/Desktop/Startup/aiJurnalV2/tests/Vke.Core.Tests/bin/Debug/net10.0/Vke.Core.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="Vke.Core.Tests.Agents.VerifyAgentTests" name="VerifyAndStore_ClaimMatchesGroundTruth_SetsStatusVerified" />
+    </UnitTest>
+    <UnitTest name="Vke.Core.Tests.Data.VkeDbContextTests.InsertSourceType_Lookup_ReturnsCorrectTier" storage="/users/vladbrincoveanu/desktop/startup/aijurnalv2/tests/vke.core.tests/bin/debug/net10.0/vke.core.tests.dll" id="3a6375f4-f787-0ee7-8243-d708dcfb55fe">
+      <Execution id="57ab3a63-8150-44f5-88dd-da88c65a6316" />
+      <TestMethod codeBase="/Users/vladbrincoveanu/Desktop/Startup/aiJurnalV2/tests/Vke.Core.Tests/bin/Debug/net10.0/Vke.Core.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="Vke.Core.Tests.Data.VkeDbContextTests" name="InsertSourceType_Lookup_ReturnsCorrectTier" />
+    </UnitTest>
+    <UnitTest name="Vke.Core.Tests.Utils.InlineAnnotationTests.ExtractAnnotations_ParsesAllMarkers_FromContent" storage="/users/vladbrincoveanu/desktop/startup/aijurnalv2/tests/vke.core.tests/bin/debug/net10.0/vke.core.tests.dll" id="77490921-659a-6ad3-3909-ce12862fa1f3">
+      <Execution id="090f633a-2bce-4551-b170-6b53c2c81ce2" />
+      <TestMethod codeBase="/Users/vladbrincoveanu/Desktop/Startup/aiJurnalV2/tests/Vke.Core.Tests/bin/Debug/net10.0/Vke.Core.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="Vke.Core.Tests.Utils.InlineAnnotationTests" name="ExtractAnnotations_ParsesAllMarkers_FromContent" />
+    </UnitTest>
+    <UnitTest name="Vke.Core.Tests.Services.WikiGeneratorTests.GenerateEntityPage_CreatesValidMarkdown" storage="/users/vladbrincoveanu/desktop/startup/aijurnalv2/tests/vke.core.tests/bin/debug/net10.0/vke.core.tests.dll" id="da6d730f-449b-ce3f-2b08-4c24390be388">
+      <Execution id="5a291e60-2077-4c26-9dc2-3c2419939cd2" />
+      <TestMethod codeBase="/Users/vladbrincoveanu/Desktop/Startup/aiJurnalV2/tests/Vke.Core.Tests/bin/Debug/net10.0/Vke.Core.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="Vke.Core.Tests.Services.WikiGeneratorTests" name="GenerateEntityPage_CreatesValidMarkdown" />
+    </UnitTest>
+    <UnitTest name="Vke.Core.Tests.Data.CircularCitationTests.GetRootSources_ThreeSourcesCitingUpstream_ReturnsOneRoot" storage="/users/vladbrincoveanu/desktop/startup/aijurnalv2/tests/vke.core.tests/bin/debug/net10.0/vke.core.tests.dll" id="3d616140-3d4e-752c-3b20-92d3a852d31f">
+      <Execution id="c880379f-1431-4f0f-9bf8-2e7c8f9d38f4" />
+      <TestMethod codeBase="/Users/vladbrincoveanu/Desktop/Startup/aiJurnalV2/tests/Vke.Core.Tests/bin/Debug/net10.0/Vke.Core.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="Vke.Core.Tests.Data.CircularCitationTests" name="GetRootSources_ThreeSourcesCitingUpstream_ReturnsOneRoot" />
+    </UnitTest>
+    <UnitTest name="Vke.Core.Tests.Data.SourceModelTests.Source_DefaultValues_AreCorrect" storage="/users/vladbrincoveanu/desktop/startup/aijurnalv2/tests/vke.core.tests/bin/debug/net10.0/vke.core.tests.dll" id="6d236531-e278-3796-76d4-2b1359c02678">
+      <Execution id="7afe2077-044d-4e28-9374-576aba595f53" />
+      <TestMethod codeBase="/Users/vladbrincoveanu/Desktop/Startup/aiJurnalV2/tests/Vke.Core.Tests/bin/Debug/net10.0/Vke.Core.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="Vke.Core.Tests.Data.SourceModelTests" name="Source_DefaultValues_AreCorrect" />
+    </UnitTest>
+    <UnitTest name="Vke.Core.Tests.Services.LlmClientTests.ExtractClaims_ReturnsListOfClaims" storage="/users/vladbrincoveanu/desktop/startup/aijurnalv2/tests/vke.core.tests/bin/debug/net10.0/vke.core.tests.dll" id="46f60d42-bfa5-b39b-3ce3-e63542412612">
+      <Execution id="0fa97b7a-1c82-486e-b145-c398b855db59" />
+      <TestMethod codeBase="/Users/vladbrincoveanu/Desktop/Startup/aiJurnalV2/tests/Vke.Core.Tests/bin/Debug/net10.0/Vke.Core.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="Vke.Core.Tests.Services.LlmClientTests" name="ExtractClaims_ReturnsListOfClaims" />
+    </UnitTest>
+    <UnitTest name="Vke.Core.Tests.Utils.IdGeneratorTests.GenerateClaimId_DifferentSourceIds_ProduceDifferentIds" storage="/users/vladbrincoveanu/desktop/startup/aijurnalv2/tests/vke.core.tests/bin/debug/net10.0/vke.core.tests.dll" id="a096921e-efcf-044d-38cc-51062aab9856">
+      <Execution id="255f4ccb-de21-4e78-a762-9466e77bdb7f" />
+      <TestMethod codeBase="/Users/vladbrincoveanu/Desktop/Startup/aiJurnalV2/tests/Vke.Core.Tests/bin/Debug/net10.0/Vke.Core.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="Vke.Core.Tests.Utils.IdGeneratorTests" name="GenerateClaimId_DifferentSourceIds_ProduceDifferentIds" />
+    </UnitTest>
+    <UnitTest name="Vke.Core.Tests.Services.SecEdgarClientTests.GetCompanyCik_ReturnsCorrectCik" storage="/users/vladbrincoveanu/desktop/startup/aijurnalv2/tests/vke.core.tests/bin/debug/net10.0/vke.core.tests.dll" id="decb1fa3-2022-bab2-87d6-f6475f6bb833">
+      <Execution id="bacbca14-0bf5-4e14-8ddc-3ed558aec6f5" />
+      <TestMethod codeBase="/Users/vladbrincoveanu/Desktop/Startup/aiJurnalV2/tests/Vke.Core.Tests/bin/Debug/net10.0/Vke.Core.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="Vke.Core.Tests.Services.SecEdgarClientTests" name="GetCompanyCik_ReturnsCorrectCik" />
+    </UnitTest>
+    <UnitTest name="Vke.Core.Tests.Agents.LintAgentTests.ScanStaleClaims_ReturnsClaimsPastStaleDate" storage="/users/vladbrincoveanu/desktop/startup/aijurnalv2/tests/vke.core.tests/bin/debug/net10.0/vke.core.tests.dll" id="9cc2dec0-f48f-4bf0-1ef6-31785c8002cf">
+      <Execution id="bcfbb50c-3442-4b2e-a64e-1dacb19d61cb" />
+      <TestMethod codeBase="/Users/vladbrincoveanu/Desktop/Startup/aiJurnalV2/tests/Vke.Core.Tests/bin/Debug/net10.0/Vke.Core.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="Vke.Core.Tests.Agents.LintAgentTests" name="ScanStaleClaims_ReturnsClaimsPastStaleDate" />
+    </UnitTest>
+    <UnitTest name="Vke.Core.Tests.Services.SecEdgarClientTests.FetchFilingContent_StripsHtmlTags" storage="/users/vladbrincoveanu/desktop/startup/aijurnalv2/tests/vke.core.tests/bin/debug/net10.0/vke.core.tests.dll" id="689c2a8d-5ca4-aa32-d5ae-2b70b42adb25">
+      <Execution id="1adbca5d-4fec-4f17-8a9e-063fcf2b378a" />
+      <TestMethod codeBase="/Users/vladbrincoveanu/Desktop/Startup/aiJurnalV2/tests/Vke.Core.Tests/bin/Debug/net10.0/Vke.Core.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="Vke.Core.Tests.Services.SecEdgarClientTests" name="FetchFilingContent_StripsHtmlTags" />
+    </UnitTest>
+    <UnitTest name="Vke.Core.Tests.Agents.LintAgentTests.FindOrphans_ReturnsSourcesWithNoClaims" storage="/users/vladbrincoveanu/desktop/startup/aijurnalv2/tests/vke.core.tests/bin/debug/net10.0/vke.core.tests.dll" id="8486c1dc-73dd-7eb8-92ac-b16e3bb8617f">
+      <Execution id="982b8d87-c463-455e-a88c-bd895ae49f6d" />
+      <TestMethod codeBase="/Users/vladbrincoveanu/Desktop/Startup/aiJurnalV2/tests/Vke.Core.Tests/bin/Debug/net10.0/Vke.Core.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="Vke.Core.Tests.Agents.LintAgentTests" name="FindOrphans_ReturnsSourcesWithNoClaims" />
+    </UnitTest>
+    <UnitTest name="Vke.Core.Tests.Data.VkeDbContextTests.InsertAndQuery_Source_RoundTrips" storage="/users/vladbrincoveanu/desktop/startup/aijurnalv2/tests/vke.core.tests/bin/debug/net10.0/vke.core.tests.dll" id="276d8466-9085-5273-e97f-f97de0246339">
+      <Execution id="838dbe82-9c45-44b4-a766-95f19e279393" />
+      <TestMethod codeBase="/Users/vladbrincoveanu/Desktop/Startup/aiJurnalV2/tests/Vke.Core.Tests/bin/Debug/net10.0/Vke.Core.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="Vke.Core.Tests.Data.VkeDbContextTests" name="InsertAndQuery_Source_RoundTrips" />
+    </UnitTest>
+    <UnitTest name="Vke.Core.Tests.Agents.CorrectionAgentTests.FindCorrectValue_ForFinancialClaim_QueriesAuthoritativeSource" storage="/users/vladbrincoveanu/desktop/startup/aijurnalv2/tests/vke.core.tests/bin/debug/net10.0/vke.core.tests.dll" id="ad84a0d5-c7ce-e515-77dc-0ea65048769c">
+      <Execution id="7a16b1ad-503e-40ec-aec7-848d7fe74532" />
+      <TestMethod codeBase="/Users/vladbrincoveanu/Desktop/Startup/aiJurnalV2/tests/Vke.Core.Tests/bin/Debug/net10.0/Vke.Core.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="Vke.Core.Tests.Agents.CorrectionAgentTests" name="FindCorrectValue_ForFinancialClaim_QueriesAuthoritativeSource" />
+    </UnitTest>
+    <UnitTest name="Vke.Core.Tests.Services.WikiGeneratorTests.GenerateEntityPage_CreatesHistorySnapshot" storage="/users/vladbrincoveanu/desktop/startup/aijurnalv2/tests/vke.core.tests/bin/debug/net10.0/vke.core.tests.dll" id="0401c233-d70d-4370-3b1a-d35ba4be5dad">
+      <Execution id="70fb4552-fd23-480b-8bac-45a924b9ec05" />
+      <TestMethod codeBase="/Users/vladbrincoveanu/Desktop/Startup/aiJurnalV2/tests/Vke.Core.Tests/bin/Debug/net10.0/Vke.Core.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="Vke.Core.Tests.Services.WikiGeneratorTests" name="GenerateEntityPage_CreatesHistorySnapshot" />
+    </UnitTest>
+    <UnitTest name="Vke.Core.Tests.Agents.IngestAgentTests.IngestSecFiling_StoresSourceAndClaims" storage="/users/vladbrincoveanu/desktop/startup/aijurnalv2/tests/vke.core.tests/bin/debug/net10.0/vke.core.tests.dll" id="128528d5-8653-94fb-db58-f9e80e384bf9">
+      <Execution id="fbf6b965-5498-4ed4-b244-6266fcac9d29" />
+      <TestMethod codeBase="/Users/vladbrincoveanu/Desktop/Startup/aiJurnalV2/tests/Vke.Core.Tests/bin/Debug/net10.0/Vke.Core.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="Vke.Core.Tests.Agents.IngestAgentTests" name="IngestSecFiling_StoresSourceAndClaims" />
+    </UnitTest>
+    <UnitTest name="Vke.Core.Tests.Data.VkeDbContextTests.InitializeDatabase_CreatesAllTables" storage="/users/vladbrincoveanu/desktop/startup/aijurnalv2/tests/vke.core.tests/bin/debug/net10.0/vke.core.tests.dll" id="2d3c5c85-10dd-a243-8ea8-7d60fba7a9c4">
+      <Execution id="45d01778-1db0-4601-b69e-d3431756a95a" />
+      <TestMethod codeBase="/Users/vladbrincoveanu/Desktop/Startup/aiJurnalV2/tests/Vke.Core.Tests/bin/Debug/net10.0/Vke.Core.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="Vke.Core.Tests.Data.VkeDbContextTests" name="InitializeDatabase_CreatesAllTables" />
+    </UnitTest>
+    <UnitTest name="Vke.Core.Tests.Data.VkeDbContextTests.ClaimsTable_HasVerificationStatusColumn" storage="/users/vladbrincoveanu/desktop/startup/aijurnalv2/tests/vke.core.tests/bin/debug/net10.0/vke.core.tests.dll" id="fdac3149-e6a3-718c-0019-4c7d93e7ee1d">
+      <Execution id="f6440892-49c9-4deb-ad53-703d53c63d41" />
+      <TestMethod codeBase="/Users/vladbrincoveanu/Desktop/Startup/aiJurnalV2/tests/Vke.Core.Tests/bin/Debug/net10.0/Vke.Core.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="Vke.Core.Tests.Data.VkeDbContextTests" name="ClaimsTable_HasVerificationStatusColumn" />
+    </UnitTest>
+    <UnitTest name="Vke.Core.Tests.Data.CircularCitationTests.DetectCycles_CircularChain_ReturnsCycle" storage="/users/vladbrincoveanu/desktop/startup/aijurnalv2/tests/vke.core.tests/bin/debug/net10.0/vke.core.tests.dll" id="7ac73491-d72c-2095-f2f8-3409010003d2">
+      <Execution id="075852f3-4084-4c9f-bf1b-0e9b46e0c48e" />
+      <TestMethod codeBase="/Users/vladbrincoveanu/Desktop/Startup/aiJurnalV2/tests/Vke.Core.Tests/bin/Debug/net10.0/Vke.Core.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="Vke.Core.Tests.Data.CircularCitationTests" name="DetectCycles_CircularChain_ReturnsCycle" />
+    </UnitTest>
+    <UnitTest name="Vke.Core.Tests.Utils.InlineAnnotationTests.Annotate_InsertsVerificationMarker_AtCorrectLocation" storage="/users/vladbrincoveanu/desktop/startup/aijurnalv2/tests/vke.core.tests/bin/debug/net10.0/vke.core.tests.dll" id="79f0f799-f84a-d932-2bcf-0594429986d7">
+      <Execution id="1207dc8a-06bd-406c-8917-e81f916fc088" />
+      <TestMethod codeBase="/Users/vladbrincoveanu/Desktop/Startup/aiJurnalV2/tests/Vke.Core.Tests/bin/Debug/net10.0/Vke.Core.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="Vke.Core.Tests.Utils.InlineAnnotationTests" name="Annotate_InsertsVerificationMarker_AtCorrectLocation" />
+    </UnitTest>
+    <UnitTest name="Vke.Core.Tests.Agents.VerifyAgentTests.VerifyAndStore_ClaimPassesThreshold_StoresVerifiedClaim" storage="/users/vladbrincoveanu/desktop/startup/aijurnalv2/tests/vke.core.tests/bin/debug/net10.0/vke.core.tests.dll" id="6d5d6256-00f8-5036-6e2a-438fde8b890d">
+      <Execution id="1194ba36-9979-485a-b1ca-cbf1e6ab9434" />
+      <TestMethod codeBase="/Users/vladbrincoveanu/Desktop/Startup/aiJurnalV2/tests/Vke.Core.Tests/bin/Debug/net10.0/Vke.Core.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="Vke.Core.Tests.Agents.VerifyAgentTests" name="VerifyAndStore_ClaimPassesThreshold_StoresVerifiedClaim" />
+    </UnitTest>
+    <UnitTest name="Vke.Core.Tests.Utils.IdGeneratorTests.GenerateSourceId_SameInputs_ProducesSameId" storage="/users/vladbrincoveanu/desktop/startup/aijurnalv2/tests/vke.core.tests/bin/debug/net10.0/vke.core.tests.dll" id="a192dba3-2f12-7f7d-aab8-40c551508170">
+      <Execution id="6e8557bc-cc07-46b5-860e-a308a52c35ba" />
+      <TestMethod codeBase="/Users/vladbrincoveanu/Desktop/Startup/aiJurnalV2/tests/Vke.Core.Tests/bin/Debug/net10.0/Vke.Core.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="Vke.Core.Tests.Utils.IdGeneratorTests" name="GenerateSourceId_SameInputs_ProducesSameId" />
+    </UnitTest>
+    <UnitTest name="Vke.Core.Tests.Data.ClaimModelTests.Claim_CanStoreCorrectValue_WhenVerifiedFalse" storage="/users/vladbrincoveanu/desktop/startup/aijurnalv2/tests/vke.core.tests/bin/debug/net10.0/vke.core.tests.dll" id="2a5b25db-246b-2297-9c63-75cdc7a1d11f">
+      <Execution id="28721e22-ae3a-435a-a1f8-f8160d0f4770" />
+      <TestMethod codeBase="/Users/vladbrincoveanu/Desktop/Startup/aiJurnalV2/tests/Vke.Core.Tests/bin/Debug/net10.0/Vke.Core.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="Vke.Core.Tests.Data.ClaimModelTests" name="Claim_CanStoreCorrectValue_WhenVerifiedFalse" />
+    </UnitTest>
+    <UnitTest name="Vke.Core.Tests.Agents.CorrectionAgentTests.ProcessStaleAndFalseClaims_UpdatesClaimsWithCorrectValues" storage="/users/vladbrincoveanu/desktop/startup/aijurnalv2/tests/vke.core.tests/bin/debug/net10.0/vke.core.tests.dll" id="81e26380-2ca7-e394-4547-47b1308ec25b">
+      <Execution id="ae1c35d4-575c-4b50-8a55-8f951b9529c3" />
+      <TestMethod codeBase="/Users/vladbrincoveanu/Desktop/Startup/aiJurnalV2/tests/Vke.Core.Tests/bin/Debug/net10.0/Vke.Core.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="Vke.Core.Tests.Agents.CorrectionAgentTests" name="ProcessStaleAndFalseClaims_UpdatesClaimsWithCorrectValues" />
+    </UnitTest>
+    <UnitTest name="Vke.Core.Tests.Services.SemanticScholarClientTests.GetPaperAsync_DeserializesCorrectly" storage="/users/vladbrincoveanu/desktop/startup/aijurnalv2/tests/vke.core.tests/bin/debug/net10.0/vke.core.tests.dll" id="f6c23649-401b-954f-6dda-d6c9cfb4a832">
+      <Execution id="cecdfb56-62eb-4c37-acf6-739b43ddf060" />
+      <TestMethod codeBase="/Users/vladbrincoveanu/Desktop/Startup/aiJurnalV2/tests/Vke.Core.Tests/bin/Debug/net10.0/Vke.Core.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="Vke.Core.Tests.Services.SemanticScholarClientTests" name="GetPaperAsync_DeserializesCorrectly" />
+    </UnitTest>
+    <UnitTest name="Vke.Core.Tests.Utils.IdGeneratorTests.GenerateSourceId_DifferentInputs_ProducesDifferentId" storage="/users/vladbrincoveanu/desktop/startup/aijurnalv2/tests/vke.core.tests/bin/debug/net10.0/vke.core.tests.dll" id="8fc2b8dc-81dd-afbe-b22e-47f0a33ba908">
+      <Execution id="0d5e6684-1512-4d4a-9af1-dc7253d97a9b" />
+      <TestMethod codeBase="/Users/vladbrincoveanu/Desktop/Startup/aiJurnalV2/tests/Vke.Core.Tests/bin/Debug/net10.0/Vke.Core.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="Vke.Core.Tests.Utils.IdGeneratorTests" name="GenerateSourceId_DifferentInputs_ProducesDifferentId" />
+    </UnitTest>
+    <UnitTest name="Vke.Core.Tests.Agents.VerifyAgentTests.VerifyAndStore_ClaimFailsThreshold_QuarantinesClaim" storage="/users/vladbrincoveanu/desktop/startup/aijurnalv2/tests/vke.core.tests/bin/debug/net10.0/vke.core.tests.dll" id="8148ad45-fd16-27df-b3f7-d636d5041e40">
+      <Execution id="c094b3db-5671-4c87-b705-2706b677c166" />
+      <TestMethod codeBase="/Users/vladbrincoveanu/Desktop/Startup/aiJurnalV2/tests/Vke.Core.Tests/bin/Debug/net10.0/Vke.Core.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="Vke.Core.Tests.Agents.VerifyAgentTests" name="VerifyAndStore_ClaimFailsThreshold_QuarantinesClaim" />
+    </UnitTest>
+  </TestDefinitions>
+  <TestEntries>
+    <TestEntry testId="8486c1dc-73dd-7eb8-92ac-b16e3bb8617f" executionId="982b8d87-c463-455e-a88c-bd895ae49f6d" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="decb1fa3-2022-bab2-87d6-f6475f6bb833" executionId="bacbca14-0bf5-4e14-8ddc-3ed558aec6f5" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="d5c0b8f2-22cf-2ceb-504b-71bda8c31383" executionId="eb83f9c2-4faa-4a18-9ab7-346f23a4d65c" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="ad84a0d5-c7ce-e515-77dc-0ea65048769c" executionId="7a16b1ad-503e-40ec-aec7-848d7fe74532" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="128528d5-8653-94fb-db58-f9e80e384bf9" executionId="fbf6b965-5498-4ed4-b244-6266fcac9d29" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="9cc2dec0-f48f-4bf0-1ef6-31785c8002cf" executionId="bcfbb50c-3442-4b2e-a64e-1dacb19d61cb" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="1d139bc0-6cf3-2ace-9f79-b2786517624d" executionId="02156fc3-8a0f-4ba7-a176-c9ba2903c14b" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="3d616140-3d4e-752c-3b20-92d3a852d31f" executionId="c880379f-1431-4f0f-9bf8-2e7c8f9d38f4" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="2a5b25db-246b-2297-9c63-75cdc7a1d11f" executionId="28721e22-ae3a-435a-a1f8-f8160d0f4770" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="46f60d42-bfa5-b39b-3ce3-e63542412612" executionId="0fa97b7a-1c82-486e-b145-c398b855db59" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="a096921e-efcf-044d-38cc-51062aab9856" executionId="255f4ccb-de21-4e78-a762-9466e77bdb7f" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="6d5d6256-00f8-5036-6e2a-438fde8b890d" executionId="1194ba36-9979-485a-b1ca-cbf1e6ab9434" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="3a6375f4-f787-0ee7-8243-d708dcfb55fe" executionId="57ab3a63-8150-44f5-88dd-da88c65a6316" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="91a16b7a-c180-c324-e414-44ede2868fa6" executionId="a57369f3-ab05-497e-97ce-512000af301a" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="8fc2b8dc-81dd-afbe-b22e-47f0a33ba908" executionId="0d5e6684-1512-4d4a-9af1-dc7253d97a9b" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="81e26380-2ca7-e394-4547-47b1308ec25b" executionId="ae1c35d4-575c-4b50-8a55-8f951b9529c3" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="79f0f799-f84a-d932-2bcf-0594429986d7" executionId="1207dc8a-06bd-406c-8917-e81f916fc088" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="a192dba3-2f12-7f7d-aab8-40c551508170" executionId="6e8557bc-cc07-46b5-860e-a308a52c35ba" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="6d236531-e278-3796-76d4-2b1359c02678" executionId="7afe2077-044d-4e28-9374-576aba595f53" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="22548982-4158-8bc3-4cf6-f58f24a435a6" executionId="bce4159f-5b6d-4261-a8a4-209765280c2c" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="276d8466-9085-5273-e97f-f97de0246339" executionId="838dbe82-9c45-44b4-a766-95f19e279393" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="7ac73491-d72c-2095-f2f8-3409010003d2" executionId="075852f3-4084-4c9f-bf1b-0e9b46e0c48e" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="0401c233-d70d-4370-3b1a-d35ba4be5dad" executionId="70fb4552-fd23-480b-8bac-45a924b9ec05" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="689c2a8d-5ca4-aa32-d5ae-2b70b42adb25" executionId="1adbca5d-4fec-4f17-8a9e-063fcf2b378a" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="2d3c5c85-10dd-a243-8ea8-7d60fba7a9c4" executionId="45d01778-1db0-4601-b69e-d3431756a95a" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="fdac3149-e6a3-718c-0019-4c7d93e7ee1d" executionId="f6440892-49c9-4deb-ad53-703d53c63d41" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="f6c23649-401b-954f-6dda-d6c9cfb4a832" executionId="cecdfb56-62eb-4c37-acf6-739b43ddf060" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="93710f09-0f9f-33c4-2dc3-dadbb4838c08" executionId="88e1d157-88e3-4aa6-bcf2-cc5c827f6490" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="da6d730f-449b-ce3f-2b08-4c24390be388" executionId="5a291e60-2077-4c26-9dc2-3c2419939cd2" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="8148ad45-fd16-27df-b3f7-d636d5041e40" executionId="c094b3db-5671-4c87-b705-2706b677c166" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="77490921-659a-6ad3-3909-ce12862fa1f3" executionId="090f633a-2bce-4551-b170-6b53c2c81ce2" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="edd03514-6c9e-fb01-5016-1b1661c214a8" executionId="e7cd808d-6eff-41a5-a45c-eca73a29fd6e" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+  </TestEntries>
+  <TestLists>
+    <TestList name="Results Not in a List" id="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestList name="All Loaded Results" id="19431567-8539-422a-85d7-44ee4e166bda" />
+  </TestLists>
+  <ResultSummary outcome="Failed">
+    <Counters total="32" executed="32" passed="30" failed="2" error="0" timeout="0" aborted="0" inconclusive="0" passedButRunAborted="0" notRunnable="0" notExecuted="0" disconnected="0" warning="0" completed="0" inProgress="0" pending="0" />
+    <Output>
+      <StdOut>[xUnit.net 00:00:00.00] xUnit.net VSTest Adapter v3.1.4+50e68bbb8b (64-bit .NET 10.0.5)
+[xUnit.net 00:00:00.03]   Discovering: Vke.Core.Tests
+[xUnit.net 00:00:00.04]   Discovered:  Vke.Core.Tests
+[xUnit.net 00:00:00.05]   Starting:    Vke.Core.Tests
+[xUnit.net 00:00:00.10]       Assert.Contains() Failure: Sub-string not found
+[xUnit.net 00:00:00.10]       String:    ""
+[xUnit.net 00:00:00.10]       Not found: "Apple Inc."
+[xUnit.net 00:00:00.10]       Stack Trace:
+[xUnit.net 00:00:00.10]         /Users/vladbrincoveanu/Desktop/Startup/aiJurnalV2/tests/Vke.Core.Tests/Services/WikiGeneratorTests.cs(26,0): at Vke.Core.Tests.Services.WikiGeneratorTests.GenerateEntityPage_CreatesValidMarkdown()
+[xUnit.net 00:00:00.10]            at System.Reflection.MethodBaseInvoker.InterpretedInvoke_Method(Object obj, IntPtr* args)
+[xUnit.net 00:00:00.10]            at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
+[xUnit.net 00:00:00.11]       Assert.True() Failure
+[xUnit.net 00:00:00.11]       Expected: True
+[xUnit.net 00:00:00.11]       Actual:   False
+[xUnit.net 00:00:00.11]       Stack Trace:
+[xUnit.net 00:00:00.11]         /Users/vladbrincoveanu/Desktop/Startup/aiJurnalV2/tests/Vke.Core.Tests/Services/WikiGeneratorTests.cs(54,0): at Vke.Core.Tests.Services.WikiGeneratorTests.GenerateEntityPage_CreatesHistorySnapshot()
+[xUnit.net 00:00:00.11]            at System.Reflection.MethodBaseInvoker.InterpretedInvoke_Method(Object obj, IntPtr* args)
+[xUnit.net 00:00:00.11]            at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
+[xUnit.net 00:00:00.28]   Finished:    Vke.Core.Tests
+</StdOut>
+    </Output>
+    <RunInfos>
+      <RunInfo computerName="Mac" outcome="Error" timestamp="2026-04-06T14:46:10.2400340+02:00">
+        <Text>[xUnit.net 00:00:00.10]     Vke.Core.Tests.Services.WikiGeneratorTests.GenerateEntityPage_CreatesValidMarkdown [FAIL]</Text>
+      </RunInfo>
+      <RunInfo computerName="Mac" outcome="Error" timestamp="2026-04-06T14:46:10.2402940+02:00">
+        <Text>[xUnit.net 00:00:00.11]     Vke.Core.Tests.Services.WikiGeneratorTests.GenerateEntityPage_CreatesHistorySnapshot [FAIL]</Text>
+      </RunInfo>
+    </RunInfos>
+    <CollectorDataEntries>
+      <Collector agentName="Mac" uri="datacollector://microsoft/CoverletCodeCoverage/1.0" collectorDisplayName="XPlat code coverage">
+        <UriAttachments>
+          <UriAttachment>
+            <A href="Mac/coverage.cobertura.xml"></A>
+          </UriAttachment>
+        </UriAttachments>
+      </Collector>
+    </CollectorDataEntries>
+  </ResultSummary>
+</TestRun>

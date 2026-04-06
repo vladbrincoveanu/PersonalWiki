@@ -6,6 +6,9 @@ namespace Vke.Core.Agents;
 
 public class CorrectionAgent
 {
+    private static readonly System.Text.RegularExpressions.Regex YearPatternRegex = new(@"(19|20)\d{2}", System.Text.RegularExpressions.RegexOptions.Compiled);
+    private static readonly System.Text.RegularExpressions.Regex PeriodPatternRegex = new(@"(FY|Q[1-4])\s*202[0-9]", System.Text.RegularExpressions.RegexOptions.Compiled);
+
     private readonly VkeDbContext _db;
     private readonly IYahooFinanceClient _yahooFinance;
     private readonly SecEdgarClient? _secEdgar;
@@ -49,7 +52,7 @@ public class CorrectionAgent
         var staleClaims = _db.GetStaleClaims();
         foreach (var claim in staleClaims)
         {
-            var result = await RefreshStaleClaimAsync(claim);
+            var result = await FindCorrectValueAsync(claim);
             if (result.HasValue)
             {
                 claim.CorrectValue = result.Value.value;
@@ -97,11 +100,6 @@ public class CorrectionAgent
         return null;
     }
 
-    private async Task<(string value, string sourceUrl)?> RefreshStaleClaimAsync(Claim claim)
-    {
-        return await FindCorrectValueAsync(claim);
-    }
-
     private static (string? entity, string? metric) ParseEntityAndMetric(string statement)
     {
         var words = statement.Split(' ');
@@ -109,7 +107,7 @@ public class CorrectionAgent
         string? metric = null;
         
         var financialTerms = new[] { "revenue", "income", "profit", "loss", "price", "stock", "eps", "shares", "dividend", "ebitda", "margin" };
-        var yearPattern = System.Text.RegularExpressions.Regex.IsMatch(statement, @"(19|20)\d{2}");
+        var yearPattern = YearPatternRegex.IsMatch(statement);
         
         for (int i = 0; i < words.Length; i++)
         {
@@ -117,7 +115,7 @@ public class CorrectionAgent
             
             if (entity == null && word.Length > 1 && char.IsUpper(word[0]) && !financialTerms.Any(t => word.Equals(t, StringComparison.OrdinalIgnoreCase)))
             {
-                var containsYear = System.Text.RegularExpressions.Regex.IsMatch(word, @"(19|20)\d{2}");
+                var containsYear = YearPatternRegex.IsMatch(word);
                 if (!(yearPattern && containsYear))
                 {
                     entity = word;
@@ -142,7 +140,7 @@ public class CorrectionAgent
 
     private static string ExtractPeriod(string statement)
     {
-        var match = System.Text.RegularExpressions.Regex.Match(statement, @"(FY|Q[1-4])\s*202[0-9]");
+        var match = PeriodPatternRegex.Match(statement);
         return match.Success ? match.Value : "FY2024";
     }
 

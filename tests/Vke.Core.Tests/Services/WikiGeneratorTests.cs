@@ -18,7 +18,7 @@ public class WikiGeneratorTests
         var wikiPath = Path.Combine(Path.GetTempPath(), $"wiki_test_{Guid.NewGuid()}");
         Directory.CreateDirectory(wikiPath);
         
-        generator.GenerateEntityPage("Apple Inc.", claims, wikiPath);
+        generator.GenerateEntityPage("Apple Inc.", claims, wikiPath).GetAwaiter().GetResult();
         
         var filePath = Path.Combine(wikiPath, "entities", "apple-inc.md");
         Assert.True(File.Exists(filePath));
@@ -48,7 +48,7 @@ public class WikiGeneratorTests
         var tempPath = Path.Combine(Path.GetTempPath(), $"wiki_test_{Guid.NewGuid()}");
         Directory.CreateDirectory(tempPath);
         
-        generator.GenerateEntityPage("Apple Inc.", claims, tempPath, saveHistory: true);
+        generator.GenerateEntityPage("Apple Inc.", claims, tempPath, saveHistory: true).GetAwaiter().GetResult();
         
         var historyDir = Path.Combine(tempPath, "entities", "apple-inc");
         Assert.True(Directory.Exists(historyDir));

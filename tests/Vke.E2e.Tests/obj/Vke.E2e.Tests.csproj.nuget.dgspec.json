@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "/Users/vladbrincoveanu/Desktop/Startup/aiJurnalV2/.worktrees/code-review-fixes/tests/Vke.E2e.Tests/Vke.E2e.Tests.csproj": {}
+    "/Users/vladbrincoveanu/Desktop/Startup/aiJurnalV2/tests/Vke.E2e.Tests/Vke.E2e.Tests.csproj": {}
   },
   "projects": {
-    "/Users/vladbrincoveanu/Desktop/Startup/aiJurnalV2/.worktrees/code-review-fixes/src/Vke.Core/Vke.Core.csproj": {
+    "/Users/vladbrincoveanu/Desktop/Startup/aiJurnalV2/src/Vke.Core/Vke.Core.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "/Users/vladbrincoveanu/Desktop/Startup/aiJurnalV2/.worktrees/code-review-fixes/src/Vke.Core/Vke.Core.csproj",
+        "projectUniqueName": "/Users/vladbrincoveanu/Desktop/Startup/aiJurnalV2/src/Vke.Core/Vke.Core.csproj",
         "projectName": "Vke.Core",
-        "projectPath": "/Users/vladbrincoveanu/Desktop/Startup/aiJurnalV2/.worktrees/code-review-fixes/src/Vke.Core/Vke.Core.csproj",
+        "projectPath": "/Users/vladbrincoveanu/Desktop/Startup/aiJurnalV2/src/Vke.Core/Vke.Core.csproj",
         "packagesPath": "/Users/vladbrincoveanu/.nuget/packages/",
-        "outputPath": "/Users/vladbrincoveanu/Desktop/Startup/aiJurnalV2/.worktrees/code-review-fixes/src/Vke.Core/obj/",
+        "outputPath": "/Users/vladbrincoveanu/Desktop/Startup/aiJurnalV2/src/Vke.Core/obj/",
         "projectStyle": "PackageReference",
         "configFilePaths": [
           "/Users/vladbrincoveanu/.nuget/NuGet/NuGet.Config"
@@ -45,17 +45,17 @@
         "net10.0": {
           "targetAlias": "net10.0",
           "dependencies": {
-            "DuckDB.NET.Data": {
+            "Microsoft.Data.Sqlite": {
               "target": "Package",
-              "version": "[1.5.0, )"
+              "version": "[10.0.5, )"
             },
             "Microsoft.Extensions.DependencyInjection": {
               "target": "Package",
-              "version": "[8.0.0, )"
+              "version": "[10.0.5, )"
             },
             "Microsoft.Extensions.Http": {
               "target": "Package",
-              "version": "[8.0.0, )"
+              "version": "[10.0.5, )"
             }
           },
           "imports": [
@@ -352,14 +352,14 @@
         }
       }
     },
-    "/Users/vladbrincoveanu/Desktop/Startup/aiJurnalV2/.worktrees/code-review-fixes/tests/Vke.E2e.Tests/Vke.E2e.Tests.csproj": {
+    "/Users/vladbrincoveanu/Desktop/Startup/aiJurnalV2/tests/Vke.E2e.Tests/Vke.E2e.Tests.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "/Users/vladbrincoveanu/Desktop/Startup/aiJurnalV2/.worktrees/code-review-fixes/tests/Vke.E2e.Tests/Vke.E2e.Tests.csproj",
+        "projectUniqueName": "/Users/vladbrincoveanu/Desktop/Startup/aiJurnalV2/tests/Vke.E2e.Tests/Vke.E2e.Tests.csproj",
         "projectName": "Vke.E2e.Tests",
-        "projectPath": "/Users/vladbrincoveanu/Desktop/Startup/aiJurnalV2/.worktrees/code-review-fixes/tests/Vke.E2e.Tests/Vke.E2e.Tests.csproj",
+        "projectPath": "/Users/vladbrincoveanu/Desktop/Startup/aiJurnalV2/tests/Vke.E2e.Tests/Vke.E2e.Tests.csproj",
         "packagesPath": "/Users/vladbrincoveanu/.nuget/packages/",
-        "outputPath": "/Users/vladbrincoveanu/Desktop/Startup/aiJurnalV2/.worktrees/code-review-fixes/tests/Vke.E2e.Tests/obj/",
+        "outputPath": "/Users/vladbrincoveanu/Desktop/Startup/aiJurnalV2/tests/Vke.E2e.Tests/obj/",
         "projectStyle": "PackageReference",
         "configFilePaths": [
           "/Users/vladbrincoveanu/.nuget/NuGet/NuGet.Config"
@@ -375,8 +375,8 @@
           "net10.0": {
             "targetAlias": "net10.0",
             "projectReferences": {
-              "/Users/vladbrincoveanu/Desktop/Startup/aiJurnalV2/.worktrees/code-review-fixes/src/Vke.Core/Vke.Core.csproj": {
-                "projectPath": "/Users/vladbrincoveanu/Desktop/Startup/aiJurnalV2/.worktrees/code-review-fixes/src/Vke.Core/Vke.Core.csproj"
+              "/Users/vladbrincoveanu/Desktop/Startup/aiJurnalV2/src/Vke.Core/Vke.Core.csproj": {
+                "projectPath": "/Users/vladbrincoveanu/Desktop/Startup/aiJurnalV2/src/Vke.Core/Vke.Core.csproj"
               }
             }
           }
@@ -397,13 +397,25 @@
         "net10.0": {
           "targetAlias": "net10.0",
           "dependencies": {
+            "Microsoft.AspNetCore.Mvc.Testing": {
+              "target": "Package",
+              "version": "[10.0.5, )"
+            },
             "Microsoft.NET.Test.Sdk": {
               "target": "Package",
-              "version": "[17.14.1, )"
+              "version": "[18.3.0, )"
+            },
+            "Microsoft.Playwright": {
+              "target": "Package",
+              "version": "[1.58.0, )"
+            },
+            "Moq": {
+              "target": "Package",
+              "version": "[4.20.72, )"
             },
             "coverlet.collector": {
               "target": "Package",
-              "version": "[6.0.4, )"
+              "version": "[8.0.1, )"
             },
             "xunit": {
               "target": "Package",
@@ -411,7 +423,7 @@
             },
             "xunit.runner.visualstudio": {
               "target": "Package",
-              "version": "[3.1.4, )"
+              "version": "[3.1.5, )"
             }
           },
           "imports": [

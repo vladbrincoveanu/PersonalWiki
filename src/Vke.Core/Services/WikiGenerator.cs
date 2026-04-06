@@ -1,16 +1,17 @@
 using System.Text;
 using Vke.Core.Data.Models;
+using Vke.Core.Utils;
 
 namespace Vke.Core.Services;
 
 public class WikiGenerator
 {
-    public void GenerateEntityPage(string entityName, List<Claim> claims, string basePath, bool saveHistory = false)
+    public async Task GenerateEntityPage(string entityName, List<Claim> claims, string basePath, bool saveHistory = false)
     {
         var dir = Path.Combine(basePath, "entities");
         Directory.CreateDirectory(dir);
         
-        var fileName = ToFileName(entityName) + ".md";
+        var fileName = StringUtils.ToFileName(entityName) + ".md";
         var filePath = Path.Combine(dir, fileName);
         
         var sb = new StringBuilder();
@@ -73,14 +74,14 @@ public class WikiGenerator
         {
             sb.AppendLine("## Sources");
             foreach (var sourceId in sourceIds)
-                sb.AppendLine($"- [[sources/{ToFileName(sourceId)}.md|Source {sourceId}]]");
+                sb.AppendLine($"- [[sources/{StringUtils.ToFileName(sourceId)}.md|Source {sourceId}]]");
             sb.AppendLine();
         }
         
         var md = sb.ToString();
         try
         {
-            File.WriteAllText(filePath, md);
+            await File.WriteAllTextAsync(filePath, md);
         }
         catch (Exception ex)
         {
@@ -89,12 +90,12 @@ public class WikiGenerator
         
         if (saveHistory)
         {
-            var historyDir = Path.Combine(dir, ToFileName(entityName));
+            var historyDir = Path.Combine(dir, StringUtils.ToFileName(entityName));
             Directory.CreateDirectory(historyDir);
             var historyFile = Path.Combine(historyDir, $"{DateTime.UtcNow:yyyy-MM-dd}.md");
             try
             {
-                File.WriteAllText(historyFile, md);
+                await File.WriteAllTextAsync(historyFile, md);
             }
             catch (Exception ex)
             {
@@ -108,7 +109,7 @@ public class WikiGenerator
         var dir = Path.Combine(basePath, "sources");
         Directory.CreateDirectory(dir);
         
-        var fileName = ToFileName(source.Title ?? source.Id) + ".md";
+        var fileName = StringUtils.ToFileName(source.Title ?? source.Id) + ".md";
         var filePath = Path.Combine(dir, fileName);
         
         var sb = new StringBuilder();
@@ -154,7 +155,7 @@ public class WikiGenerator
         {
             sb.AppendLine("## Entities");
             foreach (var entity in entityNames)
-                sb.AppendLine($"- [[entities/{ToFileName(entity)}.md|{entity}]]");
+                sb.AppendLine($"- [[entities/{StringUtils.ToFileName(entity)}.md|{entity}]]");
             sb.AppendLine();
         }
         
@@ -250,13 +251,4 @@ public class WikiGenerator
         }
     }
 
-    private static string ToFileName(string text)
-    {
-        return text.ToLowerInvariant()
-            .Replace(" ", "-")
-            .Replace(".", "")
-            .Replace(",", "")
-            .Replace("'", "")
-            .Replace(":", "");
-    }
 }

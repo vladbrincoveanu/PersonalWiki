@@ -47,7 +47,7 @@ public class SecEdgarClient
         catch (Exception ex)
         {
             Console.Error.WriteLine($"Warning: Failed to load CIK cache: {ex.Message}");
-            _cikCache = new Dictionary<string, string>();
+            throw new InvalidOperationException("Failed to load SEC CIK cache. SEC filings will not be available.", ex);
         }
     }
 
@@ -93,7 +93,7 @@ public class SecEdgarClient
         catch (Exception ex)
         {
             Console.Error.WriteLine($"Warning: Failed to fetch filings for {ticker}: {ex.Message}");
-            return new List<SecFiling>();
+            throw new InvalidOperationException($"Failed to fetch SEC filings for ticker {ticker}.", ex);
         }
     }
 

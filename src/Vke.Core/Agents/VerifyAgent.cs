@@ -197,7 +197,7 @@ public class VerifyAgent
             var entityClaims = allClaims
                 .Where(c => c.Statement.Contains(entity, StringComparison.OrdinalIgnoreCase))
                 .ToList();
-            _wiki.GenerateEntityPage(entity, entityClaims, _wikiPath);
+            await _wiki.GenerateEntityPage(entity, entityClaims, _wikiPath);
         }
     }
 
