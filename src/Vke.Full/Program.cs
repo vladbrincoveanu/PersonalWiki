@@ -286,8 +286,8 @@ class Program
         if (match.Success)
         {
             var paperId = match.Groups[1].Value;
-            Console.WriteLine($"    Converted PDF to abstract: https://arxiv.org/abs/{paperId}");
-            return $"https://arxiv.org/abs/{paperId}";
+            Console.WriteLine($"    Converted PDF to HTML: https://arxiv.org/html/{paperId}");
+            return $"https://arxiv.org/html/{paperId}";
         }
         return url;
     }

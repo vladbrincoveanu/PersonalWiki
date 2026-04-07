@@ -111,9 +111,13 @@ public class IngestAgent
         }
     }
 
+    private static readonly System.Text.RegularExpressions.Regex ArxivPattern = new(
+        @"arxiv\.org/abs/(\d+\.\d+)",
+        System.Text.RegularExpressions.RegexOptions.Compiled);
+
     private static string ExtractArxivDoi(string url)
     {
-        var match = System.Text.RegularExpressions.Regex.Match(url, @"arxiv\.org/abs/(\d+\.\d+)");
+        var match = ArxivPattern.Match(url);
         if (match.Success)
             return $"10.48550/arXiv.{match.Groups[1].Value}";
         return url;

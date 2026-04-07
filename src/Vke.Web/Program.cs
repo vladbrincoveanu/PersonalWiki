@@ -15,6 +15,9 @@ Directory.CreateDirectory(Path.GetDirectoryName(dbPath)!);
 Directory.CreateDirectory(rawPath);
 Directory.CreateDirectory(wikiPath);
 
+var httpClient = new HttpClient();
+httpClient.Timeout = TimeSpan.FromMinutes(5);
+
 app.MapGet("/", () => VkeResults.Redirect("/index.html"));
 
 app.MapGet("/index.html", () => VkeResults.Html(GetHtml()));
@@ -41,17 +44,16 @@ app.MapPost("/api/ingest", async (HttpContext ctx) =>
         var model = Environment.GetEnvironmentVariable("ANTHROPIC_MODEL") ?? "MiniMax-M2.7-highspeed";
         var apiKey = Environment.GetEnvironmentVariable("ANTHROPIC_AUTH_TOKEN") ?? throw new InvalidOperationException("ANTHROPIC_AUTH_TOKEN not set");
         Console.WriteLine($"[INGEST] LLM config - baseUrl={baseUrl} model={model}");
-        using var http = new HttpClient();
-        http.Timeout = TimeSpan.FromMinutes(5);
-        var llm = new LlmClient(http, baseUrl, model, apiKey);
-        var secEdgar = new SecEdgarClient(http);
-        var semScholar = new SemanticScholarClient(http);
-        var genericUrl = new GenericUrlClient(http);
+        
+        var llm = new LlmClient(httpClient, baseUrl, model, apiKey);
+        var secEdgar = new SecEdgarClient(httpClient);
+        var semScholar = new SemanticScholarClient(httpClient);
+        var genericUrl = new GenericUrlClient(httpClient);
         Console.WriteLine("[INGEST] Clients created");
 
         var ingestAgent = new Vke.Core.Agents.IngestAgent(db, llm, secEdgar, semScholar, genericUrl);
         var wikiGen = new Vke.Core.Services.WikiGenerator();
-        var webSearch = new Vke.Core.Services.WebSearchClient(http);
+        var webSearch = new Vke.Core.Services.WebSearchClient(httpClient);
         var verifyAgent = new Vke.Core.Agents.VerifyAgent(db, llm, wikiGen, webSearch, wikiPath);
         Console.WriteLine("[INGEST] Agents created, about to call IngestAsync...");
 
@@ -70,16 +72,19 @@ app.MapPost("/api/ingest", async (HttpContext ctx) =>
             unverifiable = result.Unverifiable
         });
     }
-    catch (ArgumentException)
+    catch (ArgumentException ex)
     {
+        Console.Error.WriteLine($"[INGEST] ArgumentException: {ex.Message}");
         return VkeResults.BadRequest(new { error = "Invalid request parameters" });
     }
-    catch (InvalidOperationException)
+    catch (InvalidOperationException ex)
     {
+        Console.Error.WriteLine($"[INGEST] InvalidOperationException: {ex.Message}");
         return VkeResults.BadRequest(new { error = "Operation failed" });
     }
-    catch (Exception)
+    catch (Exception ex)
     {
+        Console.Error.WriteLine($"[INGEST] Unexpected error: {ex}");
         return VkeResults.BadRequest(new { error = "An internal error occurred. Please try again." });
     }
 });

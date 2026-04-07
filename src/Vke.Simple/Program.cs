@@ -40,14 +40,24 @@ class Program
         http.Timeout = TimeSpan.FromSeconds(30);
         
         var finalUrl = ConvertArxivPdfToAbstract(url);
-        var response = await http.GetStringAsync(finalUrl);
+        string response;
+        try {
+            response = await http.GetStringAsync(finalUrl);
+        } catch (HttpRequestException ex) when (ex.Message.Contains("404")) {
+            Console.WriteLine("HTML not available, falling back to abstract...");
+            finalUrl = url.Replace("/pdf/", "/abs/");
+            response = await http.GetStringAsync(finalUrl);
+        }
         Console.WriteLine($"Fetched {response.Length} chars from {finalUrl}");
 
         // Extract title
         var title = ExtractTitle(response) ?? "Untitled";
         Console.WriteLine($"Title: {title}");
 
-        // Strip HTML tags
+        // Keep raw content as-is for raw.md
+        var rawContent = response;
+        
+        // Strip HTML only for splitting/verification
         var content = StripHtml(response);
         Console.WriteLine($"Content length after strip: {content.Length} chars");
 
@@ -70,9 +80,9 @@ class Program
         var verifiedCount = verifiedUnits.Count(u => u.Status == VerificationStatus.Verified);
         Console.WriteLine($"Verified: {verifiedCount}/{units.Count}");
 
-        // Write raw.md
+        // Write raw.md with original content
         var rawFile = Path.Combine(rawPath, $"{sourceId}.md");
-        await WriteRawPage(rawFile, title, url, sourceType, domain, units, verifiedUnits);
+        await WriteRawPage(rawFile, title, url, sourceType, domain, rawContent, units, verifiedUnits);
         Console.WriteLine($"Raw page written: {rawFile}");
 
         // Write verified.md
@@ -94,8 +104,9 @@ class Program
         if (match.Success)
         {
             var paperId = match.Groups[1].Value;
-            Console.WriteLine($"Converted PDF URL to abstract: https://arxiv.org/abs/{paperId}");
-            return $"https://arxiv.org/abs/{paperId}";
+            // Try HTML first, fallback to abstract
+            Console.WriteLine($"Converted PDF URL to HTML: https://arxiv.org/html/{paperId}");
+            return $"https://arxiv.org/html/{paperId}";
         }
         return url;
     }
@@ -133,7 +144,7 @@ class Program
         return units;
     }
 
-    static async Task WriteRawPage(string file, string title, string url, string type, string domain, List<string> units, List<VerifiedUnit> verifiedUnits)
+    static async Task WriteRawPage(string file, string title, string url, string type, string domain, string rawContent, List<string> units, List<VerifiedUnit> verifiedUnits)
     {
         var sb = new System.Text.StringBuilder();
         sb.AppendLine($"# {title}");
@@ -143,10 +154,16 @@ class Program
         sb.AppendLine($"- **Domain:** {domain}");
         sb.AppendLine($"- **Fetched:** {DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}");
         sb.AppendLine();
-        sb.AppendLine("## Content with Verification");
+        sb.AppendLine("## Original Content");
+        sb.AppendLine();
+        sb.AppendLine("```");
+        sb.AppendLine(rawContent);
+        sb.AppendLine("```");
+        sb.AppendLine();
+        sb.AppendLine("## Verification Results");
         sb.AppendLine();
         
-        for (int i = 0; i < units.Count; i++)
+        for (int i = 0; i < units.Count && i < verifiedUnits.Count; i++)
         {
             var vu = verifiedUnits[i];
             var icon = vu.Status == VerificationStatus.Verified ? "✅" : "❓";

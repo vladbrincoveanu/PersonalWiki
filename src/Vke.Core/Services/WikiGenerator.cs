@@ -39,10 +39,10 @@ public class WikiGenerator
                 
                 var matchingClaims = claims.Where(c => 
                     trimmedPara.Contains(c.Statement, StringComparison.OrdinalIgnoreCase) ||
-                    c.Statement.Contains(trimmedPara.Substring(0, Math.Min(50, trimmedPara.Length)), StringComparison.OrdinalIgnoreCase)
+                    c.Statement.Contains(trimmedPara[..Math.Min(50, trimmedPara.Length)], StringComparison.OrdinalIgnoreCase)
                 ).ToList();
                 
-                if (matchingClaims.Any())
+                if (matchingClaims.Count != 0)
                 {
                     foreach (var claim in matchingClaims)
                     {
@@ -245,7 +245,7 @@ public class WikiGenerator
         return sb.ToString();
     }
 
-    private static string SanitizeFileName(string name)
+    public static string SanitizeFileName(string name)
     {
         var invalid = Path.GetInvalidFileNameChars();
         var sanitized = new StringBuilder();
