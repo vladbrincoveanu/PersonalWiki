@@ -109,19 +109,67 @@ public class WebSearchClient
 
 public class ContentSplitter
 {
+    private static readonly string[] NoisePrefixes = { "Toggle", "View", "Cite", "Export", "Share", "Download", "Print", "Back to", "Previous", "Next", "Skip to", "Table of Contents" };
+    private static readonly string[] NoisePatterns = { "BibTeX", "citation", "Formatted citation", "Reference", "References", "doi:", "arXiv:", "ISSN", "ISBN", "PMID:", "PMCID:" };
+    private static readonly string[] Verbs = { "is", "are", "was", "were", "be", "been", "being", "have", "has", "had", "do", "does", "did", "will", "would", "could", "should", "may", "might", "must", "shall", "can", "show", "shows", "showed", "demonstrate", "demonstrates", "demonstrated", "propose", "proposes", "proposed", "present", "presents", "presented", "describe", "describes", "described", "introduce", "introduces", "introduced", "suggest", "suggests", "suggested", "indicate", "indicates", "indicated", "reveal", "reveals", "revealed", "find", "finds", "found", "observe", "observes", "observed", "report", "reports", "reported", "provide", "provides", "provided", "offer", "offers", "offered", "develop", "develops", "developed", "create", "creates", "created", "use", "uses", "used", "apply", "applies", "applied", "achieve", "achieves", "achieved", "improve", "improves", "improved", "enable", "enables", "enabled", "reduce", "reduces", "reduced", "increase", "increases", "increased", "decrease", "decreases", "decreased", "generate", "generates", "generated", "produce", "produces", "produced", "represent", "represents", "represented", "suggest", "suggests", "suggested", "identify", "identifies", "identified", "explore", "explores", "explored", "investigate", "investigates", "investigated", "examine", "examines", "examined", "analyze", "analyzes", "analyzed", "synthesize", "synthesizes", "synthesized" };
+
     public static List<string> SplitByParagraphs(string content)
     {
         if (string.IsNullOrWhiteSpace(content))
             return new List<string>();
 
-        var paragraphs = content.Split(new[] { "\n\n", "\r\n\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries);
-        return paragraphs.Where(p => p.Trim().Length > 20).Select(p => p.Trim()).ToList();
+        var paragraphs = content.Split(new[] { "\n\n", "\r\n\r\n" }, StringSplitOptions.RemoveEmptyEntries);
+        var result = new List<string>();
+        var abstractBuilder = new System.Text.StringBuilder();
+        var inAbstract = false;
+        var abstractStarted = false;
+
+        foreach (var para in paragraphs)
+        {
+            var trimmed = para.Trim();
+            if (trimmed.Length <= 15) continue;
+
+            if (trimmed.StartsWith("Abstract", StringComparison.OrdinalIgnoreCase) && trimmed.Length < 200)
+            {
+                inAbstract = true;
+                abstractStarted = true;
+                abstractBuilder.Clear();
+                abstractBuilder.Append(trimmed);
+            }
+            else if (inAbstract && (trimmed.StartsWith("Keywords", StringComparison.OrdinalIgnoreCase) || trimmed.StartsWith("1.", StringComparison.Ordinal) || trimmed.StartsWith("Introduction", StringComparison.OrdinalIgnoreCase)))
+            {
+                var abstractText = abstractBuilder.ToString();
+                if (abstractText.Length > 30)
+                    result.Add(abstractText);
+                inAbstract = false;
+                result.Add(trimmed);
+            }
+            else if (inAbstract)
+            {
+                abstractBuilder.Append(" ").Append(trimmed);
+            }
+            else
+            {
+                result.Add(trimmed);
+            }
+        }
+
+        if (inAbstract && abstractBuilder.Length > 30)
+        {
+            result.Add(abstractBuilder.ToString());
+        }
+
+        return result;
     }
 
     public static List<string> SplitBySentences(string content)
     {
         if (string.IsNullOrWhiteSpace(content))
             return new List<string>();
+
+        var paragraphSplit = SplitByParagraphs(content);
+        if (paragraphSplit.Count > 3)
+            return FilterFragments(paragraphSplit);
 
         var sentenceEnders = new[] { '.', '!', '?' };
         var sentences = new List<string>();
@@ -142,6 +190,71 @@ public class ContentSplitter
         if (current.Trim().Length > 20)
             sentences.Add(current.Trim());
 
-        return sentences;
+        return FilterFragments(sentences);
+    }
+
+    private static List<string> FilterFragments(List<string> fragments)
+    {
+        var filtered = new List<string>();
+        var seen = new HashSet<string>();
+
+        foreach (var fragment in fragments)
+        {
+            var cleaned = CleanFragment(fragment);
+            if (string.IsNullOrWhiteSpace(cleaned)) continue;
+            if (IsNoise(cleaned)) continue;
+            if (!IsMeaningful(cleaned)) continue;
+            if (cleaned.Length < 50 && !ContainsVerb(cleaned)) continue;
+            if (seen.Contains(cleaned)) continue;
+
+            seen.Add(cleaned);
+            filtered.Add(cleaned);
+        }
+
+        return filtered;
+    }
+
+    private static string CleanFragment(string fragment)
+    {
+        var cleaned = fragment.Trim();
+        while (cleaned.Length > 0 && (char.IsPunctuation(cleaned[0]) || char.IsWhiteSpace(cleaned[0])))
+            cleaned = cleaned.Substring(1);
+        while (cleaned.Length > 0 && (char.IsPunctuation(cleaned[cleaned.Length - 1]) || char.IsWhiteSpace(cleaned[cleaned.Length - 1])))
+            cleaned = cleaned.Substring(0, cleaned.Length - 1);
+        return cleaned.Trim();
+    }
+
+    private static bool IsNoise(string fragment)
+    {
+        if (string.IsNullOrWhiteSpace(fragment) || fragment.Length < 3) return true;
+        if (NoisePrefixes.Any(p => fragment.StartsWith(p, StringComparison.OrdinalIgnoreCase))) return true;
+        if (NoisePrefixes.Any(p => fragment.Contains(p, StringComparison.OrdinalIgnoreCase))) return true;
+        if (NoisePatterns.Any(p => fragment.StartsWith(p, StringComparison.OrdinalIgnoreCase))) return true;
+        if (NoisePatterns.Any(p => fragment.Contains(p, StringComparison.OrdinalIgnoreCase))) return true;
+        if (fragment.StartsWith("[") && fragment.Contains("]") && fragment.Length < 50) return true;
+        if (fragment.StartsWith("\"") && fragment.Contains("\"")) return true;
+        if (System.Text.RegularExpressions.Regex.IsMatch(fragment, @"^\d+[\.\)]\s*$")) return true;
+        if (System.Text.RegularExpressions.Regex.IsMatch(fragment, @"^(Fig\.|Figure|Table|Eq\.|Equation)\s*\d", System.Text.RegularExpressions.RegexOptions.IgnoreCase)) return true;
+        if (System.Text.RegularExpressions.Regex.IsMatch(fragment, @"^(LG|DC)\s*[\)\d]")) return true;
+        if (fragment.Contains("|")) return true;
+        if (fragment.Contains("prev | next")) return true;
+        return false;
+    }
+
+    private static bool IsMeaningful(string fragment)
+    {
+        var words = fragment.Split(new[] { ' ', '\t', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
+        if (words.Length < 2) return false;
+
+        var alphaCount = words.Sum(w => w.Count(char.IsLetter));
+        if (alphaCount < fragment.Length * 0.5) return false;
+
+        return true;
+    }
+
+    private static bool ContainsVerb(string fragment)
+    {
+        var words = fragment.ToLowerInvariant().Split(new[] { ' ', '\t', '\n', '\r', ',', ';', ':', '(', ')', '[', ']', '"', '\'', '.', '!', '?' }, StringSplitOptions.RemoveEmptyEntries);
+        return words.Any(w => Verbs.Contains(w));
     }
 }
