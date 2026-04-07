@@ -33,9 +33,17 @@ public class GenericUrlClient
     {
         var sw = System.Diagnostics.Stopwatch.StartNew();
         Console.WriteLine($"[GenericUrlClient] FetchAsync START {url} at {DateTime.UtcNow:HH:mm:ss.fff}");
-        var response = await _http.GetStringAsync(url);
+        
+        var finalUrl = ConvertArxivPdfToAbstract(url);
+        var response = await _http.GetStringAsync(finalUrl);
         sw.Stop();
-        Console.WriteLine($"[GenericUrlClient] FetchAsync HTTP done in {sw.ElapsedMilliseconds}ms, response length={response.Length} for {url}");
+        Console.WriteLine($"[GenericUrlClient] FetchAsync HTTP done in {sw.ElapsedMilliseconds}ms, response length={response.Length} for {finalUrl}");
+        
+        if (IsBinaryContent(response))
+        {
+            Console.WriteLine($"[GenericUrlClient] Detected binary content for {finalUrl} - returning URL as content");
+            return (finalUrl, ExtractTitle(response), null, null);
+        }
         
         var title = ExtractTitle(response);
         var author = ExtractAuthor(response);
@@ -45,6 +53,27 @@ public class GenericUrlClient
         Console.WriteLine($"[GenericUrlClient] Content length after strip={content.Length}");
         
         return (content, title, author, publishedAt);
+    }
+
+    private static string ConvertArxivPdfToAbstract(string url)
+    {
+        var arxivPdfMatch = Regex.Match(url, @"arxiv\.org/pdf/(\d+\.\d+)");
+        if (arxivPdfMatch.Success)
+        {
+            var paperId = arxivPdfMatch.Groups[1].Value;
+            var abstractUrl = $"https://arxiv.org/abs/{paperId}";
+            Console.WriteLine($"[GenericUrlClient] Converted PDF URL to abstract: {abstractUrl}");
+            return abstractUrl;
+        }
+        return url;
+    }
+
+    private static bool IsBinaryContent(string content)
+    {
+        if (string.IsNullOrEmpty(content)) return false;
+        var sample = content.Length > 1000 ? content[..1000] : content;
+        var nonPrintable = sample.Count(c => char.IsControl(c) && c != '\n' && c != '\r' && c != '\t');
+        return nonPrintable > sample.Length * 0.1;
     }
 
     private static string? ExtractTitle(string html)
