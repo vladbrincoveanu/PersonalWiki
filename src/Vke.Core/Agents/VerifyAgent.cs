@@ -10,14 +10,17 @@ public class VerifyAgent
     private readonly VkeDbContext _db;
     private readonly ILlmClient _llm;
     private readonly WikiGenerator _wiki;
+    private readonly WebSearchClient _webSearch;
     private readonly string _wikiPath;
-    private const decimal VerificationThreshold = 0.5m;
+    private const decimal VerificationThreshold = 0.6m;
+    private const int MaxParallelVerifications = 5;
 
-    public VerifyAgent(VkeDbContext db, ILlmClient llm, WikiGenerator? wiki = null, string wikiPath = "vault/wiki")
+    public VerifyAgent(VkeDbContext db, ILlmClient llm, WikiGenerator? wiki = null, WebSearchClient? webSearch = null, string wikiPath = "vault/wiki")
     {
         _db = db;
         _llm = llm;
         _wiki = wiki ?? new WikiGenerator();
+        _webSearch = webSearch ?? new WebSearchClient(new HttpClient(), Environment.GetEnvironmentVariable("BRAVE_SEARCH_API_KEY"));
         _wikiPath = wikiPath;
     }
 
@@ -26,205 +29,306 @@ public class VerifyAgent
         var source = _db.GetSourceById(sourceId);
         if (source == null) throw new InvalidOperationException($"Source {sourceId} not found");
 
-        var baseTier = _db.GetBaseTier(source.SourceType);
-        var verifiedClaims = new List<Claim>();
-        var correctedClaims = new List<Claim>();
-        var falseClaims = new List<Claim>();
-        var disputedClaims = new List<Claim>();
-        var unverifiableClaims = new List<Claim>();
+        Console.WriteLine($"[VerifyAgent] Starting verification for source {sourceId}");
+        
+        await WriteRawDumpAsync(source);
+        
+        var contentUnits = ContentSplitter.SplitBySentences(source.Content ?? "");
+        Console.WriteLine($"[VerifyAgent] Split content into {contentUnits.Count} units");
 
-        foreach (var claim in claims)
+        var verifiedUnits = await VerifyUnitsInParallelAsync(contentUnits, source);
+        
+        var allClaims = claims.ToList();
+        foreach (var unit in verifiedUnits)
         {
-            var (status, score, reason, correctValue, correctSource) = 
-                await VerifyClaimAsync(claim, source);
-
-            claim.Id = IdGenerator.GenerateClaimId(claim.Normalized, sourceId);
-            claim.Status = status;
-            claim.VerificationScore = score;
-            claim.SourceId = sourceId;
-            claim.Domain = source.Domain;
-            claim.Tier = baseTier;
-            claim.LastVerified = DateTime.UtcNow;
-            claim.IndependentSourceCount = 1;
-
-            switch (status)
+            if (!string.IsNullOrEmpty(unit.Statement))
             {
-                case VerificationStatus.Verified:
-                    claim.Tier = baseTier;
-                    verifiedClaims.Add(claim);
-                    break;
-                    
-                case VerificationStatus.Corrected:
-                    claim.WrongReason = reason;
-                    claim.CorrectValue = correctValue;
-                    claim.CorrectSource = correctSource;
-                    correctedClaims.Add(claim);
-                    break;
-                    
-                case VerificationStatus.False:
-                    claim.WrongReason = reason;
-                    claim.CorrectValue = correctValue;
-                    claim.CorrectSource = correctSource;
-                    claim.Tier = 4;
-                    falseClaims.Add(claim);
-                    break;
-                    
-                case VerificationStatus.Disputed:
-                    claim.WrongReason = reason;
-                    claim.Tier = 4;
-                    disputedClaims.Add(claim);
-                    break;
-                    
-                case VerificationStatus.Unverifiable:
-                    claim.WrongReason = reason;
-                    claim.Tier = 4;
-                    claim.StaleAfter = DateTime.UtcNow.AddDays(30);
-                    unverifiableClaims.Add(claim);
-                    break;
+                allClaims.Add(new Claim
+                {
+                    Statement = unit.Statement,
+                    Status = unit.Status,
+                    VerificationScore = unit.Confidence,
+                    PrimarySourceUrl = unit.SourceUrl,
+                    Normalized = unit.Statement.ToLowerInvariant().Trim()
+                });
             }
-
-            _db.InsertClaim(claim);
-            _db.InsertEdge(new Edge
-            {
-                SourceNode = sourceId,
-                TargetNode = claim.Id,
-                Relation = "source_asserts_claim",
-                CreatedBy = "verify_agent",
-            });
-
-            if (status == VerificationStatus.Verified || status == VerificationStatus.Corrected)
-                _db.UpdateIndependenceScores(claim.Id);
         }
 
-        await WriteAnnotatedRawAsync(source, claims);
+        await WriteAnnotatedRawAsync(source, allClaims, verifiedUnits);
+        await WriteVerifiedPageAsync(source, verifiedUnits);
 
-        if (verifiedClaims.Any() || correctedClaims.Any())
-            await WriteToWikiAsync(source, verifiedClaims, correctedClaims);
-
-        _wiki.GenerateAlertsPage(
-            cycles: _db.DetectCycles(),
-            contradictions: _db.FindContradictions().Select(c => $"{c.claim1Id} vs {c.claim2Id}").ToList(),
-            pendingReviews: disputedClaims.Select(c => c.Id).ToList(),
-            staleClaims: _db.GetStaleClaims().Select(c => c.Id).ToList(),
-            basePath: _wikiPath
-        );
+        var verified = allClaims.Where(c => c.Status == VerificationStatus.Verified && c.VerificationScore >= 0.6m).ToList();
+        var unverifiable = allClaims.Where(c => c.Status == VerificationStatus.Unverifiable).ToList();
 
         return new VerifyResult
         {
-            Verified = verifiedClaims.Count,
-            Corrected = correctedClaims.Count,
-            False = falseClaims.Count,
-            Disputed = disputedClaims.Count,
-            Unverifiable = unverifiableClaims.Count,
+            Verified = verified.Count,
+            Corrected = 0,
+            False = allClaims.Count - verified.Count - unverifiable.Count,
+            Disputed = 0,
+            Unverifiable = unverifiable.Count
         };
     }
 
-    private async Task<(VerificationStatus status, decimal score, string? reason, string? correctValue, string? correctSource)> 
-        VerifyClaimAsync(Claim claim, Source source)
+    private async Task<List<VerifiedUnit>> VerifyUnitsInParallelAsync(List<string> units, Source source)
     {
-        var existingClaim = _db.FindClaimByNormalized(claim.Normalized);
+        var results = new List<VerifiedUnit>();
+        var semaphore = new SemaphoreSlim(MaxParallelVerifications);
         
-        if (existingClaim != null && (existingClaim.Status == VerificationStatus.Verified || existingClaim.Status == VerificationStatus.Corrected))
+        var tasks = units.Select(async unit =>
         {
-            var score = await _llm.VerifyClaimAsync(claim.Statement, existingClaim.Statement);
-            
-            if (score >= 0.8m)
-                return (VerificationStatus.Verified, score, null, null, null);
-            else if (score >= 0.5m)
-                return (VerificationStatus.Disputed, score, "Claim contradicts established ground truth", existingClaim.CorrectValue ?? existingClaim.Statement, existingClaim.Id);
-            else
-                return (VerificationStatus.False, score, "Claim contradicts ground truth", null, existingClaim.Id);
-        }
+            await semaphore.WaitAsync();
+            try
+            {
+                return await VerifyUnitAsync(unit, source);
+            }
+            finally
+            {
+                semaphore.Release();
+            }
+        });
 
-        var sourceScore = await _llm.VerifyClaimAsync(claim.Statement, source.Content ?? source.Url);
-        
-        if (sourceScore >= 0.8m)
-            return (VerificationStatus.Verified, sourceScore, null, null, null);
-        else if (sourceScore >= 0.5m)
-            return (VerificationStatus.Unverifiable, sourceScore, "Cannot confirm against source", null, null);
-        else
-            return (VerificationStatus.False, sourceScore, "Claim does not match source document", null, null);
+        var unitResults = await Task.WhenAll(tasks);
+        return unitResults.Where(r => r != null).ToList()!;
     }
 
-    private async Task WriteAnnotatedRawAsync(Source source, List<Claim> claims)
+    private async Task<VerifiedUnit?> VerifyUnitAsync(string unit, Source source)
     {
-        var content = source.Content ?? "";
-        var falseOrDisputed = claims.Where(c => c.Status == VerificationStatus.False || c.Status == VerificationStatus.Disputed).ToList();
+        Console.WriteLine($"[VerifyAgent] Verifying unit: {unit.Substring(0, Math.Min(50, unit.Length))}...");
         
-        foreach (var claim in falseOrDisputed)
+        var verifiedUnit = new VerifiedUnit { Statement = unit };
+
+        var searchQuery = ExtractKeyFacts(unit);
+        var searchResults = await _webSearch.SearchAsync(searchQuery);
+        
+        if (searchResults.Any(r => !string.IsNullOrEmpty(r.Url)))
         {
-            var annotation = new VerificationAnnotation(
-                claim.Status,
-                claim.WrongReason ?? "Verification failed",
-                claim.CorrectValue,
-                claim.CorrectSource
-            );
-            content = InlineAnnotation.Annotate(content, claim.Statement, annotation);
+            var bestResult = searchResults.OrderByDescending(r => r.Confidence).First();
+            verifiedUnit.SourceUrl = bestResult.Url;
+            verifiedUnit.SourceTitle = bestResult.Title;
+            verifiedUnit.SourceSnippet = bestResult.Snippet;
+            
+            var llmScore = await _llm.VerifyClaimAsync(unit, bestResult.Snippet + " " + source.Content);
+            verifiedUnit.Confidence = (llmScore + bestResult.Confidence) / 2;
+            
+            if (verifiedUnit.Confidence >= 0.6m)
+            {
+                verifiedUnit.Status = VerificationStatus.Verified;
+            }
+            else if (verifiedUnit.Confidence >= 0.4m)
+            {
+                verifiedUnit.Status = VerificationStatus.Unverifiable;
+            }
+            else
+            {
+                verifiedUnit.Status = VerificationStatus.False;
+            }
+        }
+        else
+        {
+            var sourceScore = await _llm.VerifyClaimAsync(unit, source.Content ?? source.Url);
+            verifiedUnit.Confidence = sourceScore;
+            verifiedUnit.Status = sourceScore >= 0.6m ? VerificationStatus.Verified : VerificationStatus.Unverifiable;
+            verifiedUnit.SourceUrl = source.Url;
+            verifiedUnit.SourceTitle = source.Title;
         }
 
-        var rawPath = Path.Combine(_wikiPath, "..", "raw", $"{source.Id}.md");
-        Directory.CreateDirectory(Path.GetDirectoryName(rawPath)!);
-        await File.WriteAllTextAsync(rawPath, content);
+        Console.WriteLine($"[VerifyAgent] Unit verified: confidence={verifiedUnit.Confidence:P0} status={verifiedUnit.Status}");
+        return verifiedUnit;
+    }
 
-        var metaPath = Path.Combine(_wikiPath, "..", "raw", $"{source.Id}.meta.json");
+    private string ExtractKeyFacts(string text)
+    {
+        var important = text
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .Where(w => w.Length > 4 && !IsCommonWord(w))
+            .Take(10)
+            .ToArray();
+        return string.Join(" ", important);
+    }
+
+    private bool IsCommonWord(string word)
+    {
+        var common = new[] { "that", "this", "with", "from", "have", "were", "been", "they", "their", "would", "could", "should", "about", "which", "there", "where", "when", "what", "who", "whom" };
+        return common.Contains(word.ToLowerInvariant());
+    }
+
+    private async Task WriteRawDumpAsync(Source source)
+    {
+        var rawPath = Path.Combine(_wikiPath, "raw");
+        Directory.CreateDirectory(rawPath);
+        
+        var filePath = Path.Combine(rawPath, $"{source.Id}.md");
+        var sb = new System.Text.StringBuilder();
+        
+        sb.AppendLine($"# {source.Title ?? source.Id}");
+        sb.AppendLine();
+        sb.AppendLine($"- **URL:** [{source.Url}]({source.Url})");
+        sb.AppendLine($"- **Type:** {source.SourceType}");
+        sb.AppendLine($"- **Author:** {source.Author ?? "Unknown"}");
+        sb.AppendLine($"- **Published:** {source.PublishedAt?.ToString() ?? "Unknown"}");
+        sb.AppendLine($"- **Domain:** {source.Domain}");
+        sb.AppendLine($"- **Fetched:** {source.FetchedAt:yyyy-MM-dd HH:mm:ss}");
+        sb.AppendLine();
+        sb.AppendLine("## Content");
+        sb.AppendLine();
+        sb.AppendLine(source.Content ?? "_No content available_");
+        
+        await File.WriteAllTextAsync(filePath, sb.ToString());
+        Console.WriteLine($"[VerifyAgent] Raw dump written to {filePath}");
+    }
+
+    private async Task WriteAnnotatedRawAsync(Source source, List<Claim> claims, List<VerifiedUnit> verifiedUnits)
+    {
+        var rawPath = Path.Combine(_wikiPath, "raw");
+        Directory.CreateDirectory(rawPath);
+        
+        var filePath = Path.Combine(rawPath, $"{source.Id}.md");
+        var sb = new System.Text.StringBuilder();
+        
+        sb.AppendLine($"# {source.Title ?? source.Id}");
+        sb.AppendLine();
+        sb.AppendLine($"- **URL:** [{source.Url}]({source.Url})");
+        sb.AppendLine($"- **Type:** {source.SourceType}");
+        sb.AppendLine($"- **Author:** {source.Author ?? "Unknown"}");
+        sb.AppendLine($"- **Published:** {source.PublishedAt?.ToString() ?? "Unknown"}");
+        sb.AppendLine($"- **Domain:** {source.Domain}");
+        sb.AppendLine($"- **Fetched:** {source.FetchedAt:yyyy-MM-dd HH:mm:ss}");
+        sb.AppendLine();
+        sb.AppendLine("## Content with Verification");
+        sb.AppendLine();
+        
+        foreach (var unit in verifiedUnits)
+        {
+            var callout = GetCalloutForUnit(unit);
+            sb.AppendLine(callout);
+            sb.AppendLine();
+        }
+        
+        await File.WriteAllTextAsync(filePath, sb.ToString());
+        
+        var metaPath = Path.Combine(rawPath, $"{source.Id}.meta.json");
         var meta = new
         {
             source.Id,
             source.Url,
             source.Title,
             source.SourceType,
-            source.Author,
-            source.FetchedAt,
-            claims = claims.Select(c => new { c.Id, c.Statement, c.Status, c.WrongReason, c.CorrectValue })
+            Author = source.Author,
+            FetchedAt = source.FetchedAt,
+            VerifiedAt = DateTime.UtcNow,
+            TotalUnits = verifiedUnits.Count,
+            VerifiedCount = verifiedUnits.Count(u => u.Status == VerificationStatus.Verified),
+            UnverifiableCount = verifiedUnits.Count(u => u.Status == VerificationStatus.Unverifiable)
         };
         await File.WriteAllTextAsync(metaPath, System.Text.Json.JsonSerializer.Serialize(meta, new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
+        
+        Console.WriteLine($"[VerifyAgent] Annotated raw page written");
     }
 
-    private async Task WriteToWikiAsync(Source source, List<Claim> verified, List<Claim> corrected)
+    private async Task WriteVerifiedPageAsync(Source source, List<VerifiedUnit> verifiedUnits)
     {
-        var allClaims = verified.Concat(corrected).ToList();
-        if (allClaims.Count == 0) return;
-
-        _wiki.GenerateSourcePage(source, allClaims, _wikiPath);
-
-        var entities = allClaims
-            .SelectMany(c => ExtractEntities(c.Statement))
-            .Distinct()
-            .ToList();
-
-        foreach (var entity in entities)
+        var verifiedPath = Path.Combine(_wikiPath, "verified");
+        Directory.CreateDirectory(verifiedPath);
+        
+        var fileName = SanitizeFileName(source.Title ?? source.Id) + ".md";
+        var filePath = Path.Combine(verifiedPath, fileName);
+        
+        var highConfidenceUnits = verifiedUnits.Where(u => u.Status == VerificationStatus.Verified && u.Confidence >= 0.6m).ToList();
+        
+        if (highConfidenceUnits.Count == 0)
         {
-            var entityClaims = allClaims
-                .Where(c => c.Statement.Contains(entity, StringComparison.OrdinalIgnoreCase))
-                .ToList();
-            await _wiki.GenerateEntityPage(entity, entityClaims, _wikiPath);
+            Console.WriteLine("[VerifyAgent] No verified claims to write");
+            return;
         }
+        
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine($"# Verified Claims: {source.Title ?? source.Id}");
+        sb.AppendLine();
+        sb.AppendLine($"**Source:** [{source.Url}]({source.Url})");
+        sb.AppendLine($"**Verified:** {DateTime.UtcNow:yyyy-MM-dd}");
+        sb.AppendLine($"**Total Claims:** {highConfidenceUnits.Count}");
+        sb.AppendLine();
+        sb.AppendLine("---");
+        sb.AppendLine();
+        
+        foreach (var unit in highConfidenceUnits)
+        {
+            sb.AppendLine($"## Claim");
+            sb.AppendLine();
+            sb.AppendLine($"**Statement:** {unit.Statement}");
+            sb.AppendLine();
+            sb.AppendLine($"**Confidence:** {unit.Confidence:P0}");
+            sb.AppendLine();
+            
+            if (!string.IsNullOrEmpty(unit.SourceUrl))
+            {
+                sb.AppendLine("**Sources:**");
+                sb.AppendLine($"- [{unit.SourceTitle ?? unit.SourceUrl}]({unit.SourceUrl})");
+                sb.AppendLine();
+            }
+            
+            if (!string.IsNullOrEmpty(unit.SourceSnippet))
+            {
+                sb.AppendLine("**Supporting Evidence:**");
+                sb.AppendLine($"> {unit.SourceSnippet}");
+                sb.AppendLine();
+            }
+            
+            sb.AppendLine("---");
+            sb.AppendLine();
+        }
+        
+        await File.WriteAllTextAsync(filePath, sb.ToString());
+        Console.WriteLine($"[VerifyAgent] Verified page written with {highConfidenceUnits.Count} claims");
     }
 
-    private static List<string> ExtractEntities(string statement)
+    private string GetCalloutForUnit(VerifiedUnit unit)
     {
-        var entities = new List<string>();
-        var words = statement.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        var current = "";
-        foreach (var word in words)
+        var (status, icon, color) = unit.Status switch
         {
-            if (word.Length > 2 && char.IsUpper(word[0]))
-            {
-                if (!string.IsNullOrEmpty(current) && current.Length > 2)
-                    entities.Add(current);
-                current = word.Trim(',', '.', ':');
-            }
-            else
-            {
-                if (!string.IsNullOrEmpty(current))
-                    entities.Add(current);
-                current = "";
-            }
+            VerificationStatus.Verified when unit.Confidence >= 0.8m => ("VERIFIED", "✅", "green"),
+            VerificationStatus.Verified when unit.Confidence >= 0.6m => ("LIKELY_TRUE", "⚠️", "yellow"),
+            VerificationStatus.Unverifiable => ("UNVERIFIED", "❓", "yellow"),
+            VerificationStatus.False => ("FALSE", "❌", "red"),
+            _ => ("UNKNOWN", "⚪", "gray")
+        };
+
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine($"> [!{status}]");
+        sb.AppendLine($"> {icon} {unit.Statement}");
+        sb.AppendLine($">");
+        sb.AppendLine($"> _Confidence: {unit.Confidence:P0}_");
+        
+        if (!string.IsNullOrEmpty(unit.SourceUrl))
+        {
+            sb.AppendLine($">");
+            sb.AppendLine($"> _Source: [{unit.SourceTitle ?? "link"}]({unit.SourceUrl})_");
         }
-        if (!string.IsNullOrEmpty(current) && current.Length > 2)
-            entities.Add(current);
-        return entities.Distinct().ToList();
+        
+        return sb.ToString();
     }
+
+    private string SanitizeFileName(string name)
+    {
+        var invalid = Path.GetInvalidFileNameChars();
+        var sanitized = new System.Text.StringBuilder();
+        foreach (var c in name)
+        {
+            sanitized.Append(invalid.Contains(c) ? '_' : c);
+        }
+        return sanitized.ToString();
+    }
+}
+
+public class VerifiedUnit
+{
+    public string Statement { get; set; } = "";
+    public VerificationStatus Status { get; set; } = VerificationStatus.Unverified;
+    public decimal Confidence { get; set; } = 0.5m;
+    public string? SourceUrl { get; set; }
+    public string? SourceTitle { get; set; }
+    public string? SourceSnippet { get; set; }
 }
 
 public class VerifyResult

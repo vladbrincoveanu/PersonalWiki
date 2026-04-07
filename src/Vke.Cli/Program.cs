@@ -38,7 +38,7 @@ services.AddHttpClient("api", client =>
 var serviceProvider = services.BuildServiceProvider();
 var httpClientFactory = serviceProvider.GetRequiredService<IHttpClientFactory>();
 
-var llm = new LlmClient(httpClientFactory.CreateClient("api"), baseUrl, model);
+var llm = new LlmClient(httpClientFactory.CreateClient("api"), baseUrl, model, apiKey);
 var secEdgar = new SecEdgarClient(httpClientFactory.CreateClient("api"));
 var semScholar = new SemanticScholarClient(httpClientFactory.CreateClient("api"));
 var wikiGen = new WikiGenerator();
@@ -82,7 +82,7 @@ switch (command)
         Console.WriteLine($"Extracted {claims.Count} claims, verifying with LLM...");
         
         var wikiPath = args.GetValue("--wiki") ?? Path.Combine(vaultBase, "wiki");
-        var verifyAgent = new VerifyAgent(db, llm, wikiGen, wikiPath);
+        var verifyAgent = new VerifyAgent(db, llm, wikiGen, null, wikiPath);
         var result = await verifyAgent.VerifyAndStoreAsync(sourceId, claims);
         
         Console.WriteLine($"Source ID: {sourceId}");
