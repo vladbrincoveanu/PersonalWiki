@@ -55,7 +55,7 @@ class Program
         Console.WriteLine($"Title: {title}");
 
         // Keep raw content as-is for raw.md
-        var rawContent = response;
+        var rawContent = HtmlToMarkdown(response);
         
         // Strip HTML only for splitting/verification
         var content = StripHtml(response);
@@ -124,6 +124,67 @@ class Program
         text = Regex.Replace(text, "<[^>]+>", " ");
         text = System.Net.WebUtility.HtmlDecode(text);
         text = Regex.Replace(text, @"\s+", " ").Trim();
+        return text;
+    }
+
+    static string HtmlToMarkdown(string html)
+    {
+        // Remove scripts and styles
+        var text = Regex.Replace(html, "<script[^>]*>.*?</script>", "", RegexOptions.Singleline | RegexOptions.IgnoreCase);
+        text = Regex.Replace(text, "<style[^>]*>.*?</style>", "", RegexOptions.Singleline | RegexOptions.IgnoreCase);
+        
+        // Convert headers
+        text = Regex.Replace(text, "<h1[^>]*>(.*?)</h1>", "# $1\n\n", RegexOptions.Singleline | RegexOptions.IgnoreCase);
+        text = Regex.Replace(text, "<h2[^>]*>(.*?)</h2>", "## $1\n\n", RegexOptions.Singleline | RegexOptions.IgnoreCase);
+        text = Regex.Replace(text, "<h3[^>]*>(.*?)</h3>", "### $1\n\n", RegexOptions.Singleline | RegexOptions.IgnoreCase);
+        text = Regex.Replace(text, "<h4[^>]*>(.*?)</h4>", "#### $1\n\n", RegexOptions.Singleline | RegexOptions.IgnoreCase);
+        
+        // Convert bold/strong
+        text = Regex.Replace(text, "<strong[^>]*>(.*?)</strong>", "**$1**", RegexOptions.Singleline | RegexOptions.IgnoreCase);
+        text = Regex.Replace(text, "<b[^>]*>(.*?)</b>", "**$1**", RegexOptions.Singleline | RegexOptions.IgnoreCase);
+        
+        // Convert emphasis
+        text = Regex.Replace(text, "<em[^>]*>(.*?)</em>", "*$1*", RegexOptions.Singleline | RegexOptions.IgnoreCase);
+        text = Regex.Replace(text, "<i[^>]*>(.*?)</i>", "*$1*", RegexOptions.Singleline | RegexOptions.IgnoreCase);
+        
+        // Convert paragraphs to double newlines
+        text = Regex.Replace(text, "<p[^>]*>", "\n\n", RegexOptions.Singleline | RegexOptions.IgnoreCase);
+        text = Regex.Replace(text, "</p>", "", RegexOptions.Singleline | RegexOptions.IgnoreCase);
+        
+        // Convert line breaks
+        text = Regex.Replace(text, "<br[^>]*>", "\n", RegexOptions.Singleline | RegexOptions.IgnoreCase);
+        
+        // Convert links
+        text = Regex.Replace(text, "<a[^>]*href=\"([^\"]+)\"[^>]*>(.*?)</a>", "[$2]($1)", RegexOptions.Singleline | RegexOptions.IgnoreCase);
+        
+        // Convert lists
+        text = Regex.Replace(text, "<li[^>]*>", "- ", RegexOptions.Singleline | RegexOptions.IgnoreCase);
+        text = Regex.Replace(text, "</li>", "\n", RegexOptions.Singleline | RegexOptions.IgnoreCase);
+        text = Regex.Replace(text, "<ul[^>]*>", "\n", RegexOptions.Singleline | RegexOptions.IgnoreCase);
+        text = Regex.Replace(text, "</ul>", "\n", RegexOptions.Singleline | RegexOptions.IgnoreCase);
+        text = Regex.Replace(text, "<ol[^>]*>", "\n", RegexOptions.Singleline | RegexOptions.IgnoreCase);
+        text = Regex.Replace(text, "</ol>", "\n", RegexOptions.Singleline | RegexOptions.IgnoreCase);
+        
+        // Convert blockquotes to Obsidian callouts
+        text = Regex.Replace(text, "<blockquote[^>]*>", "> ", RegexOptions.Singleline | RegexOptions.IgnoreCase);
+        text = Regex.Replace(text, "</blockquote>", "\n", RegexOptions.Singleline | RegexOptions.IgnoreCase);
+        
+        // Convert divs
+        text = Regex.Replace(text, "<div[^>]*>", "\n", RegexOptions.Singleline | RegexOptions.IgnoreCase);
+        text = Regex.Replace(text, "</div>", "\n", RegexOptions.Singleline | RegexOptions.IgnoreCase);
+        
+        // Remove remaining HTML tags
+        text = Regex.Replace(text, "<[^>]+>", "");
+        
+        // Decode HTML entities
+        text = System.Net.WebUtility.HtmlDecode(text);
+        
+        // Clean up whitespace
+        text = Regex.Replace(text, @"\n\s*\n\s*\n+", "\n\n\n");
+        text = Regex.Replace(text, @"[ \t]+", " ");
+        text = Regex.Replace(text, @"\n\s+", "\n");
+        text = text.Trim();
+        
         return text;
     }
 
