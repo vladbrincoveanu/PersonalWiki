@@ -18,6 +18,7 @@ public class Claim
     public string? WrongReason { get; set; }
     public string? CorrectValue { get; set; }
     public string? CorrectSource { get; set; }
+    public string? PrimarySourceUrl { get; set; }
     
     public int Tier { get; set; } = 4;
     public int IndependentSourceCount { get; set; }

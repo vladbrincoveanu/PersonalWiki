@@ -86,7 +86,7 @@ public class FullPipelineTests : IDisposable
         };
         
         var wikiPath = Path.Combine(_testVaultPath, "wiki");
-        var verifyAgent = new VerifyAgent(db, mockLlm.Object, null, wikiPath);
+        var verifyAgent = new VerifyAgent(db, mockLlm.Object, null, null, wikiPath);
         var result = await verifyAgent.VerifyAndStoreAsync("news-1", new List<Claim> { newsClaim });
         
         Assert.Equal(1, result.False);

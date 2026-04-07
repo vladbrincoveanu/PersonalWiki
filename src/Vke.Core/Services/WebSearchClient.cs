@@ -42,10 +42,18 @@ public class WebSearchClient
                 var json = await response.Content.ReadAsStringAsync();
                 results = ParseBraveSearch(json, maxResults);
             }
+            else
+            {
+                Console.Error.WriteLine($"[WebSearchClient] Search request failed with status {response.StatusCode}");
+            }
         }
-        catch (Exception ex)
+        catch (HttpRequestException ex)
         {
-            Console.WriteLine($"[WebSearchClient] Search failed: {ex.Message}");
+            Console.Error.WriteLine($"[WebSearchClient] HTTP request failed: {ex.Message}");
+        }
+        catch (TaskCanceledException ex)
+        {
+            Console.Error.WriteLine($"[WebSearchClient] Search request timed out: {ex.Message}");
         }
 
         if (results.Count == 0)
@@ -122,7 +130,6 @@ public class ContentSplitter
         var result = new List<string>();
         var abstractBuilder = new System.Text.StringBuilder();
         var inAbstract = false;
-        var abstractStarted = false;
 
         foreach (var para in paragraphs)
         {
@@ -132,7 +139,6 @@ public class ContentSplitter
             if (trimmed.StartsWith("Abstract", StringComparison.OrdinalIgnoreCase) && trimmed.Length < 200)
             {
                 inAbstract = true;
-                abstractStarted = true;
                 abstractBuilder.Clear();
                 abstractBuilder.Append(trimmed);
             }
@@ -173,22 +179,22 @@ public class ContentSplitter
 
         var sentenceEnders = new[] { '.', '!', '?' };
         var sentences = new List<string>();
-        var current = "";
+        var current = new System.Text.StringBuilder();
 
         foreach (var c in content)
         {
-            current += c;
+            current.Append(c);
             if (sentenceEnders.Contains(c))
             {
-                var trimmed = current.Trim();
+                var trimmed = current.ToString().Trim();
                 if (trimmed.Length > 20)
                     sentences.Add(trimmed);
-                current = "";
+                current.Clear();
             }
         }
 
-        if (current.Trim().Length > 20)
-            sentences.Add(current.Trim());
+        if (current.Length > 20)
+            sentences.Add(current.ToString().Trim());
 
         return FilterFragments(sentences);
     }
@@ -224,6 +230,10 @@ public class ContentSplitter
         return cleaned.Trim();
     }
 
+    private static readonly System.Text.RegularExpressions.Regex NumberedPatternRegex = new(@"^\d+[\.\)]\s*$");
+    private static readonly System.Text.RegularExpressions.Regex FigurePatternRegex = new(@"^(Fig\.|Figure|Table|Eq\.|Equation)\s*\d", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+    private static readonly System.Text.RegularExpressions.Regex LgDcPatternRegex = new(@"^(LG|DC)\s*[\)\d]");
+
     private static bool IsNoise(string fragment)
     {
         if (string.IsNullOrWhiteSpace(fragment) || fragment.Length < 3) return true;
@@ -233,9 +243,9 @@ public class ContentSplitter
         if (NoisePatterns.Any(p => fragment.Contains(p, StringComparison.OrdinalIgnoreCase))) return true;
         if (fragment.StartsWith("[") && fragment.Contains("]") && fragment.Length < 50) return true;
         if (fragment.StartsWith("\"") && fragment.Contains("\"")) return true;
-        if (System.Text.RegularExpressions.Regex.IsMatch(fragment, @"^\d+[\.\)]\s*$")) return true;
-        if (System.Text.RegularExpressions.Regex.IsMatch(fragment, @"^(Fig\.|Figure|Table|Eq\.|Equation)\s*\d", System.Text.RegularExpressions.RegexOptions.IgnoreCase)) return true;
-        if (System.Text.RegularExpressions.Regex.IsMatch(fragment, @"^(LG|DC)\s*[\)\d]")) return true;
+        if (NumberedPatternRegex.IsMatch(fragment)) return true;
+        if (FigurePatternRegex.IsMatch(fragment)) return true;
+        if (LgDcPatternRegex.IsMatch(fragment)) return true;
         if (fragment.Contains("|")) return true;
         if (fragment.Contains("prev | next")) return true;
         return false;

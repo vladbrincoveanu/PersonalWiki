@@ -20,7 +20,7 @@ public class VerifyAgent
         _db = db;
         _llm = llm;
         _wiki = wiki ?? new WikiGenerator();
-        _webSearch = webSearch ?? new WebSearchClient(new HttpClient(), Environment.GetEnvironmentVariable("BRAVE_SEARCH_API_KEY"));
+        _webSearch = webSearch ?? throw new ArgumentNullException(nameof(webSearch), "WebSearchClient is required. Pass an existing instance or provide a shared HttpClient.");
         _wikiPath = wikiPath;
     }
 
@@ -89,7 +89,7 @@ public class VerifyAgent
         });
 
         var unitResults = await Task.WhenAll(tasks);
-        return unitResults.Where(r => r != null).ToList()!;
+        return unitResults.Where(r => r != null).Cast<VerifiedUnit>().ToList();
     }
 
     private async Task<VerifiedUnit?> VerifyUnitAsync(string unit, Source source)
@@ -126,7 +126,8 @@ public class VerifyAgent
         }
         else
         {
-            var sourceScore = await _llm.VerifyClaimAsync(unit, source.Content ?? source.Url);
+            var fallbackContent = source.Content ?? source.Url ?? unit;
+            var sourceScore = await _llm.VerifyClaimAsync(unit, fallbackContent);
             verifiedUnit.Confidence = sourceScore;
             verifiedUnit.Status = sourceScore >= 0.6m ? VerificationStatus.Verified : VerificationStatus.Unverifiable;
             verifiedUnit.SourceUrl = source.Url;
@@ -309,16 +310,7 @@ public class VerifyAgent
         return sb.ToString();
     }
 
-    private string SanitizeFileName(string name)
-    {
-        var invalid = Path.GetInvalidFileNameChars();
-        var sanitized = new System.Text.StringBuilder();
-        foreach (var c in name)
-        {
-            sanitized.Append(invalid.Contains(c) ? '_' : c);
-        }
-        return sanitized.ToString();
-    }
+    private string SanitizeFileName(string name) => WikiGenerator.SanitizeFileName(name);
 }
 
 public class VerifiedUnit

@@ -17,12 +17,14 @@ public class ValidationTests
         var http = new HttpClient();
         http.DefaultRequestHeaders.Add("x-api-key", Environment.GetEnvironmentVariable("ANTHROPIC_AUTH_TOKEN") ?? "");
         http.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", Environment.GetEnvironmentVariable("ANTHROPIC_AUTH_TOKEN") ?? "");
-        var llm = new Vke.Core.Services.LlmClient(http, "https://api.minimax.io/anthropic", "MiniMax-M2.7");
+        var apiKey = Environment.GetEnvironmentVariable("ANTHROPIC_AUTH_TOKEN") ?? "";
+        var llm = new Vke.Core.Services.LlmClient(http, "https://api.minimax.io/anthropic", "MiniMax-M2.7", apiKey);
         var secEdgar = new Vke.Core.Services.SecEdgarClient(http);
         var semScholar = new Vke.Core.Services.SemanticScholarClient(http);
+        var webSearch = new Vke.Core.Services.WebSearchClient(http);
         
         var ingestAgent = new Vke.Core.Agents.IngestAgent(db, llm, secEdgar, semScholar, null);
-        var verifyAgent = new Vke.Core.Agents.VerifyAgent(db, llm);
+        var verifyAgent = new Vke.Core.Agents.VerifyAgent(db, llm, null, webSearch, Path.Combine(Path.GetTempPath(), "wiki"));
         
         var (secId, secClaims) = await ingestAgent.IngestAsync(
             "https://www.sec.gov/Archives/edgar/data/320193/0000320193-24-000012.txt", "sec_10k", "financial");

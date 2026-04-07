@@ -30,24 +30,35 @@ app.MapPost("/api/ingest", async (HttpContext ctx) =>
 
     try
     {
+        Console.WriteLine($"[INGEST] Starting - url={body.Url} type={sourceType} domain={domain}");
+        
         using var db = new VkeDbContext(dbPath);
+        Console.WriteLine("[INGEST] VkeDbContext created");
         db.InitializeDatabase();
+        Console.WriteLine("[INGEST] Database initialized");
 
         var baseUrl = Environment.GetEnvironmentVariable("ANTHROPIC_BASE_URL") ?? "https://api.minimax.io/anthropic";
         var model = Environment.GetEnvironmentVariable("ANTHROPIC_MODEL") ?? "MiniMax-M2.7-highspeed";
+        var apiKey = Environment.GetEnvironmentVariable("ANTHROPIC_AUTH_TOKEN") ?? throw new InvalidOperationException("ANTHROPIC_AUTH_TOKEN not set");
+        Console.WriteLine($"[INGEST] LLM config - baseUrl={baseUrl} model={model}");
         using var http = new HttpClient();
         http.Timeout = TimeSpan.FromMinutes(5);
-        var llm = new LlmClient(http, baseUrl, model);
+        var llm = new LlmClient(http, baseUrl, model, apiKey);
         var secEdgar = new SecEdgarClient(http);
         var semScholar = new SemanticScholarClient(http);
         var genericUrl = new GenericUrlClient(http);
+        Console.WriteLine("[INGEST] Clients created");
 
         var ingestAgent = new Vke.Core.Agents.IngestAgent(db, llm, secEdgar, semScholar, genericUrl);
         var wikiGen = new Vke.Core.Services.WikiGenerator();
-        var verifyAgent = new Vke.Core.Agents.VerifyAgent(db, llm, wikiGen, wikiPath);
+        var webSearch = new Vke.Core.Services.WebSearchClient(http);
+        var verifyAgent = new Vke.Core.Agents.VerifyAgent(db, llm, wikiGen, webSearch, wikiPath);
+        Console.WriteLine("[INGEST] Agents created, about to call IngestAsync...");
 
         var (sourceId, claims) = await ingestAgent.IngestAsync(body.Url, sourceType, domain);
+        Console.WriteLine($"[INGEST] IngestAsync returned - sourceId={sourceId} claims={claims.Count}");
         var result = await verifyAgent.VerifyAndStoreAsync(sourceId, claims);
+        Console.WriteLine($"[INGEST] VerifyAndStoreAsync returned - verified={result.Verified} corrected={result.Corrected}");
 
         return Results.Json(new
         {

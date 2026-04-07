@@ -17,13 +17,15 @@ public class LlmClient : ILlmClient
     private readonly HttpClient _http;
     private readonly string _baseUrl;
     private readonly string _model;
+    private readonly string _apiKey;
     private readonly JsonSerializerOptions _jsonOptions = new() { PropertyNameCaseInsensitive = true };
 
-    public LlmClient(HttpClient http, string baseUrl, string model)
+    public LlmClient(HttpClient http, string baseUrl, string model, string apiKey)
     {
         _http = http;
         _baseUrl = baseUrl.TrimEnd('/');
         _model = model;
+        _apiKey = apiKey;
     }
 
     public async Task<List<Claim>> ExtractClaimsAsync(string content, string sourceType)
@@ -87,6 +89,7 @@ Only output the number.";
         
         var request = new HttpRequestMessage(HttpMethod.Post, $"{_baseUrl}/v1/messages");
         request.Headers.Add("anthropic-version", "2023-06-01");
+        request.Headers.Add("x-api-key", _apiKey);
 
         var body = new
         {

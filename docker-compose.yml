@@ -7,7 +7,7 @@ services:
     ports:
       - "8080:8080"
     volumes:
-      - ./vault:/app/vault
+      - /Users/vladbrincoveanu/Documents/ObsidianVault/openclaw:/app/vault
     environment:
       - ANTHROPIC_BASE_URL=${ANTHROPIC_BASE_URL:-https://api.minimax.io/anthropic}
       - ANTHROPIC_MODEL=${ANTHROPIC_MODEL:-MiniMax-M2.7-highspeed}

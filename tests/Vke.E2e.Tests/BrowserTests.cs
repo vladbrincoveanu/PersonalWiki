@@ -89,14 +89,15 @@ public class BrowserTests : IAsyncLifetime, IDisposable
 
                 var http = new HttpClient();
                 http.Timeout = TimeSpan.FromMinutes(5);
-                var llm = new Vke.Core.Services.LlmClient(http, baseUrl, model);
+                var llm = new Vke.Core.Services.LlmClient(http, baseUrl, model, apiKey);
                 var secEdgar = new Vke.Core.Services.SecEdgarClient(http);
                 var semScholar = new Vke.Core.Services.SemanticScholarClient(http);
                 var genericUrl = new Vke.Core.Services.GenericUrlClient(http);
+                var webSearch = new Vke.Core.Services.WebSearchClient(http);
 
                 var ingestAgent = new Vke.Core.Agents.IngestAgent(db, llm, secEdgar, semScholar, genericUrl);
                 var wikiGen = new Vke.Core.Services.WikiGenerator();
-                var verifyAgent = new Vke.Core.Agents.VerifyAgent(db, llm, wikiGen, wikiPath);
+                var verifyAgent = new Vke.Core.Agents.VerifyAgent(db, llm, wikiGen, webSearch, wikiPath);
 
                 await System.IO.File.AppendAllTextAsync(logFile, $"[/api/ingest] Calling IngestAsync... elapsed={DateTime.UtcNow-start:HH:mm:ss.fff}\n");
                 var (sourceId, claims) = await ingestAgent.IngestAsync(body.Url, sourceType, domain);

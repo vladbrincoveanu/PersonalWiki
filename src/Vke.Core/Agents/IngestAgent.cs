@@ -24,9 +24,14 @@ public class IngestAgent
 
     public async Task<(string sourceId, List<Claim> claims)> IngestAsync(string url, string sourceType, string domain)
     {
+        Console.WriteLine($"[IngestAgent] IngestAsync START url={url} type={sourceType} domain={domain}");
+        
         var (content, title, author, publishedAt, citesUrls) = await FetchContentAsync(url, sourceType);
+        Console.WriteLine($"[IngestAgent] FetchContentAsync DONE contentLen={content.Length} title={title}");
         
         var sourceId = IdGenerator.GenerateSourceId(url, publishedAt);
+        Console.WriteLine($"[IngestAgent] Generated sourceId={sourceId}");
+        
         var source = new Source
         {
             Id = sourceId,
@@ -41,16 +46,23 @@ public class IngestAgent
             Content = content,
         };
         
+        Console.WriteLine($"[IngestAgent] About to insert source...");
         _db.InsertSource(source);
+        Console.WriteLine($"[IngestAgent] Source inserted");
+        
         await ResolveCitationsAsync(sourceId, citesUrls);
+        Console.WriteLine($"[IngestAgent] Citations resolved, about to extract claims...");
         
         var claims = await _llm.ExtractClaimsAsync(content, sourceType);
+        Console.WriteLine($"[IngestAgent] ExtractClaimsAsync DONE, found {claims.Count} claims");
+        
         foreach (var claim in claims)
         {
             claim.SourceId = sourceId;
             claim.Domain = domain;
         }
         
+        Console.WriteLine($"[IngestAgent] IngestAsync END sourceId={sourceId}");
         return (sourceId, claims);
     }
 
