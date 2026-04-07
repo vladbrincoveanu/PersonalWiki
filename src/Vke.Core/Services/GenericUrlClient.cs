@@ -17,6 +17,10 @@ public class GenericUrlClient
     private static readonly Regex HeaderRegex = new("<header[^>]*>.*?</header>", RegexOptions.Singleline | RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex HtmlTagRegex = new("<[^>]+>", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex WhitespaceRegex = new(@"\s+", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex ArxivUiNoiseRegex = new(
+        @"References\s*&\s*Citations|NASA\s*ADS|Google\s*Scholar|Semantic\s*Scholar|Bibliographic\s*Explorer|Connected\s*Papers|Litmaps|ScienceCast|BibTeX\s*formatted\s*citation|export\s*BibTeX|Toggle\s*UI|Litmaps\s*Banner|Bibliographic\s*Tools|Bookmark|Demos|Replicate|Huggingface\s*Spaces|arXiv\s*Labs|Cite\s*as",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex CiteAsSectionRegex = new(@"Cite\s*as[:\s]*.*?(?=\n\n|\n[A-Z]|$)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     private readonly HttpClient _http;
 
@@ -87,6 +91,27 @@ public class GenericUrlClient
         text = HtmlTagRegex.Replace(text, " ");
         text = System.Net.WebUtility.HtmlDecode(text);
         text = WhitespaceRegex.Replace(text, " ");
-        return text.Trim();
+        text = text.Trim();
+        
+        if (html.Contains("arxiv.org", StringComparison.OrdinalIgnoreCase))
+        {
+            text = CleanArxivNoise(text);
+        }
+        
+        return text;
+    }
+
+    private static string CleanArxivNoise(string text)
+    {
+        text = ArxivUiNoiseRegex.Replace(text, "");
+        text = CiteAsSectionRegex.Replace(text, "");
+        
+        var lines = text.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        var filteredLines = lines
+            .Select(line => line.Trim())
+            .Where(line => line.Length >= 30)
+            .ToList();
+        
+        return string.Join("\n", filteredLines);
     }
 }
