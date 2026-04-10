@@ -6,4 +6,4 @@ async def extract_url(url: str) -> str:
         result = await crawler.arun(url=url)
     if not result.success or not result.markdown:
         raise ValueError(f"Failed to extract content from: {url}")
-    return result.markdown
+    return str(result.markdown)
