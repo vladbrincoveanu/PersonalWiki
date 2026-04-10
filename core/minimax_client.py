@@ -1,6 +1,9 @@
 import json
+import logging
 import requests
 from config import MINIMAX_API_KEY, MINIMAX_GROUP_ID, MINIMAX_MODEL, MINIMAX_API_URL
+
+_logger = logging.getLogger(__name__)
 
 _SYSTEM_PROMPT = """You are a knowledge curator. Given raw text from a source, extract and structure it into a research note.
 Always respond with valid JSON only — no markdown fences, no explanation."""
@@ -36,6 +39,18 @@ def _build_prompt(raw_text: str, similar_titles: list[str], source: str) -> str:
 
 
 def enrich(raw_text: str, similar_titles: list[str], source: str) -> dict:
+    if not MINIMAX_API_KEY:
+        _logger.warning("MINIMAX_API_KEY is not set — returning fallback for source=%s", source)
+        return {
+            "title": "Untitled",
+            "type": "article",
+            "tags": [],
+            "summary": "",
+            "key_facts": [],
+            "cross_links": [],
+            "raw_text": raw_text,
+            "error": True,
+        }
     prompt = _build_prompt(raw_text, similar_titles, source)
     headers = {
         "Authorization": f"Bearer {MINIMAX_GROUP_ID}:{MINIMAX_API_KEY}" if MINIMAX_GROUP_ID else f"Bearer {MINIMAX_API_KEY}",
@@ -58,7 +73,8 @@ def enrich(raw_text: str, similar_titles: list[str], source: str) -> dict:
         data.setdefault("raw_text", raw_text)
         data.setdefault("error", False)
         return data
-    except Exception:
+    except Exception as e:
+        _logger.warning("Minimax enrich failed for source=%s: %s", source, e)
         return {
             "title": "Untitled",
             "type": "article",

@@ -27,7 +27,8 @@ def test_enrich_returns_structured_note():
             }
         }]
     }
-    with patch("core.minimax_client.requests.post") as mock_post:
+    with patch("core.minimax_client.MINIMAX_API_KEY", "test-key"), \
+         patch("core.minimax_client.requests.post") as mock_post:
         mock_post.return_value = MagicMock(
             status_code=200,
             json=lambda: mock_response,
