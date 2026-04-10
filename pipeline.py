@@ -54,11 +54,10 @@ async def run_pipeline(
 
     # Step 5: Index
     yield "Indexing..."
-    note_vector = embed(raw_text[:MAX_EMBED_CHARS])
     store.upsert(
         path=path,
         text=raw_text,
-        vector=note_vector,
+        vector=vector,
         links=note.get("cross_links", []),
         metadata={**note, "_source": source},
     )
