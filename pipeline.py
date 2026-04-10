@@ -54,12 +54,14 @@ async def run_pipeline(
 
     # Step 5: Index
     yield "Indexing..."
+    index_meta = {k: v for k, v in note.items() if k != "raw_text"}
+    index_meta["_file_path"] = path
     store.upsert(
-        path=path,
+        path=source,
         text=raw_text,
         vector=vector,
         links=note.get("cross_links", []),
-        metadata={**note, "_source": source},
+        metadata=index_meta,
     )
 
     stem = Path(path).name

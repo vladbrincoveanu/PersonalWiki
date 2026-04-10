@@ -15,7 +15,7 @@ _job_queues: dict[str, asyncio.Queue] = {}
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    count = scan_vault()
+    count = await asyncio.to_thread(scan_vault)
     if count:
         print(f"Startup: indexed {count} notes.")
     yield
