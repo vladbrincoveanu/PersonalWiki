@@ -11,6 +11,7 @@ async def test_pipeline_url_yields_progress_steps():
 
     with patch("pipeline.extract_url", AsyncMock(return_value="Raw content from URL.")), \
          patch("pipeline.extract_pdf"), \
+         patch("pipeline._is_pdf_url", return_value=False), \
          patch("pipeline.embed", return_value=[0.1] * 384), \
          patch("pipeline.get_store", return_value=mock_store), \
          patch("pipeline.enrich", return_value={
@@ -83,6 +84,7 @@ async def test_pipeline_pdf_url_passes_images_to_writer():
 
     with patch("pipeline.get_store", return_value=mock_store), \
          patch("pipeline._is_pdf_url", return_value=True), \
+         patch("urllib.request.urlretrieve", return_value=("/tmp/fake.pdf", {})), \
          patch("pipeline.extract_pdf_full", return_value=fake_result), \
          patch("pipeline.embed", return_value=[0.1] * 384), \
          patch("pipeline.enrich", return_value={

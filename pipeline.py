@@ -2,7 +2,6 @@ import asyncio
 import os
 import tempfile
 import urllib.request
-import urllib.error
 from pathlib import Path
 from typing import AsyncGenerator
 from config import TOP_K_SIMILAR, MAX_EMBED_CHARS
