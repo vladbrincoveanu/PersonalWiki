@@ -10,7 +10,6 @@ async def test_pipeline_url_yields_progress_steps():
     mock_store.exists.return_value = False
 
     with patch("pipeline.extract_url", AsyncMock(return_value="Raw content from URL.")), \
-         patch("pipeline.extract_pdf"), \
          patch("pipeline._is_pdf_url", return_value=False), \
          patch("pipeline.embed", return_value=[0.1] * 384), \
          patch("pipeline.get_store", return_value=mock_store), \

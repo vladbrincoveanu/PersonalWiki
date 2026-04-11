@@ -9,7 +9,7 @@ from core.embeddings import embed
 from core.vector_store import get_store
 from core.minimax_client import enrich
 from ingesters.web import extract_url
-from ingesters.pdf import extract_pdf, extract_pdf_full
+from ingesters.pdf import extract_pdf_full
 from vault.writer import write_note
 
 
