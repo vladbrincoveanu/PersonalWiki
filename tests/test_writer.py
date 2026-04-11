@@ -1,4 +1,7 @@
+import re
+import struct
 import tempfile
+import zlib
 from pathlib import Path
 from unittest.mock import patch
 import frontmatter
@@ -75,3 +78,79 @@ def test_write_note_error_adds_confidence_low():
 
         post = frontmatter.load(path)
         assert post.metadata.get("confidence") == "low"
+
+
+def _minimal_png() -> bytes:
+    sig = b'\x89PNG\r\n\x1a\n'
+    ihdr_data = struct.pack('>IIBBBBB', 1, 1, 8, 2, 0, 0, 0)
+    ihdr_crc = zlib.crc32(b'IHDR' + ihdr_data)
+    ihdr = struct.pack('>I', 13) + b'IHDR' + ihdr_data + struct.pack('>I', ihdr_crc)
+    raw = b'\x00\xff\x00\x00'  # filter byte + 1 RGB pixel
+    compressed = zlib.compress(raw)
+    idat_crc = zlib.crc32(b'IDAT' + compressed)
+    idat = struct.pack('>I', len(compressed)) + b'IDAT' + compressed + struct.pack('>I', idat_crc)
+    iend_crc = zlib.crc32(b'IEND')
+    iend = struct.pack('>I', 0) + b'IEND' + struct.pack('>I', iend_crc)
+    return sig + ihdr + idat + iend
+
+
+def test_write_note_saves_images_and_replaces_placeholders():
+    note = {
+        "title": "Test Paper",
+        "type": "paper",
+        "tags": [],
+        "summary": "A summary.",
+        "key_facts": [],
+        "cross_links": [],
+        "raw_text": "Intro <!-- image --> middle <!-- image --> end.",
+        "error": False,
+    }
+    fake_png = _minimal_png()
+    images = [fake_png, fake_png]
+
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        notes_dir = tmp_path / "notes"
+        notes_dir.mkdir()
+
+        with patch("vault.writer.NOTES_DIR", notes_dir), \
+             patch("vault.writer.VAULT_PATH", tmp_path):
+            path = write_note(note, source="https://example.com/paper.pdf", images=images)
+
+        post = frontmatter.load(path)
+        body = post.content
+
+        # Both placeholders replaced
+        assert "<!-- image -->" not in body
+        assert "![[attachments/test-paper/figure-1.png]]" in body
+        assert "![[attachments/test-paper/figure-2.png]]" in body
+
+        # Image files exist
+        assert (tmp_path / "attachments" / "test-paper" / "figure-1.png").exists()
+        assert (tmp_path / "attachments" / "test-paper" / "figure-2.png").exists()
+
+
+def test_write_note_no_images_unchanged():
+    """write_note without images keeps <!-- image --> as-is and creates no attachments dir."""
+    note = {
+        "title": "Web Article",
+        "type": "article",
+        "tags": [],
+        "summary": "Summary.",
+        "key_facts": [],
+        "cross_links": [],
+        "raw_text": "Some text <!-- image --> here.",
+        "error": False,
+    }
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        notes_dir = tmp_path / "notes"
+        notes_dir.mkdir()
+
+        with patch("vault.writer.NOTES_DIR", notes_dir), \
+             patch("vault.writer.VAULT_PATH", tmp_path):
+            path = write_note(note, source="https://example.com")
+
+        post = frontmatter.load(path)
+        assert "<!-- image -->" in post.content
+        assert not (tmp_path / "attachments").exists()
