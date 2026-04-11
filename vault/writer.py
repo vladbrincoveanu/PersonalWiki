@@ -1,4 +1,5 @@
 import re
+from collections.abc import Sequence
 from datetime import date
 from pathlib import Path
 import frontmatter
@@ -13,7 +14,7 @@ def slugify(title: str) -> str:
     return slug
 
 
-def _save_images(images: list[bytes], slug: str) -> None:
+def _save_images(images: Sequence[bytes], slug: str) -> None:
     images_dir = VAULT_PATH / "attachments" / slug
     images_dir.mkdir(parents=True, exist_ok=True)
     for i, png_bytes in enumerate(images, start=1):
@@ -35,7 +36,7 @@ def write_note(
     note: dict,
     source: str,
     ingested_date: str | None = None,
-    images: list[bytes] = (),
+    images: Sequence[bytes] = (),
 ) -> str:
     NOTES_DIR.mkdir(parents=True, exist_ok=True)
 

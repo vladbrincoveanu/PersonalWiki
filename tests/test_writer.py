@@ -1,4 +1,3 @@
-import re
 import struct
 import tempfile
 import zlib
