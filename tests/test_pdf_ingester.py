@@ -1,6 +1,7 @@
+import io
 import pytest
 from unittest.mock import patch, MagicMock
-from ingesters.pdf import extract_pdf
+from ingesters.pdf import extract_pdf, extract_pdf_full, PdfExtractResult
 
 def test_extract_pdf_returns_markdown():
     mock_doc = MagicMock()
@@ -48,13 +49,8 @@ def test_extract_pdf_flags_low_quality():
     assert low_quality is True
 
 
-import io
-from ingesters.pdf import extract_pdf_full, PdfExtractResult
-
-def _make_mock_picture(png_bytes: bytes):
+def _make_mock_picture():
     """Return a mock docling picture with a pil_image that saves to png_bytes."""
-    from unittest.mock import MagicMock
-    import io
     from PIL import Image
     # Create a real 1x1 PNG so save() works
     real_img = Image.new("RGB", (1, 1), color=(255, 0, 0))
@@ -65,7 +61,7 @@ def _make_mock_picture(png_bytes: bytes):
 def test_extract_pdf_full_returns_dataclass():
     mock_doc = MagicMock()
     mock_doc.export_to_markdown.return_value = "# Title\n\nText <!-- image --> more text. " + "x" * 300
-    mock_doc.pictures = [_make_mock_picture(b"fakepng")]
+    mock_doc.pictures = [_make_mock_picture()]
     mock_result = MagicMock()
     mock_result.document = mock_doc
 
