@@ -59,3 +59,49 @@ async def test_pipeline_handles_extraction_error():
             messages.append(msg)
 
     assert any("Error" in m or "error" in m for m in messages)
+
+@pytest.mark.asyncio
+async def test_pipeline_pdf_url_passes_images_to_writer():
+    from pipeline import run_pipeline
+    from ingesters.pdf import PdfExtractResult
+
+    mock_store = MagicMock()
+    mock_store.exists.return_value = False
+    mock_store.search.return_value = []
+
+    fake_result = PdfExtractResult(
+        markdown="# Paper\n\n<!-- image --> some content " + "x" * 300,
+        low_quality=False,
+        images=[b"fakepng1", b"fakepng2"],
+    )
+
+    written_images = []
+
+    def capture_write_note(note, source, images=()):
+        written_images.extend(images)
+        return "/vault/notes/paper.md"
+
+    with patch("pipeline.get_store", return_value=mock_store), \
+         patch("pipeline._is_pdf_url", return_value=True), \
+         patch("pipeline.extract_pdf_full", return_value=fake_result), \
+         patch("pipeline.embed", return_value=[0.1] * 384), \
+         patch("pipeline.enrich", return_value={
+             "title": "Paper", "type": "paper", "tags": [],
+             "summary": "S.", "key_facts": [], "cross_links": [],
+             "raw_text": "raw", "error": False,
+         }), \
+         patch("pipeline.write_note", side_effect=capture_write_note), \
+         patch("asyncio.to_thread", new_callable=MagicMock) as mock_to_thread:
+
+        # Make asyncio.to_thread return the fake_result for extract_pdf_full
+        # and delegate normally for enrich (synchronous mock above handles it)
+        async def fake_to_thread(fn, *args, **kwargs):
+            return fn(*args, **kwargs)
+        mock_to_thread.side_effect = fake_to_thread
+
+        messages = []
+        async for msg in run_pipeline(url="https://arxiv.org/pdf/2510.18518"):
+            messages.append(msg)
+
+    assert written_images == [b"fakepng1", b"fakepng2"]
+    assert any("Saved" in m for m in messages)
