@@ -79,7 +79,7 @@ def write_note(
     entities = note.get("entities", [])
     entities_section = ""
     if entities:
-        links = " · ".join(f"[[{e['name']}]]" for e in entities if e.get("name"))
+        links = " · ".join(f"[[{e['name']}]]" for e in entities if e.get("name") and e.get("slug"))
         if links:
             entities_section = f"\n## Entities\n{links}\n"
 

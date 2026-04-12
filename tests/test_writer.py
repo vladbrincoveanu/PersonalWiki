@@ -262,6 +262,38 @@ def test_write_note_figure_captions_injected():
         assert "<!-- image -->" not in post.content
 
 
+def test_write_note_entity_without_slug_excluded_from_wikilinks():
+    """Entities with a name but no slug must not produce a wikilink (no stub would be created)."""
+    note = {
+        "title": "Test Paper",
+        "type": "paper",
+        "tags": [],
+        "summary": "A summary.",
+        "key_facts": [],
+        "cross_links": [],
+        "raw_text": "Some content.",
+        "error": False,
+        "entities": [
+            {"name": "ValidEntity", "slug": "valid-entity", "type": "concept"},
+            {"name": "NoSlugEntity", "slug": "", "type": "concept"},
+        ],
+        "figure_captions": [],
+        "why_saved_hint": "",
+    }
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        notes_dir = tmp_path / "notes"
+        notes_dir.mkdir()
+        with patch("vault.writer.NOTES_DIR", notes_dir), \
+             patch("vault.writer.VAULT_PATH", tmp_path), \
+             patch("vault.entities.NOTES_DIR", notes_dir):
+            path = write_note(note, source="https://example.com")
+
+        post = frontmatter.load(path)
+        assert "[[ValidEntity]]" in post.content
+        assert "[[NoSlugEntity]]" not in post.content
+
+
 def test_write_note_no_entities_section_when_empty():
     note = {
         "title": "Test Paper",
