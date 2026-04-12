@@ -1,7 +1,7 @@
 import json
 import logging
 import requests
-from config import MINIMAX_API_KEY, MINIMAX_GROUP_ID, MINIMAX_MODEL, MINIMAX_API_URL
+from config import MINIMAX_API_KEY, MINIMAX_MODEL, MINIMAX_API_URL
 
 _logger = logging.getLogger(__name__)
 

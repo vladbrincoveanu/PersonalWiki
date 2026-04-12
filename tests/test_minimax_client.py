@@ -106,3 +106,15 @@ def test_enrich_fallback_includes_new_field_defaults():
     assert result["entities"] == []
     assert result["figure_captions"] == []
     assert result["why_saved_hint"] == ""
+
+
+def test_enrich_no_api_key_fallback_includes_new_field_defaults():
+    from unittest.mock import patch
+    from core.minimax_client import enrich
+
+    with patch("core.minimax_client.MINIMAX_API_KEY", ""):
+        result = enrich(raw_text="x", similar_titles=[], source="https://example.com")
+
+    assert result["entities"] == []
+    assert result["figure_captions"] == []
+    assert result["why_saved_hint"] == ""
