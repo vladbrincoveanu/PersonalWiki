@@ -41,8 +41,6 @@ def write_note(
     ingested_date: str | None = None,
     images: Sequence[bytes] = (),
 ) -> str:
-    from vault.entities import upsert_entity_notes  # deferred: entities does not import writer
-
     NOTES_DIR.mkdir(parents=True, exist_ok=True)
 
     title = note.get("title") or "Untitled"
@@ -108,8 +106,5 @@ def write_note(
     post = frontmatter.Post(body, **metadata)
     with open(filepath, "w", encoding="utf-8") as f:
         f.write(frontmatter.dumps(post))
-
-    if entities:
-        upsert_entity_notes(entities)
 
     return str(filepath)

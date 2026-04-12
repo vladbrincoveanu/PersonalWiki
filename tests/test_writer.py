@@ -177,8 +177,7 @@ def test_write_note_entities_section():
         notes_dir = tmp_path / "notes"
         notes_dir.mkdir()
         with patch("vault.writer.NOTES_DIR", notes_dir), \
-             patch("vault.writer.VAULT_PATH", tmp_path), \
-             patch("vault.entities.NOTES_DIR", notes_dir):
+             patch("vault.writer.VAULT_PATH", tmp_path):
             path = write_note(note, source="https://example.com")
 
         post = frontmatter.load(path)
@@ -206,8 +205,7 @@ def test_write_note_why_saved_section():
         notes_dir = tmp_path / "notes"
         notes_dir.mkdir()
         with patch("vault.writer.NOTES_DIR", notes_dir), \
-             patch("vault.writer.VAULT_PATH", tmp_path), \
-             patch("vault.entities.NOTES_DIR", notes_dir):
+             patch("vault.writer.VAULT_PATH", tmp_path):
             path = write_note(note, source="https://example.com")
 
         post = frontmatter.load(path)
@@ -237,8 +235,7 @@ def test_write_note_figure_captions_injected():
         notes_dir = tmp_path / "notes"
         notes_dir.mkdir()
         with patch("vault.writer.NOTES_DIR", notes_dir), \
-             patch("vault.writer.VAULT_PATH", tmp_path), \
-             patch("vault.entities.NOTES_DIR", notes_dir):
+             patch("vault.writer.VAULT_PATH", tmp_path):
             path = write_note(note, source="https://example.com", images=images)
 
         post = frontmatter.load(path)
@@ -269,8 +266,7 @@ def test_write_note_fewer_captions_than_figures_no_error():
         notes_dir = tmp_path / "notes"
         notes_dir.mkdir()
         with patch("vault.writer.NOTES_DIR", notes_dir), \
-             patch("vault.writer.VAULT_PATH", tmp_path), \
-             patch("vault.entities.NOTES_DIR", notes_dir):
+             patch("vault.writer.VAULT_PATH", tmp_path):
             path = write_note(note, source="https://example.com", images=images)
 
         post = frontmatter.load(path)
@@ -303,8 +299,7 @@ def test_write_note_entity_without_slug_excluded_from_wikilinks():
         notes_dir = tmp_path / "notes"
         notes_dir.mkdir()
         with patch("vault.writer.NOTES_DIR", notes_dir), \
-             patch("vault.writer.VAULT_PATH", tmp_path), \
-             patch("vault.entities.NOTES_DIR", notes_dir):
+             patch("vault.writer.VAULT_PATH", tmp_path):
             path = write_note(note, source="https://example.com")
 
         post = frontmatter.load(path)
@@ -331,8 +326,7 @@ def test_write_note_no_entities_section_when_empty():
         notes_dir = tmp_path / "notes"
         notes_dir.mkdir()
         with patch("vault.writer.NOTES_DIR", notes_dir), \
-             patch("vault.writer.VAULT_PATH", tmp_path), \
-             patch("vault.entities.NOTES_DIR", notes_dir):
+             patch("vault.writer.VAULT_PATH", tmp_path):
             path = write_note(note, source="https://example.com")
 
         post = frontmatter.load(path)
