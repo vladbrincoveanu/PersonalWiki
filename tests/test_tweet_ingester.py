@@ -92,3 +92,11 @@ def test_extract_tweet_raises_on_invalid_url():
     from ingesters.tweet import extract_tweet
     with pytest.raises(ValueError, match="Not a valid tweet URL"):
         extract_tweet("https://example.com/not-a-tweet")
+
+
+def test_extract_tweet_falls_through_on_non_200():
+    from ingesters.tweet import extract_tweet
+    rate_limited = _mock_urlopen(FAKE_NITTER_HTML, status=429)
+    with patch("urllib.request.urlopen", return_value=rate_limited):
+        with pytest.raises(ValueError, match="All Nitter instances"):
+            extract_tweet("https://twitter.com/hwchase17/status/123456")
