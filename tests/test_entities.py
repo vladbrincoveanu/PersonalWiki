@@ -61,3 +61,16 @@ def test_upsert_empty_list_is_noop():
             upsert_entity_notes([])
 
         assert list(notes_dir.iterdir()) == []
+
+
+def test_upsert_skips_path_traversal_slug():
+    entities = [{"name": "Evil", "slug": "../evil", "type": "concept"}]
+    with tempfile.TemporaryDirectory() as tmp:
+        notes_dir = Path(tmp) / "notes"
+        notes_dir.mkdir()
+        with patch("vault.entities.NOTES_DIR", notes_dir):
+            upsert_entity_notes(entities)
+
+        # The file must NOT be created outside the notes directory
+        assert not (Path(tmp) / "evil.md").exists()
+        assert list(notes_dir.iterdir()) == []

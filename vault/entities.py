@@ -1,5 +1,4 @@
 from datetime import date
-from pathlib import Path
 import frontmatter
 from config import NOTES_DIR
 
@@ -14,6 +13,8 @@ def upsert_entity_notes(entities: list[dict]) -> None:
         if not slug or not name:
             continue
         filepath = NOTES_DIR / f"{slug}.md"
+        if not filepath.resolve().is_relative_to(NOTES_DIR.resolve()):
+            continue
         if filepath.exists():
             continue
         metadata = {
