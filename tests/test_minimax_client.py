@@ -43,6 +43,10 @@ def test_enrich_returns_structured_note():
     assert "llm" in result["tags"]
     assert "Efficient KV cache management." in result["summary"]
     assert "vllm-serving" in result["cross_links"]
+    # New fields default to empty when not present in LLM response
+    assert result["entities"] == []
+    assert result["figure_captions"] == []
+    assert result["why_saved_hint"] == ""
 
 def test_enrich_fallback_on_api_error():
     with patch("core.minimax_client.requests.post") as mock_post:

@@ -230,22 +230,7 @@ def test_write_note_figure_captions_injected():
         "figure_captions": ["Model architecture overview", "Training reward curves"],
         "why_saved_hint": "",
     }
-    import struct, zlib
-
-    def minimal_png():
-        sig = b'\x89PNG\r\n\x1a\n'
-        ihdr_data = struct.pack('>IIBBBBB', 1, 1, 8, 2, 0, 0, 0)
-        ihdr_crc = zlib.crc32(b'IHDR' + ihdr_data)
-        ihdr = struct.pack('>I', 13) + b'IHDR' + ihdr_data + struct.pack('>I', ihdr_crc)
-        raw = b'\x00\xff\x00\x00'
-        compressed = zlib.compress(raw)
-        idat_crc = zlib.crc32(b'IDAT' + compressed)
-        idat = struct.pack('>I', len(compressed)) + b'IDAT' + compressed + struct.pack('>I', idat_crc)
-        iend_crc = zlib.crc32(b'IEND')
-        iend = struct.pack('>I', 0) + b'IEND' + struct.pack('>I', iend_crc)
-        return sig + ihdr + idat + iend
-
-    images = [minimal_png(), minimal_png()]
+    images = [_minimal_png(), _minimal_png()]
 
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)
@@ -260,6 +245,39 @@ def test_write_note_figure_captions_injected():
         assert "*Figure 1: Model architecture overview.*" in post.content
         assert "*Figure 2: Training reward curves.*" in post.content
         assert "<!-- image -->" not in post.content
+
+
+def test_write_note_fewer_captions_than_figures_no_error():
+    """Figures beyond the caption list are rendered without a caption line."""
+    note = {
+        "title": "Test Paper",
+        "type": "paper",
+        "tags": [],
+        "summary": "A summary.",
+        "key_facts": [],
+        "cross_links": [],
+        "raw_text": "<!-- image --> mid <!-- image --> end.",
+        "error": False,
+        "entities": [],
+        "figure_captions": ["Caption for figure one only"],
+        "why_saved_hint": "",
+    }
+    images = [_minimal_png(), _minimal_png()]
+
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        notes_dir = tmp_path / "notes"
+        notes_dir.mkdir()
+        with patch("vault.writer.NOTES_DIR", notes_dir), \
+             patch("vault.writer.VAULT_PATH", tmp_path), \
+             patch("vault.entities.NOTES_DIR", notes_dir):
+            path = write_note(note, source="https://example.com", images=images)
+
+        post = frontmatter.load(path)
+        assert "*Figure 1: Caption for figure one only.*" in post.content
+        assert "![[attachments/test-paper/figure-2.png]]" in post.content
+        # Figure 2 has no caption line
+        assert "*Figure 2:" not in post.content
 
 
 def test_write_note_entity_without_slug_excluded_from_wikilinks():

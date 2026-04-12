@@ -7,6 +7,8 @@ def upsert_entity_notes(entities: list[dict]) -> None:
     """Create stub notes for entities that don't yet exist. Never overwrites."""
     NOTES_DIR.mkdir(parents=True, exist_ok=True)
     for entity in entities:
+        if not isinstance(entity, dict):
+            continue
         slug = entity.get("slug", "")
         name = entity.get("name", "")
         entity_type = entity.get("type", "concept")

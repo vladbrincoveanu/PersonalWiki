@@ -63,6 +63,17 @@ def test_upsert_empty_list_is_noop():
         assert list(notes_dir.iterdir()) == []
 
 
+def test_upsert_skips_non_dict_entities():
+    """LLM may return a malformed list (e.g. strings instead of dicts); must not raise."""
+    with tempfile.TemporaryDirectory() as tmp:
+        notes_dir = Path(tmp) / "notes"
+        notes_dir.mkdir()
+        with patch("vault.entities.NOTES_DIR", notes_dir):
+            upsert_entity_notes(["MIMIC-IV", 42, None])
+
+        assert list(notes_dir.iterdir()) == []
+
+
 def test_upsert_skips_path_traversal_slug():
     entities = [{"name": "Evil", "slug": "../evil", "type": "concept"}]
     with tempfile.TemporaryDirectory() as tmp:

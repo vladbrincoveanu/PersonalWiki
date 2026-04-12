@@ -22,7 +22,7 @@ def _save_images(images: Sequence[bytes], slug: str) -> None:
 
 
 def _replace_image_placeholders(
-    text: str, slug: str, count: int, captions: list[str] = ()
+    text: str, slug: str, count: int, captions: Sequence[str] = ()
 ) -> str:
     result = text
     for i in range(1, count + 1):
@@ -41,7 +41,7 @@ def write_note(
     ingested_date: str | None = None,
     images: Sequence[bytes] = (),
 ) -> str:
-    from vault.entities import upsert_entity_notes
+    from vault.entities import upsert_entity_notes  # deferred: entities does not import writer
 
     NOTES_DIR.mkdir(parents=True, exist_ok=True)
 
