@@ -21,14 +21,17 @@ def _save_images(images: Sequence[bytes], slug: str) -> None:
         (images_dir / f"figure-{i}.png").write_bytes(png_bytes)
 
 
-def _replace_image_placeholders(text: str, slug: str, count: int) -> str:
+def _replace_image_placeholders(
+    text: str, slug: str, count: int, captions: list[str] = ()
+) -> str:
     result = text
     for i in range(1, count + 1):
-        result = result.replace(
-            "<!-- image -->",
-            f"![[attachments/{slug}/figure-{i}.png]]",
-            1,
-        )
+        caption = captions[i - 1] if i - 1 < len(captions) else ""
+        if caption:
+            replacement = f"*Figure {i}: {caption}.*\n![[attachments/{slug}/figure-{i}.png]]"
+        else:
+            replacement = f"![[attachments/{slug}/figure-{i}.png]]"
+        result = result.replace("<!-- image -->", replacement, 1)
     return result
 
 
@@ -38,6 +41,8 @@ def write_note(
     ingested_date: str | None = None,
     images: Sequence[bytes] = (),
 ) -> str:
+    from vault.entities import upsert_entity_notes
+
     NOTES_DIR.mkdir(parents=True, exist_ok=True)
 
     title = note.get("title") or "Untitled"
@@ -50,7 +55,6 @@ def write_note(
     while filepath.exists():
         filepath = NOTES_DIR / f"{slug}-{counter}.md"
         counter += 1
-    # Use the final slug (with counter if collided) for image directory
     final_slug = filepath.stem
 
     metadata = {
@@ -72,22 +76,40 @@ def write_note(
     key_facts = note.get("key_facts", [])
     facts_str = "\n".join(f"- {f}" for f in key_facts) if key_facts else "_None extracted._"
 
+    entities = note.get("entities", [])
+    entities_section = ""
+    if entities:
+        links = " · ".join(f"[[{e['name']}]]" for e in entities if e.get("name"))
+        if links:
+            entities_section = f"\n## Entities\n{links}\n"
+
+    why_saved_hint = note.get("why_saved_hint", "")
+    why_saved_section = ""
+    if why_saved_hint:
+        why_saved_section = f"\n## Why I Saved This\n> {why_saved_hint}\n\n_(edit this)_\n"
+
+    figure_captions = note.get("figure_captions", [])
     raw_text = note.get("raw_text", "")
     if images:
         _save_images(images, final_slug)
-        raw_text = _replace_image_placeholders(raw_text, final_slug, len(images))
+        raw_text = _replace_image_placeholders(raw_text, final_slug, len(images), figure_captions)
 
-    raw_section = f"\n## Raw Extract\n<details>\n<summary>Original extracted text</summary>\n\n{raw_text}\n\n</details>"
+    raw_section = (
+        f"\n## Raw Extract\n<details>\n<summary>Original extracted text</summary>"
+        f"\n\n{raw_text}\n\n</details>"
+    )
 
-    body = f"""## Summary
-{note.get('summary', '_Not available._')}
-
-## Key Facts
-{facts_str}
-{cross_links_section}{raw_section}"""
+    body = (
+        f"## Summary\n{note.get('summary', '_Not available._')}\n\n"
+        f"## Key Facts\n{facts_str}"
+        f"{entities_section}{why_saved_section}{cross_links_section}{raw_section}"
+    )
 
     post = frontmatter.Post(body, **metadata)
     with open(filepath, "w", encoding="utf-8") as f:
         f.write(frontmatter.dumps(post))
+
+    if entities:
+        upsert_entity_notes(entities)
 
     return str(filepath)

@@ -153,3 +153,138 @@ def test_write_note_no_images_unchanged():
         post = frontmatter.load(path)
         assert "<!-- image -->" in post.content
         assert not (tmp_path / "attachments").exists()
+
+
+def test_write_note_entities_section():
+    note = {
+        "title": "Test Paper",
+        "type": "paper",
+        "tags": [],
+        "summary": "A summary.",
+        "key_facts": [],
+        "cross_links": [],
+        "raw_text": "Some content.",
+        "error": False,
+        "entities": [
+            {"name": "MIMIC-IV", "slug": "mimic-iv", "type": "dataset"},
+            {"name": "ROC Analysis", "slug": "roc-analysis", "type": "concept"},
+        ],
+        "figure_captions": [],
+        "why_saved_hint": "",
+    }
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        notes_dir = tmp_path / "notes"
+        notes_dir.mkdir()
+        with patch("vault.writer.NOTES_DIR", notes_dir), \
+             patch("vault.writer.VAULT_PATH", tmp_path), \
+             patch("vault.entities.NOTES_DIR", notes_dir):
+            path = write_note(note, source="https://example.com")
+
+        post = frontmatter.load(path)
+        assert "## Entities" in post.content
+        assert "[[MIMIC-IV]]" in post.content
+        assert "[[ROC Analysis]]" in post.content
+
+
+def test_write_note_why_saved_section():
+    note = {
+        "title": "Test Paper",
+        "type": "paper",
+        "tags": [],
+        "summary": "A summary.",
+        "key_facts": [],
+        "cross_links": [],
+        "raw_text": "Some content.",
+        "error": False,
+        "entities": [],
+        "figure_captions": [],
+        "why_saved_hint": "Relevant to my robot learning work.",
+    }
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        notes_dir = tmp_path / "notes"
+        notes_dir.mkdir()
+        with patch("vault.writer.NOTES_DIR", notes_dir), \
+             patch("vault.writer.VAULT_PATH", tmp_path), \
+             patch("vault.entities.NOTES_DIR", notes_dir):
+            path = write_note(note, source="https://example.com")
+
+        post = frontmatter.load(path)
+        assert "## Why I Saved This" in post.content
+        assert "Relevant to my robot learning work." in post.content
+        assert "_(edit this)_" in post.content
+
+
+def test_write_note_figure_captions_injected():
+    note = {
+        "title": "Test Paper",
+        "type": "paper",
+        "tags": [],
+        "summary": "A summary.",
+        "key_facts": [],
+        "cross_links": [],
+        "raw_text": "Intro <!-- image --> middle <!-- image --> end.",
+        "error": False,
+        "entities": [],
+        "figure_captions": ["Model architecture overview", "Training reward curves"],
+        "why_saved_hint": "",
+    }
+    import struct, zlib
+
+    def minimal_png():
+        sig = b'\x89PNG\r\n\x1a\n'
+        ihdr_data = struct.pack('>IIBBBBB', 1, 1, 8, 2, 0, 0, 0)
+        ihdr_crc = zlib.crc32(b'IHDR' + ihdr_data)
+        ihdr = struct.pack('>I', 13) + b'IHDR' + ihdr_data + struct.pack('>I', ihdr_crc)
+        raw = b'\x00\xff\x00\x00'
+        compressed = zlib.compress(raw)
+        idat_crc = zlib.crc32(b'IDAT' + compressed)
+        idat = struct.pack('>I', len(compressed)) + b'IDAT' + compressed + struct.pack('>I', idat_crc)
+        iend_crc = zlib.crc32(b'IEND')
+        iend = struct.pack('>I', 0) + b'IEND' + struct.pack('>I', iend_crc)
+        return sig + ihdr + idat + iend
+
+    images = [minimal_png(), minimal_png()]
+
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        notes_dir = tmp_path / "notes"
+        notes_dir.mkdir()
+        with patch("vault.writer.NOTES_DIR", notes_dir), \
+             patch("vault.writer.VAULT_PATH", tmp_path), \
+             patch("vault.entities.NOTES_DIR", notes_dir):
+            path = write_note(note, source="https://example.com", images=images)
+
+        post = frontmatter.load(path)
+        assert "*Figure 1: Model architecture overview.*" in post.content
+        assert "*Figure 2: Training reward curves.*" in post.content
+        assert "<!-- image -->" not in post.content
+
+
+def test_write_note_no_entities_section_when_empty():
+    note = {
+        "title": "Test Paper",
+        "type": "paper",
+        "tags": [],
+        "summary": "A summary.",
+        "key_facts": [],
+        "cross_links": [],
+        "raw_text": "Some content.",
+        "error": False,
+        "entities": [],
+        "figure_captions": [],
+        "why_saved_hint": "",
+    }
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        notes_dir = tmp_path / "notes"
+        notes_dir.mkdir()
+        with patch("vault.writer.NOTES_DIR", notes_dir), \
+             patch("vault.writer.VAULT_PATH", tmp_path), \
+             patch("vault.entities.NOTES_DIR", notes_dir):
+            path = write_note(note, source="https://example.com")
+
+        post = frontmatter.load(path)
+        assert "## Entities" not in post.content
+        assert "## Why I Saved This" not in post.content
