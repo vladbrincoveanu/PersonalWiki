@@ -55,3 +55,54 @@ def test_enrich_fallback_on_api_error():
     assert result["title"] == "Untitled"
     assert "Some content about neural networks." in result["raw_text"]
     assert result["error"] is True
+
+
+def test_enrich_returns_entities_and_figure_captions():
+    mock_response = {
+        "choices": [{
+            "message": {
+                "content": json.dumps({
+                    "title": "Test Paper",
+                    "type": "paper",
+                    "tags": ["ml"],
+                    "summary": "A test summary.",
+                    "key_facts": ["Fact one"],
+                    "cross_links": [],
+                    "entities": [
+                        {"name": "MIMIC-IV", "slug": "mimic-iv", "type": "dataset"}
+                    ],
+                    "figure_captions": ["Overview of the model architecture"],
+                    "why_saved_hint": "Relevant to my research on X.",
+                })
+            }
+        }]
+    }
+    with patch("core.minimax_client.MINIMAX_API_KEY", "test-key"), \
+         patch("core.minimax_client.requests.post") as mock_post:
+        mock_post.return_value = MagicMock(
+            status_code=200,
+            json=lambda: mock_response,
+        )
+        result = enrich(
+            raw_text="Some content <!-- image --> more content.",
+            similar_titles=[],
+            source="https://example.com/paper.pdf",
+        )
+
+    assert result["entities"] == [{"name": "MIMIC-IV", "slug": "mimic-iv", "type": "dataset"}]
+    assert result["figure_captions"] == ["Overview of the model architecture"]
+    assert result["why_saved_hint"] == "Relevant to my research on X."
+
+
+def test_enrich_fallback_includes_new_field_defaults():
+    with patch("core.minimax_client.requests.post") as mock_post:
+        mock_post.side_effect = Exception("connection refused")
+        result = enrich(
+            raw_text="Some content.",
+            similar_titles=[],
+            source="https://example.com",
+        )
+
+    assert result["entities"] == []
+    assert result["figure_captions"] == []
+    assert result["why_saved_hint"] == ""

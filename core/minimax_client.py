@@ -16,8 +16,19 @@ Analyze this content and respond with JSON in exactly this structure:
   "tags": ["tag1", "tag2", "tag3"],
   "summary": "2-3 sentence synthesis of the main insight",
   "key_facts": ["fact 1", "fact 2", "fact 3"],
-  "cross_links": ["existing-note-slug-1", "existing-note-slug-2"]
+  "cross_links": ["existing-note-slug-1", "existing-note-slug-2"],
+  "entities": [
+    {{"name": "Display Name", "slug": "display-name", "type": "concept|person|institution|dataset|method"}}
+  ],
+  "figure_captions": ["one-line caption for figure 1 inferred from surrounding text", "caption for figure 2"],
+  "why_saved_hint": "one sentence about why this source is worth keeping"
 }}
+
+Rules:
+- entities: extract recurring concepts, people, institutions, datasets, and methods that deserve their own notes. slug must be lowercase with hyphens (e.g. "MIMIC-IV" → "mimic-iv"). Only include entities that appear meaningfully in the content.
+- figure_captions: the raw content contains <!-- image --> placeholders where figures appear. Generate one caption per placeholder IN ORDER based on the surrounding text. Return an empty list if there are no <!-- image --> placeholders.
+- cross_links: use slugs of existing notes listed below only if genuinely relevant.
+- why_saved_hint: one sentence starter for a personal note about relevance — be specific, not generic.
 
 Source: {source}
 
@@ -48,12 +59,15 @@ def enrich(raw_text: str, similar_titles: list[str], source: str) -> dict:
             "summary": "",
             "key_facts": [],
             "cross_links": [],
+            "entities": [],
+            "figure_captions": [],
+            "why_saved_hint": "",
             "raw_text": raw_text,
             "error": True,
         }
     prompt = _build_prompt(raw_text, similar_titles, source)
     headers = {
-        "Authorization": f"Bearer {MINIMAX_GROUP_ID}:{MINIMAX_API_KEY}" if MINIMAX_GROUP_ID else f"Bearer {MINIMAX_API_KEY}",
+        "Authorization": f"Bearer {MINIMAX_API_KEY}",
         "Content-Type": "application/json",
     }
     payload = {
@@ -66,10 +80,19 @@ def enrich(raw_text: str, similar_titles: list[str], source: str) -> dict:
     try:
         resp = requests.post(MINIMAX_API_URL, headers=headers, json=payload, timeout=60)
         resp.raise_for_status()
-        content = resp.json()["choices"][0]["message"]["content"]
-        # Strip markdown fences if model wraps anyway
+        data = resp.json()
+        base_resp = data.get("base_resp", {})
+        if base_resp.get("status_code") and base_resp["status_code"] != 0:
+            raise ValueError(f"Minimax API error {base_resp['status_code']}: {base_resp.get('status_msg')}")
+        if "choices" not in data:
+            _logger.error("Minimax unexpected response for source=%s: %s", source, data)
+            raise ValueError(f"No 'choices' in Minimax response: {data}")
+        content = data["choices"][0]["message"]["content"]
         content = content.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
         data = json.loads(content)
+        data.setdefault("entities", [])
+        data.setdefault("figure_captions", [])
+        data.setdefault("why_saved_hint", "")
         data.setdefault("raw_text", raw_text)
         data.setdefault("error", False)
         return data
@@ -82,6 +105,9 @@ def enrich(raw_text: str, similar_titles: list[str], source: str) -> dict:
             "summary": "",
             "key_facts": [],
             "cross_links": [],
+            "entities": [],
+            "figure_captions": [],
+            "why_saved_hint": "",
             "raw_text": raw_text,
             "error": True,
         }
