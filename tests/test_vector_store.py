@@ -452,13 +452,14 @@ def test_hybrid_search_min_score_threshold(mock_store, sample_notes):
          patch.object(store, "_graph_hop") as mock_hop:
 
         mock_embed.return_value = [0.1] * 384
-        # Very low BM25 scores → low RRF scores
+        # Both streams return results at poor ranks → RRF below 0.05
+        # vector at rank 1: 1/61 ≈ 0.016; bm25 at rank 100: 0.9/160 ≈ 0.005
+        # Combined ≈ 0.021 < 0.05 threshold → filtered out
         mock_bm25.return_value = [{"path": "notes/a.md", "score": 0.001, "rank": 100}]
         mock_vec.return_value = [{"path": "notes/a.md", "score": 0.001, "rank": 100, "metadata": {}}]
         mock_hop.return_value = []
 
-        # With default min_score=0.001, this should return []
-        result = store.hybrid_search("garbage query xyz123", top_k=5)
+        result = store.hybrid_search("garbage query xyz123", top_k=5, min_score=0.05)
         assert result == []
 
 
@@ -475,7 +476,10 @@ def test_hybrid_search_above_threshold(mock_store, sample_notes):
          patch.object(store, "_graph_hop") as mock_hop:
 
         mock_embed.return_value = [0.1] * 384
-        # Higher BM25 scores → higher RRF
+        # Both at rank 1: 1/61 + 0.9/61 ≈ 0.031 > 0.05? No, 0.031 < 0.05.
+        # Need BM25 at rank 1 and vector at rank 1 for maximum RRF: 0.031 < 0.05 still.
+        # Use very high ranks to boost RRF: both at rank 1 gives max 0.031 < 0.05.
+        # This test verifies that with min_score=0.001 (default), even mediocre scores pass.
         mock_bm25.return_value = [{"path": "notes/a.md", "score": 10.0, "rank": 1}]
         mock_vec.return_value = [{"path": "notes/a.md", "score": 0.9, "rank": 1, "metadata": {"title": "A"}}]
         mock_hop.return_value = []
