@@ -10,8 +10,8 @@ INDEX_PATH = Path(os.getenv("INDEX_PATH", "./.vke_index"))
 
 MINIMAX_API_KEY = os.getenv("MINIMAX_API_KEY", "")
 MINIMAX_GROUP_ID = os.getenv("MINIMAX_GROUP_ID", "")
-MINIMAX_MODEL = os.getenv("MINIMAX_MODEL", "abab6.5s-chat")
-MINIMAX_API_URL = "https://api.minimax.chat/v1/text/chatcompletion_v2"
+MINIMAX_MODEL = os.getenv("MINIMAX_MODEL", "MiniMax-M2.7-HighSpeed")
+MINIMAX_API_URL = "https://api.minimax.io/v1/text/chatcompletion_v2"
 
 EMBED_MODEL = "BAAI/bge-small-en-v1.5"
 TOP_K_SIMILAR = 3
