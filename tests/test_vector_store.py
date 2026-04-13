@@ -272,7 +272,7 @@ def test_hybrid_search_returns_correct_shape(mock_store, sample_notes):
     for note in sample_notes:
         store.upsert(note["path"], note["text"], note["vector"], note["links"], note["metadata"])
 
-    with patch("core.vector_store.embed") as mock_embed, \
+    with patch("core.embeddings.embed") as mock_embed, \
          patch("core.vector_store.ensure_index") as mock_ensure, \
          patch("core.vector_store.bm25_search") as mock_bm25:
 
@@ -298,7 +298,7 @@ def test_hybrid_search_calls_all_three_streams(mock_store, sample_notes):
     for note in sample_notes:
         store.upsert(note["path"], note["text"], note["vector"], note["links"], note["metadata"])
 
-    with patch("core.vector_store.embed") as mock_embed, \
+    with patch("core.embeddings.embed") as mock_embed, \
          patch("core.vector_store.ensure_index") as mock_ensure, \
          patch("core.vector_store.bm25_search") as mock_bm25, \
          patch.object(store, "search") as mock_vector_search, \
@@ -335,7 +335,7 @@ def test_hybrid_search_uses_correct_weights(mock_store, sample_notes):
     for note in sample_notes:
         store.upsert(note["path"], note["text"], note["vector"], note["links"], note["metadata"])
 
-    with patch("core.vector_store.embed") as mock_embed, \
+    with patch("core.embeddings.embed") as mock_embed, \
          patch("core.vector_store.ensure_index") as mock_ensure, \
          patch("core.vector_store.bm25_search") as mock_bm25, \
          patch.object(store, "search") as mock_vector_search, \
@@ -364,7 +364,7 @@ def test_hybrid_search_merges_with_rrf(mock_store, sample_notes):
     for note in sample_notes:
         store.upsert(note["path"], note["text"], note["vector"], note["links"], note["metadata"])
 
-    with patch("core.vector_store.embed") as mock_embed, \
+    with patch("core.embeddings.embed") as mock_embed, \
          patch("core.vector_store.ensure_index") as mock_ensure, \
          patch("core.vector_store.bm25_search") as mock_bm25, \
          patch.object(store, "search") as mock_vector_search, \
