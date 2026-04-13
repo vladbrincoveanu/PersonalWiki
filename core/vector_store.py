@@ -65,8 +65,9 @@ class VectorStore:
         """
         if not paths:
             return {}
-        # Fetch all rows (up to 1000) and filter by input paths
-        all_rows = self._table.search().limit(1000).to_list()
+        # Build path filter to fetch only the rows we need
+        path_filter = " OR ".join(f"path = '{p}'" for p in paths)
+        all_rows = self._table.search().where(path_filter).to_list()
         path_to_links = {}
         # Build index for O(1) lookup
         rows_by_path = {row["path"]: row for row in all_rows}
@@ -121,8 +122,8 @@ class VectorStore:
         for link in hop1_links:
             weights[link] = hop1_weight
         for link in hop2_links:
-            # Only apply hop2_weight if not already scored as hop1
             if link not in weights:
+                # Only apply hop2_weight if not already scored as hop1
                 weights[link] = hop2_weight
 
         # Sort by weight descending, return top-k
