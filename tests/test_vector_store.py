@@ -273,8 +273,8 @@ def test_hybrid_search_returns_correct_shape(mock_store, sample_notes):
         store.upsert(note["path"], note["text"], note["vector"], note["links"], note["metadata"])
 
     with patch("core.embeddings.embed") as mock_embed, \
-         patch("core.vector_store.ensure_index") as mock_ensure, \
-         patch("core.vector_store.bm25_search") as mock_bm25:
+         patch("core.bm25_index.ensure_index") as mock_ensure, \
+         patch("core.bm25_index.bm25_search") as mock_bm25:
 
         mock_embed.return_value = [0.1] * 384
         mock_ensure.return_value = (MagicMock(), [], [])
@@ -299,8 +299,8 @@ def test_hybrid_search_calls_all_three_streams(mock_store, sample_notes):
         store.upsert(note["path"], note["text"], note["vector"], note["links"], note["metadata"])
 
     with patch("core.embeddings.embed") as mock_embed, \
-         patch("core.vector_store.ensure_index") as mock_ensure, \
-         patch("core.vector_store.bm25_search") as mock_bm25, \
+         patch("core.bm25_index.ensure_index") as mock_ensure, \
+         patch("core.bm25_index.bm25_search") as mock_bm25, \
          patch.object(store, "search") as mock_vector_search, \
          patch.object(store, "_graph_hop") as mock_graph_hop:
 
@@ -336,8 +336,8 @@ def test_hybrid_search_uses_correct_weights(mock_store, sample_notes):
         store.upsert(note["path"], note["text"], note["vector"], note["links"], note["metadata"])
 
     with patch("core.embeddings.embed") as mock_embed, \
-         patch("core.vector_store.ensure_index") as mock_ensure, \
-         patch("core.vector_store.bm25_search") as mock_bm25, \
+         patch("core.bm25_index.ensure_index") as mock_ensure, \
+         patch("core.bm25_index.bm25_search") as mock_bm25, \
          patch.object(store, "search") as mock_vector_search, \
          patch.object(store, "_graph_hop") as mock_graph_hop, \
          patch("core.vector_store._rrf_merge") as mock_rrf:
@@ -365,8 +365,8 @@ def test_hybrid_search_merges_with_rrf(mock_store, sample_notes):
         store.upsert(note["path"], note["text"], note["vector"], note["links"], note["metadata"])
 
     with patch("core.embeddings.embed") as mock_embed, \
-         patch("core.vector_store.ensure_index") as mock_ensure, \
-         patch("core.vector_store.bm25_search") as mock_bm25, \
+         patch("core.bm25_index.ensure_index") as mock_ensure, \
+         patch("core.bm25_index.bm25_search") as mock_bm25, \
          patch.object(store, "search") as mock_vector_search, \
          patch.object(store, "_graph_hop") as mock_graph_hop:
 
