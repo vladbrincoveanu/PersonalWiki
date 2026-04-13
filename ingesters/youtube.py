@@ -4,6 +4,7 @@ import subprocess
 import tempfile
 import urllib.request
 from ingesters import Document
+import whisper
 from youtube_transcript_api import (
     YouTubeTranscriptApi,
     NoTranscriptFound,
@@ -125,7 +126,6 @@ def _try_whisper_transcription(url: str) -> str | None:
     Uses whisper 'base' model for speed (CPU, ~2x realtime).
     """
     try:
-        import whisper
         import subprocess
         import tempfile
 

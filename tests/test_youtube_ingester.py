@@ -311,7 +311,6 @@ def test_youtube_transcript_api_falls_through(monkeypatch):
 
 def test_whisper_transcription(monkeypatch, tmp_path):
     """yt-dlp downloads audio, Whisper transcribes it."""
-    import ingesters.youtube as yt
     from unittest.mock import MagicMock
 
     # Create a fake audio file in tmpdir
@@ -319,10 +318,11 @@ def test_whisper_transcription(monkeypatch, tmp_path):
     audio_file.write_bytes(b"fake mp3 audio")
 
     subprocess_calls = []
+    class MockCompletedProcess:
+        returncode = 0
     def mock_run(cmd, **kwargs):
         subprocess_calls.append(cmd)
-        # yt-dlp would write the file there
-        return None
+        return MockCompletedProcess()
 
     mock_model = MagicMock()
     mock_model.transcribe.return_value = {"text": "Whisper transcribed text from audio"}
@@ -332,19 +332,28 @@ def test_whisper_transcription(monkeypatch, tmp_path):
         whisper_calls.append(model_name)
         return mock_model
 
-    # Patch tempfile.TemporaryDirectory to use our tmp_path
+    # Mock TemporaryDirectory class that mimics the real one
     import tempfile
-    import contextlib
+    class MockTemporaryDirectory:
+        def __init__(self):
+            self._path = str(tmp_path)
+        def __enter__(self):
+            return self._path
+        def __exit__(self, *args):
+            pass
 
-    orig_td = tempfile.TemporaryDirectory
-    def mock_td():
-        return contextlib.contextmanager(lambda: (yield str(tmp_path)))
+    # Use patch.object for whisper; must import youtube inside the patch
+    # context so it captures the patched whisper.load_model
+    import whisper as whisper_module
+    from unittest.mock import patch
+    with patch.object(whisper_module, "load_model", mock_load_model):
+        monkeypatch.setattr("subprocess.run", mock_run)
+        monkeypatch.setattr("tempfile.TemporaryDirectory", MockTemporaryDirectory)
 
-    monkeypatch.setattr("subprocess.run", mock_run)
-    monkeypatch.setattr("ingesters.youtube.whisper.load_model", mock_load_model)
-    monkeypatch.setattr("tempfile.TemporaryDirectory", mock_td)
+        # Import youtube AFTER patches are active
+        import ingesters.youtube as yt
+        result = yt._try_whisper_transcription("https://youtube.com/watch?v=abc123DEF12")
 
-    result = yt._try_whisper_transcription("https://youtube.com/watch?v=abc123DEF12")
     assert result is not None
     assert "Whisper transcribed text" in result
-    assert "abc123DEF12" in subprocess_calls[0][-1]  # URL in yt-dlp command
+    assert "abc123DEF12" in subprocess_calls[0][-1]
