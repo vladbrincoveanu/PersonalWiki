@@ -6,6 +6,7 @@ deduplicates against LanceDB, triggers pipeline for new URLs.
 import asyncio
 import logging
 import os
+import time
 from config import (
     DISCOVERY_ENABLED,
     DISCOVERY_INTERVAL,
@@ -185,13 +186,21 @@ class DiscoveryScheduler:
 
     async def _scheduler_loop(self):
         """Main timer loop."""
+        last_refresh = time.monotonic()
         await self._refresh_keywords()
         while self._running:
+            elapsed = time.monotonic() - last_refresh
+            sleep_time = min(DISCOVERY_INTERVAL, max(0, INTEREST_REFRESH_INTERVAL - elapsed))
+            await asyncio.sleep(sleep_time)
+
+            if elapsed >= INTEREST_REFRESH_INTERVAL:
+                await self._refresh_keywords()
+                last_refresh = time.monotonic()
+
             try:
                 await self._run_discovery_cycle()
             except Exception as e:
                 _logger.error("Discovery: cycle failed: %s", e)
-            await asyncio.sleep(DISCOVERY_INTERVAL)
 
     def start(self, pipeline_func=None):
         """Start the scheduler. pipeline_func is the pipeline coroutine to call."""
