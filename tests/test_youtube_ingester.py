@@ -132,3 +132,34 @@ def test_extract_youtube_returns_stub_when_all_fail(monkeypatch):
     doc = yt.extract_youtube("https://youtube.com/watch?v=abc")
     assert doc.raw_text.startswith("[NO_TRANSCRIPT]")
     assert doc.content_type == "video"
+
+
+def test_is_english_text_latin_ratio():
+    """Latin-script-dominant text returns True."""
+    from ingesters.youtube import _is_english_text
+    assert _is_english_text("Hello world, this is English text.") is True
+    assert _is_english_text("你好世界") is False  # Chinese — no Latin chars
+    assert _is_english_text("Привет мир") is False  # Cyrillic
+    # Mixed: should return True if ratio >= 0.7
+    assert _is_english_text("Hello 世界") is False  # 6/10 Latin = 0.6 < 0.7
+
+
+def test_has_english_cues_with_lang_attribute():
+    """VTT with lang=en-US in cue line returns True."""
+    from ingesters.youtube import _has_english_cues
+    vtt = "WEBVTT\n\n00:00:00.000 --> 00:00:05.000 align:start position:50% line:84% size:100% font-family:\"YouTube Sans\" lang=en-US\nHello world"
+    assert _has_english_cues(vtt) is True
+
+
+def test_has_english_cues_falls_back_to_ratio():
+    """VTT without lang attribute uses character ratio fallback."""
+    from ingesters.youtube import _has_english_cues
+    vtt = "WEBVTT\n\n00:00:00.000 --> 00:00:05.000\nHello world this is English text"
+    assert _has_english_cues(vtt) is True
+
+
+def test_has_english_cues_rejects_non_english():
+    """VTT with non-Latin text returns False."""
+    from ingesters.youtube import _has_english_cues
+    vtt = "WEBVTT\n\n00:00:00.000 --> 00:00:05.000\nこれは日本語の字幕です"
+    assert _has_english_cues(vtt) is False

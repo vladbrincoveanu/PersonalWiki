@@ -70,6 +70,28 @@ def _extract_video_id(url: str) -> str | None:
     return m.group(1) if m else None
 
 
+def _is_english_text(text: str, min_latin_ratio: float = 0.7) -> bool:
+    """Return True if text appears to be English (Latin-script dominant)."""
+    latin = sum(1 for c in text if c.isalpha() and ord(c) < 128)
+    total = sum(1 for c in text if c.isalpha())
+    if total == 0:
+        return False
+    return (latin / total) >= min_latin_ratio
+
+
+def _has_english_cues(vtt_text: str) -> bool:
+    """Check if VTT contains any English-language cues via lang= attr or char ratio."""
+    for line in vtt_text.splitlines():
+        # VTT cue format: "00:00:00.000 --> 00:00:05.000 align:start ... lang=en-US"
+        if "lang=en" in line or "lang=en-" in line:
+            return True
+    # Fallback: character ratio check on text content lines
+    text_lines = [l.strip() for l in vtt_text.splitlines()
+                  if not l.startswith("00:") and "-->" not in l]
+    sample = " ".join(text_lines[:50])
+    return _is_english_text(sample)
+
+
 def _try_subtitle_tiers(url: str, tmpdir: str) -> str | None:
     """Try each subtitle tier. Returns transcript text or None."""
     for tier in _SUBTITLE_TIERS:
