@@ -2,7 +2,6 @@ import os
 import re
 import subprocess
 import tempfile
-import urllib.request
 from ingesters import Document
 import whisper
 from youtube_transcript_api import (
@@ -53,21 +52,6 @@ def _run_yt_dlp(args: list[str], tmpdir: str) -> list[str] | None:
         if not vtt_files:
             return None
         return [os.path.join(tmpdir, f) for f in vtt_files]
-    except Exception:
-        return None
-
-
-def _fetch_transcript_api(video_id: str) -> str | None:
-    """Fallback via youtubetranscript.com API. Returns transcript text or None."""
-    url = f"https://youtubetranscript.com/?v={video_id}"
-    try:
-        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            content = resp.read().decode("utf-8", errors="replace")
-            if "<transcript>" not in content:
-                return None
-            text = re.sub(r"<[^>]+>", "", content)
-            return text.strip()
     except Exception:
         return None
 
@@ -196,17 +180,22 @@ def _try_subtitle_tiers(url: str, tmpdir: str) -> str | None:
 def extract_youtube(url: str) -> Document:
     video_id = _extract_video_id(url)
 
+    # Try youtube-transcript-api first (bypasses yt-dlp rate limit)
+    if video_id:
+        api_transcript = _try_youtube_transcript_api(video_id)
+        if api_transcript and api_transcript.strip():
+            return Document(raw_text=api_transcript, content_type="video")
+
+    # Try yt-dlp subtitle tiers as 2nd attempt
     with tempfile.TemporaryDirectory() as tmpdir:
-        # Try each subtitle tier
         transcript = _try_subtitle_tiers(url, tmpdir)
         if transcript and transcript.strip():
             return Document(raw_text=transcript, content_type="video")
 
-        # All yt-dlp tiers failed — try transcript API
-        if video_id:
-            api_transcript = _fetch_transcript_api(video_id)
-            if api_transcript and api_transcript.strip():
-                return Document(raw_text=api_transcript, content_type="video")
+    # Try Whisper transcription as last resort (only if we had a valid video_id)
+    if video_id:
+        whisper_transcript = _try_whisper_transcription(url)
+        if whisper_transcript:
+            return Document(raw_text=whisper_transcript, content_type="video")
 
-        # All fallbacks exhausted
-        return Document(raw_text=f"[NO_TRANSCRIPT] {url}", content_type="video")
+    return Document(raw_text=f"[NO_TRANSCRIPT] {url}", content_type="video")

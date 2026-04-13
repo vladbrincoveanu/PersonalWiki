@@ -104,17 +104,18 @@ def test_extract_youtube_tiered_subtitle_fallback(monkeypatch, tmp_path):
 
 
 def test_extract_youtube_all_tiers_fail_then_transcript_api(monkeypatch, tmp_path):
-    """All yt-dlp tiers fail, transcript API returns transcript."""
+    """API called first, yt-dlp tiers fail, returns transcript from API."""
     import ingesters.youtube as yt
 
     api_calls = []
-    def mock_transcript_api(video_id):
+    def mock_ytt_api(video_id):
         api_calls.append(video_id)
         return "API transcript text here"
 
-    # Mock _run_yt_dlp to always return None (no VTT files)
+    # yt-dlp fails (no VTT files), Whisper also fails
     monkeypatch.setattr("ingesters.youtube._run_yt_dlp", lambda *a, **kw: None)
-    monkeypatch.setattr("ingesters.youtube._fetch_transcript_api", mock_transcript_api)
+    monkeypatch.setattr("ingesters.youtube._try_youtube_transcript_api", mock_ytt_api)
+    monkeypatch.setattr("ingesters.youtube.whisper.load_model", lambda m: (_ for _ in ()).throw(Exception("no whisper")))
 
     # Use 11-char video ID so _extract_video_id matches
     doc = yt.extract_youtube("https://youtube.com/watch?v=abc123DEF12")
@@ -125,9 +126,14 @@ def test_extract_youtube_all_tiers_fail_then_transcript_api(monkeypatch, tmp_pat
 def test_extract_youtube_returns_stub_when_all_fail(monkeypatch):
     """All tiers and API fail → return NO_TRANSCRIPT stub."""
     import ingesters.youtube as yt
+    from youtube_transcript_api import NoTranscriptFound
+
+    def mock_ytt_api(video_id):
+        raise NoTranscriptFound(video_id, ["en"], [])
 
     monkeypatch.setattr("ingesters.youtube._run_yt_dlp", lambda *a, **kw: None)
-    monkeypatch.setattr("ingesters.youtube._fetch_transcript_api", lambda vid: None)
+    monkeypatch.setattr("ingesters.youtube._try_youtube_transcript_api", mock_ytt_api)
+    monkeypatch.setattr("ingesters.youtube.whisper.load_model", lambda m: (_ for _ in ()).throw(Exception("no whisper")))
 
     doc = yt.extract_youtube("https://youtube.com/watch?v=abc")
     assert doc.raw_text.startswith("[NO_TRANSCRIPT]")
@@ -193,8 +199,9 @@ def test_auto_caption_tier_finds_english_auto_subs(monkeypatch, tmp_path):
 
 
 def test_auto_caption_tier_skips_non_english(monkeypatch, tmp_path):
-    """auto-en tier with non-English VTT falls through to API."""
+    """auto-en tier with non-English VTT falls through to Whisper."""
     import ingesters.youtube as yt
+    from youtube_transcript_api import NoTranscriptFound
 
     # Japanese auto-captions — no lang=en, low Latin ratio
     vtt_content = (
@@ -207,18 +214,43 @@ def test_auto_caption_tier_skips_non_english(monkeypatch, tmp_path):
     vtt_file = tmp_path / "video.en.vtt"
     vtt_file.write_text(vtt_content)
 
-    api_called = []
-    def mock_transcript_api(video_id):
-        api_called.append(video_id)
-        return "API transcript fallback"
+    # Create fake audio file (Whisper reads this)
+    audio_file = tmp_path / "audio.mp3"
+    audio_file.write_bytes(b"fake mp3 audio")
+
+    # Mock TemporaryDirectory to return tmp_path (where fake audio was created)
+    class MockTemporaryDirectory:
+        def __init__(self):
+            self._path = str(tmp_path)
+        def __enter__(self):
+            return self._path
+        def __exit__(self, *args):
+            pass
+
+    whisper_calls = []
+    def mock_whisper_load(model_name):
+        whisper_calls.append(model_name)
+        m = MagicMock()
+        m.transcribe.return_value = {"text": "Whisper fallback transcript"}
+        return m
+
+    class MockCompletedProcess:
+        returncode = 0
+
+    # Mock YouTubeTranscriptApi to raise NoTranscriptFound when instantiated
+    def mock_ytt_ctor():
+        raise NoTranscriptFound("abc123DEF12", ["en"], [])
 
     monkeypatch.setattr("ingesters.youtube._run_yt_dlp", lambda *a, **kw: None)
-    monkeypatch.setattr("ingesters.youtube._fetch_transcript_api", mock_transcript_api)
+    monkeypatch.setattr("ingesters.youtube.YouTubeTranscriptApi", mock_ytt_ctor)
+    monkeypatch.setattr("ingesters.youtube.whisper.load_model", mock_whisper_load)
+    monkeypatch.setattr("subprocess.run", lambda *a, **kw: MockCompletedProcess())
+    monkeypatch.setattr("tempfile.TemporaryDirectory", MockTemporaryDirectory)
 
     doc = yt.extract_youtube("https://youtube.com/watch?v=abc123DEF12")
-    # Should have fallen through to API
-    assert api_called == ["abc123DEF12"]
-    assert "API transcript fallback" in doc.raw_text
+    # Should have fallen through to Whisper
+    assert whisper_calls == ["base"]
+    assert "Whisper fallback transcript" in doc.raw_text
 
 
 def test_youtube_transcript_api_manually_created(monkeypatch):
@@ -357,3 +389,25 @@ def test_whisper_transcription(monkeypatch, tmp_path):
     assert result is not None
     assert "Whisper transcribed text" in result
     assert "abc123DEF12" in subprocess_calls[0][-1]
+
+
+def test_extract_youtube_full_pipeline_all_fail(monkeypatch):
+    """All sources fail → returns NO_TRANSCRIPT stub."""
+    import ingesters.youtube as yt
+    from youtube_transcript_api import NoTranscriptFound
+
+    # youtube-transcript-api fails
+    def mock_ytt_api(video_id):
+        raise NoTranscriptFound(video_id, ["en"], [])
+
+    # yt-dlp returns no subtitle files
+    monkeypatch.setattr("ingesters.youtube._run_yt_dlp", lambda *a, **kw: None)
+
+    # Whisper fails
+    monkeypatch.setattr("ingesters.youtube.whisper.load_model", lambda m: (_ for _ in ()).throw(Exception("whisper fail")))
+
+    monkeypatch.setattr("ingesters.youtube.YouTubeTranscriptApi", mock_ytt_api)
+
+    doc = yt.extract_youtube("https://youtube.com/watch?v=abc123DEF12")
+    assert doc.raw_text.startswith("[NO_TRANSCRIPT]")
+    assert doc.content_type == "video"
