@@ -160,3 +160,228 @@ def test_graph_hop_respects_top_k():
     store.upsert("notes/e.md", "content e", [0.5] * 384, [], {"title": "E"})
     result = store._graph_hop(["notes/a.md"], top_k=3, hop1_weight=0.5, hop2_weight=0.25)
     assert len(result) == 3
+
+
+# --- Tests for _rrf_merge ---
+
+from core.vector_store import _rrf_merge
+
+
+def test_rrf_merge_returns_correct_shape():
+    ranked_lists = [
+        [{"path": "a.md", "score": 0.9, "rank": 1}, {"path": "b.md", "score": 0.8, "rank": 2}],
+        [{"path": "b.md", "score": 0.7, "rank": 1}, {"path": "c.md", "score": 0.6, "rank": 2}],
+    ]
+    result = _rrf_merge(ranked_lists, weights=[1.0, 0.9], k=60, top_k=5)
+    assert len(result) == 3  # 3 unique paths
+    for item in result:
+        assert "path" in item
+        assert "score" in item
+        assert "rank" in item
+        assert isinstance(item["path"], str)
+        assert isinstance(item["score"], float)
+        assert isinstance(item["rank"], int)
+
+
+def test_rrf_merge_sorted_by_score_descending():
+    ranked_lists = [
+        [{"path": "a.md", "score": 0.9, "rank": 1}],
+        [{"path": "b.md", "score": 0.9, "rank": 1}],
+    ]
+    result = _rrf_merge(ranked_lists, weights=[1.0, 0.9], k=60, top_k=5)
+    scores = [item["score"] for item in result]
+    assert scores == sorted(scores, reverse=True)
+
+
+def test_rrf_merge_respects_top_k():
+    ranked_lists = [
+        [{"path": f"note{i}.md", "score": 1.0 - i * 0.1, "rank": i + 1} for i in range(10)],
+        [],
+    ]
+    result = _rrf_merge(ranked_lists, weights=[1.0, 0.5], k=60, top_k=3)
+    assert len(result) == 3
+
+
+def test_rrf_merge_missing_rank_penalty():
+    # Items without rank should get k * 2 penalty
+    ranked_lists = [
+        [{"path": "a.md", "score": 0.9, "rank": 1}, {"path": "b.md", "score": 0.8}],  # b.md missing rank
+    ]
+    result = _rrf_merge(ranked_lists, weights=[1.0], k=60, top_k=5)
+    # a.md should rank higher than b.md due to penalty
+    a_score = next(item["score"] for item in result if item["path"] == "a.md")
+    b_score = next(item["score"] for item in result if item["path"] == "b.md")
+    assert a_score > b_score
+
+
+def test_rrf_merge_accumulates_scores():
+    # Same path in multiple lists should have combined score
+    ranked_lists = [
+        [{"path": "a.md", "score": 0.9, "rank": 1}],
+        [{"path": "a.md", "score": 0.8, "rank": 1}],
+    ]
+    result = _rrf_merge(ranked_lists, weights=[1.0, 1.0], k=60, top_k=5)
+    a_item = next(item for item in result if item["path"] == "a.md")
+    # RRF score = 1.0/(60+1) + 1.0/(60+1) = 2/(61) ≈ 0.0328
+    assert abs(a_item["score"] - 2 / 61) < 0.001
+
+
+# --- Tests for hybrid_search ---
+
+from unittest.mock import patch, MagicMock
+
+
+def test_hybrid_search_returns_correct_shape(mock_store, sample_notes):
+    store, notes_dir = mock_store
+    for note in sample_notes:
+        store.upsert(note["path"], note["text"], note["vector"], note["links"], note["metadata"])
+
+    with patch("core.vector_store.embed") as mock_embed, \
+         patch("core.vector_store.ensure_index") as mock_ensure, \
+         patch("core.vector_store.bm25_search") as mock_bm25:
+
+        mock_embed.return_value = [0.1] * 384
+        mock_ensure.return_value = (MagicMock(), [], [])
+        mock_bm25.return_value = [
+            {"path": "notes/a.md", "score": 0.9, "rank": 1},
+            {"path": "notes/b.md", "score": 0.8, "rank": 2},
+        ]
+
+        result = store.hybrid_search("test query", top_k=5)
+
+        assert len(result) <= 5
+        for item in result:
+            assert "path" in item
+            assert "score" in item
+            assert "rank" in item
+            assert "metadata" in item
+
+
+def test_hybrid_search_calls_all_three_streams(mock_store, sample_notes):
+    store, notes_dir = mock_store
+    for note in sample_notes:
+        store.upsert(note["path"], note["text"], note["vector"], note["links"], note["metadata"])
+
+    with patch("core.vector_store.embed") as mock_embed, \
+         patch("core.vector_store.ensure_index") as mock_ensure, \
+         patch("core.vector_store.bm25_search") as mock_bm25, \
+         patch.object(store, "search") as mock_vector_search, \
+         patch.object(store, "_graph_hop") as mock_graph_hop:
+
+        mock_embed.return_value = [0.1] * 384
+        mock_vector_search.return_value = [
+            {"path": "notes/a.md", "score": 0.9, "rank": 1, "metadata": {}},
+            {"path": "notes/b.md", "score": 0.8, "rank": 2, "metadata": {}},
+        ]
+        mock_ensure.return_value = (MagicMock(), [], [])
+        mock_bm25.return_value = [
+            {"path": "notes/a.md", "score": 0.9, "rank": 1},
+            {"path": "notes/b.md", "score": 0.8, "rank": 2},
+        ]
+        mock_graph_hop.return_value = [
+            {"path": "notes/c.md", "hop_weight": 0.5},
+        ]
+
+        store.hybrid_search("test query", top_k=5)
+
+        mock_embed.assert_called_once_with("test query")
+        mock_ensure.assert_called_once()
+        mock_bm25.assert_called_once()
+        mock_graph_hop.assert_called_once()
+        # graph_hop should be called with vector search paths
+        call_paths = mock_graph_hop.call_args[0][0]
+        assert "notes/a.md" in call_paths
+        assert "notes/b.md" in call_paths
+
+
+def test_hybrid_search_uses_correct_weights(mock_store, sample_notes):
+    store, notes_dir = mock_store
+    for note in sample_notes:
+        store.upsert(note["path"], note["text"], note["vector"], note["links"], note["metadata"])
+
+    with patch("core.vector_store.embed") as mock_embed, \
+         patch("core.vector_store.ensure_index") as mock_ensure, \
+         patch("core.vector_store.bm25_search") as mock_bm25, \
+         patch.object(store, "search") as mock_vector_search, \
+         patch.object(store, "_graph_hop") as mock_graph_hop, \
+         patch("core.vector_store._rrf_merge") as mock_rrf:
+
+        mock_embed.return_value = [0.1] * 384
+        mock_vector_search.return_value = [{"path": "a.md", "score": 0.9, "rank": 1, "metadata": {}}]
+        mock_ensure.return_value = (MagicMock(), [], [])
+        mock_bm25.return_value = [{"path": "a.md", "score": 0.9, "rank": 1}]
+        mock_graph_hop.return_value = [{"path": "a.md", "hop_weight": 0.5}]
+        mock_rrf.return_value = [{"path": "a.md", "score": 0.1, "rank": 1}]
+
+        store.hybrid_search("test query", top_k=5)
+
+        mock_rrf.assert_called_once()
+        call_args = mock_rrf.call_args
+        # Check weights
+        assert call_args.kwargs["weights"] == [1.0, 0.9, 0.5]
+        assert call_args.kwargs["k"] == 60
+        assert call_args.kwargs["top_k"] == 5
+
+
+def test_hybrid_search_merges_with_rrf(mock_store, sample_notes):
+    store, notes_dir = mock_store
+    for note in sample_notes:
+        store.upsert(note["path"], note["text"], note["vector"], note["links"], note["metadata"])
+
+    with patch("core.vector_store.embed") as mock_embed, \
+         patch("core.vector_store.ensure_index") as mock_ensure, \
+         patch("core.vector_store.bm25_search") as mock_bm25, \
+         patch.object(store, "search") as mock_vector_search, \
+         patch.object(store, "_graph_hop") as mock_graph_hop:
+
+        mock_embed.return_value = [0.1] * 384
+        mock_vector_search.return_value = [{"path": "a.md", "score": 0.9, "rank": 1, "metadata": {"title": "A"}}]
+        mock_ensure.return_value = (MagicMock(), [], [])
+        mock_bm25.return_value = [{"path": "a.md", "score": 0.9, "rank": 1}]
+        mock_graph_hop.return_value = [{"path": "a.md", "hop_weight": 0.5}]
+
+        result = store.hybrid_search("test query", top_k=5)
+
+        assert len(result) == 1
+        assert result[0]["path"] == "a.md"
+        assert result[0]["metadata"]["title"] == "A"
+
+
+# --- Fixtures ---
+
+import pytest
+
+
+@pytest.fixture
+def mock_store():
+    tmp = tempfile.mkdtemp()
+    store = VectorStore(index_path=tmp)
+    return store, Path(tmp)
+
+
+@pytest.fixture
+def sample_notes():
+    return [
+        {
+            "path": "notes/a.md",
+            "text": "content a",
+            "vector": [0.1] * 384,
+            "links": ["notes/b.md"],
+            "metadata": {"title": "Note A", "tags": ["a"]},
+        },
+        {
+            "path": "notes/b.md",
+            "text": "content b",
+            "vector": [0.2] * 384,
+            "links": ["notes/c.md"],
+            "metadata": {"title": "Note B", "tags": ["b"]},
+        },
+        {
+            "path": "notes/c.md",
+            "text": "content c",
+            "vector": [0.3] * 384,
+            "links": [],
+            "metadata": {"title": "Note C", "tags": ["c"]},
+        },
+    ]
+

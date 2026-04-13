@@ -14,6 +14,38 @@ SCHEMA = pa.schema([
 ])
 
 
+def _rrf_merge(
+    ranked_lists: list[list[dict]],
+    weights: list[float],
+    k: float = 60.0,
+    top_k: int = 5,
+) -> list[dict]:
+    """
+    Reciprocal Rank Fusion across N ranked lists.
+    ranked_lists: list of lists, each sorted descending.
+                  Each item is {path, score, rank, ...}
+    weights: parallel list of weights per stream
+    k: RRF constant (default 60)
+    Returns: merged list of {path, score, rank} sorted by RRF score descending.
+    """
+    path_scores: dict[str, float] = {}
+
+    for ranked_list, weight in zip(ranked_lists, weights):
+        for item in ranked_list:
+            path = item["path"]
+            rank = item.get("rank")
+            if rank is None:
+                rank = k * 2
+            rrf_score = weight / (k + rank)
+            path_scores[path] = path_scores.get(path, 0.0) + rrf_score
+
+    sorted_paths = sorted(path_scores.items(), key=lambda x: x[1], reverse=True)
+    return [
+        {"path": path, "score": score, "rank": rank}
+        for rank, (path, score) in enumerate(sorted_paths[:top_k], start=1)
+    ]
+
+
 class VectorStore:
     def __init__(self, index_path: str | Path):
         self._db = lancedb.connect(str(index_path))
@@ -56,6 +88,46 @@ class VectorStore:
         if isinstance(meta, str):
             meta = json.loads(meta)
         return float(meta.get("_mtime", 0.0))
+
+    def hybrid_search(self, query: str, top_k: int = 5) -> list[dict]:
+        """
+        Unified search across vector, BM25, and graph hop streams via RRF.
+        Returns list of {path, score, rank, metadata} sorted by RRF score descending.
+        """
+        from core.embeddings import embed
+        from core.bm25_index import ensure_index, bm25_search
+
+        # Vector stream: embed + search with doubled top_k for headroom
+        query_vector = embed(query)
+        vector_results = self.search(query_vector, top_k=top_k * 2)
+
+        # BM25 stream
+        ensure_index()
+        bm25_results = bm25_search(query, top_k=top_k * 2)
+
+        # Graph hops from vector results
+        vector_paths = [r["path"] for r in vector_results]
+        hop_results = self._graph_hop(vector_paths, top_k=top_k * 2)
+        # Convert hop_weight to rank-based scoring for RRF
+        ranked_hops = [
+            {"path": item["path"], "score": item["hop_weight"], "rank": rank}
+            for rank, item in enumerate(hop_results, start=1)
+        ]
+
+        # RRF merge
+        merged = _rrf_merge(
+            [vector_results, bm25_results, ranked_hops],
+            weights=[1.0, 0.9, 0.5],
+            k=60,
+            top_k=top_k,
+        )
+
+        # Attach metadata from vector results
+        path_to_meta = {r["path"]: r.get("metadata", {}) for r in vector_results}
+        for item in merged:
+            item["metadata"] = path_to_meta.get(item["path"], {})
+
+        return merged
 
     def _get_links_for_paths(self, paths: list[str]) -> dict[str, list[str]]:
         """Fetch the links field from LanceDB for each path in the input list.
