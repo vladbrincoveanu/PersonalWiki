@@ -114,18 +114,34 @@ class VectorStore:
             for rank, item in enumerate(hop_results, start=1)
         ]
 
+        # Enumerate ranks for vector results so they are differentiated in RRF
+        ranked_vector = [
+            {"path": r["path"], "score": r.get("score"), "rank": rank + 1}
+            for rank, r in enumerate(vector_results)
+        ]
+
+        # Collect metadata from ALL streams before merging
+        metadata_map: dict[str, dict] = {}
+        for r in vector_results:
+            metadata_map[r["path"]] = r.get("metadata", {})
+        for r in bm25_results:
+            if r["path"] not in metadata_map:
+                metadata_map[r["path"]] = {}
+        for r in hop_results:
+            if r["path"] not in metadata_map:
+                metadata_map[r["path"]] = {}
+
         # RRF merge
         merged = _rrf_merge(
-            [vector_results, bm25_results, ranked_hops],
+            [ranked_vector, bm25_results, ranked_hops],
             weights=[1.0, 0.9, 0.5],
             k=60,
             top_k=top_k,
         )
 
-        # Attach metadata from vector results
-        path_to_meta = {r["path"]: r.get("metadata", {}) for r in vector_results}
+        # Attach metadata from collected map
         for item in merged:
-            item["metadata"] = path_to_meta.get(item["path"], {})
+            item["metadata"] = metadata_map.get(item["path"], {})
 
         return merged
 
