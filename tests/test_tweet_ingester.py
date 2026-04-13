@@ -188,3 +188,33 @@ def test_tweet_strips_html_correctly():
     result = tw._strip_tags(html)
     assert "Hello world" in result
     assert "<" not in result
+
+
+def test_tweet_nitter_rss_fallback(monkeypatch):
+    """All Nitter HTML instances fail, RSS feed returns content."""
+    import ingesters.tweet as tw
+
+    rss_calls = []
+    def mock_urlopen(url, timeout=10):
+        url_str = url.get_full_url() if hasattr(url, 'get_full_url') else str(url)
+        if "/rss" in url_str or "/feed" in url_str:
+            rss_calls.append(url_str)
+            # RSS XML with CDATA description
+            xml = '''<?xml version="1.0"?>
+<rss><channel><item>
+<description><![CDATA[Hello from RSS tweet content]]></description>
+</item></channel></rss>'''
+            from unittest.mock import MagicMock
+            m = MagicMock()
+            m.__enter__ = lambda s: s
+            m.__exit__ = lambda s, *a: None
+            m.status = 200
+            m.read.return_value = xml.encode()
+            return m
+        raise Exception("HTML instance failed")
+
+    monkeypatch.setattr("urllib.request.urlopen", mock_urlopen)
+
+    doc = tw.extract_tweet("https://twitter.com/user/status/123")
+    assert "RSS tweet content" in doc.raw_text
+    assert doc.content_type == "tweet"

@@ -2,16 +2,22 @@ import re
 import urllib.request
 from ingesters import Document
 
-# Expanded instance pool (primary + expanded + syndication handled in code)
+# Expanded instance pool (primary + expanded + vxitter and other reliable forks)
 _NITTER_INSTANCES = [
+    # Primary pool
     "https://nitter.poast.org",
     "https://nitter.privacydev.net",
     "https://nitter.unixfox.eu",
     "https://nitter.net",
+    # Expanded pool
     "https://nitter.esmailelBob.xyz",
     "https://nitter.woodwhyn.vercel.app",
     "https://nitter.bus-hit.me",
     "https://nitter.projectsegfau.lt",
+    # vxitter and other reliable forks
+    "https://vxitter.nl",
+    "https://nitter.1d4.us",
+    "https://nitter.cat",
 ]
 
 # Updated CSS/content regex — more permissive extraction
@@ -49,6 +55,34 @@ def _fetch_via_syndication(username: str, tweet_id: str) -> str | None:
         return None
 
 
+def _fetch_via_nitter_rss(username: str, tweet_id: str) -> str | None:
+    """Try Nitter RSS feeds across all instances."""
+    for instance in _NITTER_INSTANCES:
+        try:
+            url = f"{instance}/{username}/status/{tweet_id}/rss"
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                if resp.status != 200:
+                    continue
+                content = resp.read().decode("utf-8", errors="replace")
+                # Extract <description> from RSS item (may be in CDATA)
+                desc_match = re.search(
+                    r"<description><!\[CDATA\[(.*?)\]\]></description>",
+                    content, re.DOTALL
+                )
+                if desc_match:
+                    text = _strip_tags(desc_match.group(1))
+                    if text.strip():
+                        return text.strip()
+                # Fallback: strip all tags from content
+                text = _strip_tags(content)
+                if text.strip():
+                    return text.strip()
+        except Exception:
+            continue
+    return None
+
+
 def extract_tweet(url: str) -> Document:
     m = re.match(r"https?://(?:twitter\.com|x\.com)/([^/?#]+)/status/(\d+)", url)
     if not m:
@@ -70,7 +104,13 @@ def extract_tweet(url: str) -> Document:
         except Exception:
             continue
 
-    # Try syndication if all Nitter instances failed
+    # Try Nitter RSS feeds if HTML failed
+    if html is None:
+        rss_text = _fetch_via_nitter_rss(username, tweet_id)
+        if rss_text and rss_text.strip():
+            return Document(raw_text=rss_text.strip(), content_type="tweet")
+
+    # Try syndication if RSS failed
     syndication_text = None
     if html is None:
         syndication_text = _fetch_via_syndication(username, tweet_id)
