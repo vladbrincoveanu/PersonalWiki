@@ -32,14 +32,18 @@ async def _run_gap_searches(gap_entities: list[str]):
     Submit one-shot searches for each gap entity and trigger pipeline
     for the top result.
     """
-    from core.discovery_scheduler import DiscoveryScheduler
+    try:
+        from core.discovery_scheduler import DiscoveryScheduler
 
-    scheduler = DiscoveryScheduler()
-    for entity in gap_entities:
-        results = await scheduler._search_keyword(entity)
-        if results:
-            top = results[0]
-            asyncio.create_task(_run_gap_search_pipeline(top["url"]))
+        scheduler = DiscoveryScheduler()
+        for entity in gap_entities[:5]:
+            results = await scheduler._search_keyword(entity)
+            for result in results[:1]:
+                url = result.get("url")
+                if url:
+                    await _run_gap_search_pipeline(url)
+    except Exception:
+        pass  # best-effort gap filling
 
 
 async def _run_gap_search_pipeline(url: str):
@@ -106,7 +110,7 @@ async def run_pipeline(
     note = await asyncio.to_thread(enrich, raw_text, similar_titles, source)
 
     # Step 3.5: Gap detection
-    note["gap_entities"] = detect_gaps(note.get("entities", []))
+    note["gap_entities"] = await asyncio.to_thread(detect_gaps, note.get("entities", []))
     if note["gap_entities"]:
         asyncio.create_task(_run_gap_searches(note["gap_entities"]))
 
