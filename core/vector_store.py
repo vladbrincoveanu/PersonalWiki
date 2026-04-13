@@ -57,6 +57,78 @@ class VectorStore:
             meta = json.loads(meta)
         return float(meta.get("_mtime", 0.0))
 
+    def _get_links_for_paths(self, paths: list[str]) -> dict[str, list[str]]:
+        """Fetch the links field from LanceDB for each path in the input list.
+
+        Returns a dict mapping each input path to its list of linked paths.
+        Missing paths are returned with empty lists.
+        """
+        if not paths:
+            return {}
+        # Fetch all rows (up to 1000) and filter by input paths
+        all_rows = self._table.search().limit(1000).to_list()
+        path_to_links = {}
+        # Build index for O(1) lookup
+        rows_by_path = {row["path"]: row for row in all_rows}
+        for path in paths:
+            row = rows_by_path.get(path)
+            if row is not None:
+                path_to_links[path] = row.get("links", [])
+            else:
+                path_to_links[path] = []
+        return path_to_links
+
+    def _graph_hop(
+        self,
+        paths: list[str],
+        top_k: int = 5,
+        hop1_weight: float = 0.5,
+        hop2_weight: float = 0.25,
+    ) -> list[dict]:
+        """Traverse wikilinks from the top-k input paths.
+
+        - Hop 1: Collect all links from the top-k paths.
+        - Hop 2: From the hop-1 notes, collect their links too.
+        - Score: hop-1 links get hop1_weight, hop-2 links get hop2_weight.
+        - Deduplicate by path, sort by weight descending, return top-k.
+
+        Returns list of {"path": str, "hop_weight": float} sorted by hop_weight descending.
+        """
+        if not paths:
+            return []
+
+        # Take top-k paths
+        selected_paths = paths[:top_k]
+
+        # Hop 1: get links from selected paths
+        links_map = self._get_links_for_paths(selected_paths)
+        hop1_links: list[str] = []
+        for p in selected_paths:
+            hop1_links.extend(links_map.get(p, []))
+
+        # Hop 2: get links from hop-1 notes (deduplicated)
+        hop1_unique = list(dict.fromkeys(hop1_links))  # preserve order, remove dups
+        if hop1_unique:
+            hop2_links_map = self._get_links_for_paths(hop1_unique)
+            hop2_links: list[str] = []
+            for p in hop1_unique:
+                hop2_links.extend(hop2_links_map.get(p, []))
+        else:
+            hop2_links = []
+
+        # Build weighted scores
+        weights: dict[str, float] = {}
+        for link in hop1_links:
+            weights[link] = hop1_weight
+        for link in hop2_links:
+            # Only apply hop2_weight if not already scored as hop1
+            if link not in weights:
+                weights[link] = hop2_weight
+
+        # Sort by weight descending, return top-k
+        sorted_links = sorted(weights.items(), key=lambda x: x[1], reverse=True)
+        return [{"path": path, "hop_weight": weight} for path, weight in sorted_links[:top_k]]
+
 
 # Module-level singleton backed by config path
 _store: VectorStore | None = None
