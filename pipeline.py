@@ -83,7 +83,7 @@ async def run_pipeline(
     # Step 3.5: Check entity status
     yield "Checking entity status..."
     entity_statuses = await asyncio.to_thread(
-        fetch_entity_status, note.get("entities", [])
+        fetch_entity_status, note.get("entities") or []
     )
 
     # Step 4: Write
