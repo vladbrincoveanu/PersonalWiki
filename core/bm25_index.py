@@ -2,10 +2,20 @@
 Lazy-built in-memory BM25 index of all vault notes.
 Refreshes automatically every 5 minutes.
 """
+import logging
+import re
 import time
 import frontmatter
 from rank_bm25 import BM25Okapi
 from config import NOTES_DIR
+
+_logger = logging.getLogger(__name__)
+
+# Pre-compiled regex patterns for markdown stripping
+_RE_HEADER = re.compile(r'#{1,6}\s+')
+_RE_LINK = re.compile(r'\[([^\]]+)\]\([^\)]+\)')
+_RE_EMPHASIS = re.compile(r'[*_]{1,2}([^*_]+)[*_]{1,2}')
+_RE_IMAGE = re.compile(r'!\[[^\]]*\]\([^\)]+\)')
 
 
 def _simple_tokenizer(text: str) -> list[str]:
@@ -24,11 +34,10 @@ _last_built: float = 0.0
 
 def _strip_markdown(text: str) -> str:
     """Lightweight markdown strip — remove headers, links, emphasis."""
-    import re
-    text = re.sub(r'#{1,6}\s+', '', text)       # headers
-    text = re.sub(r'\[([^\]]+)\]\([^\)]+\)', r'\1', text)  # links
-    text = re.sub(r'[*_]{1,2}([^*_]+)[*_]{1,2}', r'\1', text)  # bold/italic
-    text = re.sub(r'!\[[^\]]*\]\([^\)]+\)', '', text)          # images
+    text = _RE_HEADER.sub('', text)
+    text = _RE_LINK.sub(r'\1', text)
+    text = _RE_EMPHASIS.sub(r'\1', text)
+    text = _RE_IMAGE.sub('', text)
     return text
 
 
@@ -42,6 +51,7 @@ def _build_index() -> tuple[BM25Okapi, list[str], list[str]]:
                 post = frontmatter.parse(str(md_file))
                 body = _strip_markdown(post.content)
             except Exception:
+                _logger.warning("Could not parse frontmatter for %s, using raw text", md_file)
                 body = md_file.read_text(encoding="utf-8")
             paths.append(str(md_file))
             corpus.append(body)

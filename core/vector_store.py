@@ -5,6 +5,11 @@ import pyarrow as pa
 
 TABLE_NAME = "notes"
 
+
+def _escape_path(p: str) -> str:
+    """Escape single quotes in path values for safe SQL interpolation."""
+    return p.replace("'", "''")
+
 SCHEMA = pa.schema([
     pa.field("path", pa.string()),
     pa.field("text", pa.string()),
@@ -154,7 +159,7 @@ class VectorStore:
         if not paths:
             return {}
         # Build path filter to fetch only the rows we need
-        path_filter = " OR ".join(f"path = '{p}'" for p in paths)
+        path_filter = " OR ".join(f"path = '{_escape_path(p)}'" for p in paths)
         all_rows = self._table.search().where(path_filter).to_list()
         path_to_links = {}
         # Build index for O(1) lookup
