@@ -4,6 +4,7 @@ from datetime import date
 from pathlib import Path
 import frontmatter
 from config import NOTES_DIR, VAULT_PATH
+from vault.entity_status import _build_prose
 
 
 def slugify(title: str) -> str:
@@ -28,7 +29,9 @@ def _replace_image_placeholders(
     for i in range(1, count + 1):
         caption = captions[i - 1] if i - 1 < len(captions) else ""
         if caption:
-            replacement = f"*Figure {i}: {caption}.*\n![[attachments/{slug}/figure-{i}.png]]"
+            replacement = (
+                f"*Figure {i}: {caption}.*\n![[attachments/{slug}/figure-{i}.png]]"
+            )
         else:
             replacement = f"![[attachments/{slug}/figure-{i}.png]]"
         result = result.replace("<!-- image -->", replacement, 1)
@@ -40,6 +43,7 @@ def write_note(
     source: str,
     ingested_date: str | None = None,
     images: Sequence[bytes] = (),
+    entity_statuses: list[dict] = (),
 ) -> str:
     NOTES_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -72,25 +76,39 @@ def write_note(
         cross_links_section = f"\n## My Knowledge Says\n{links_str}\n"
 
     key_facts = note.get("key_facts", [])
-    facts_str = "\n".join(f"- {f}" for f in key_facts) if key_facts else "_None extracted._"
+    facts_str = (
+        "\n".join(f"- {f}" for f in key_facts) if key_facts else "_None extracted._"
+    )
 
     entities = note.get("entities", [])
     entities_section = ""
     if entities:
-        links = " · ".join(f"[[{e['name']}]]" for e in entities if e.get("name") and e.get("slug"))
+        links = " · ".join(
+            f"[[{e['name']}]]" for e in entities if e.get("name") and e.get("slug")
+        )
         if links:
             entities_section = f"\n## Entities\n{links}\n"
 
     why_saved_hint = note.get("why_saved_hint", "")
     why_saved_section = ""
     if why_saved_hint:
-        why_saved_section = f"\n## Why I Saved This\n> {why_saved_hint}\n\n_(edit this)_\n"
+        why_saved_section = (
+            f"\n## Why I Saved This\n> {why_saved_hint}\n\n_(edit this)_\n"
+        )
+
+    recent_dev_section = ""
+    if entity_statuses:
+        prose = _build_prose(entity_statuses)
+        if prose:
+            recent_dev_section = f"\n## Recent Developments\n{prose}\n"
 
     figure_captions = note.get("figure_captions", [])
     raw_text = note.get("raw_text", "")
     if images:
         _save_images(images, final_slug)
-        raw_text = _replace_image_placeholders(raw_text, final_slug, len(images), figure_captions)
+        raw_text = _replace_image_placeholders(
+            raw_text, final_slug, len(images), figure_captions
+        )
 
     raw_section = (
         f"\n## Raw Extract\n<details>\n<summary>Original extracted text</summary>"
@@ -100,7 +118,7 @@ def write_note(
     body = (
         f"## Summary\n{note.get('summary', '_Not available._')}\n\n"
         f"## Key Facts\n{facts_str}"
-        f"{entities_section}{why_saved_section}{cross_links_section}{raw_section}"
+        f"{entities_section}{why_saved_section}{recent_dev_section}{cross_links_section}{raw_section}"
     )
 
     post = frontmatter.Post(body, **metadata)
