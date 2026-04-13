@@ -8,6 +8,7 @@ from config import TOP_K_SIMILAR, MAX_EMBED_CHARS
 from core.embeddings import embed
 from core.vector_store import get_store
 from core.minimax_client import enrich
+from core.gap_detector import detect_gaps
 from ingesters.web import extract_url
 from ingesters.pdf import extract_pdf_full
 from vault.writer import write_note
@@ -24,6 +25,31 @@ def _is_pdf_url(url: str) -> bool:
             return "application/pdf" in ct
     except Exception:
         return False
+
+
+async def _run_gap_searches(gap_entities: list[str]):
+    """
+    Submit one-shot searches for each gap entity and trigger pipeline
+    for the top result.
+    """
+    from core.discovery_scheduler import DiscoveryScheduler
+
+    scheduler = DiscoveryScheduler()
+    for entity in gap_entities:
+        results = await scheduler._search_keyword(entity)
+        if results:
+            top = results[0]
+            asyncio.create_task(_run_gap_search_pipeline(top["url"]))
+
+
+async def _run_gap_search_pipeline(url: str):
+    """Run ingestion pipeline for a gap search result URL."""
+    try:
+        async for _ in run_pipeline(url=url):
+            pass
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning("Gap search pipeline failed for %s: %s", url, e)
 
 
 async def run_pipeline(
@@ -78,6 +104,11 @@ async def run_pipeline(
     # Step 3: Enrich
     yield "Enriching with Minimax..."
     note = await asyncio.to_thread(enrich, raw_text, similar_titles, source)
+
+    # Step 3.5: Gap detection
+    note["gap_entities"] = detect_gaps(note.get("entities", []))
+    if note["gap_entities"]:
+        asyncio.create_task(_run_gap_searches(note["gap_entities"]))
 
     # Step 4: Write
     yield "Saving note..."
