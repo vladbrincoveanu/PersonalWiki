@@ -2,34 +2,60 @@ import re
 import urllib.request
 from ingesters import Document
 
+# Expanded instance pool (primary + expanded + syndication handled in code)
 _NITTER_INSTANCES = [
     "https://nitter.poast.org",
     "https://nitter.privacydev.net",
     "https://nitter.unixfox.eu",
     "https://nitter.net",
+    "https://nitter.esmailelBob.xyz",
+    "https://nitter.woodwhyn.vercel.app",
+    "https://nitter.bus-hit.me",
+    "https://nitter.projectsegfau.lt",
 ]
 
-_TWEET_URL_RE = re.compile(
-    r"https?://(?:twitter\.com|x\.com)/([^/?#]+)/status/(\d+)"
-)
-_CONTENT_RE = re.compile(
-    r'class="tweet-content[^"]*"[^>]*>(.*?)</div>', re.DOTALL
-)
+# Updated CSS/content regex — more permissive extraction
 _TAG_RE = re.compile(r"<[^>]+>")
 _HANDLE_RE = re.compile(r'class="username"[^>]*>@?([^<\s]+)')
 _NAME_RE = re.compile(r'class="fullname"[^>]*>([^<]+)<')
+
+# More permissive tweet body extraction
+_TWEET_BODY_RE = re.compile(
+    r'class="(?:p-text|tweet-content|timeline-message)[^"]*"[^>]*>(.*?)</(?:div|p)>',
+    re.DOTALL
+)
 
 
 def _strip_tags(html: str) -> str:
     return _TAG_RE.sub("", html).strip()
 
 
+def _fetch_via_syndication(username: str, tweet_id: str) -> str | None:
+    """Use Twitter syndication as final fallback."""
+    url = f"https://syndication.twitter.com/srv/timeline-profile/screen-name/{username}"
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            if resp.status != 200:
+                return None
+            content = resp.read().decode("utf-8", errors="replace")
+            # Try to extract tweet text via multiple patterns
+            bodies = _TWEET_BODY_RE.findall(content)
+            if bodies:
+                return " ".join(_strip_tags(b) for b in bodies[:5] if _strip_tags(b))
+            # Fallback: strip all tags
+            return _strip_tags(content)
+    except Exception:
+        return None
+
+
 def extract_tweet(url: str) -> Document:
-    m = _TWEET_URL_RE.match(url)
+    m = re.match(r"https?://(?:twitter\.com|x\.com)/([^/?#]+)/status/(\d+)", url)
     if not m:
         raise ValueError(f"Not a valid tweet URL: {url}")
     username, tweet_id = m.group(1), m.group(2)
 
+    # Try all Nitter instances
     html = None
     for instance in _NITTER_INSTANCES:
         try:
@@ -44,18 +70,27 @@ def extract_tweet(url: str) -> Document:
         except Exception:
             continue
 
+    # Try syndication if all Nitter instances failed
+    syndication_text = None
     if html is None:
-        raise ValueError(f"All Nitter instances unavailable for {url}")
+        syndication_text = _fetch_via_syndication(username, tweet_id)
+        if syndication_text and syndication_text.strip():
+            return Document(raw_text=syndication_text.strip(), content_type="tweet")
 
-    tweet_bodies = _CONTENT_RE.findall(html)
+    # All sources failed — return graceful stub (don't raise)
+    if html is None:
+        return Document(raw_text=f"[NO_TWEET] {url}", content_type="tweet")
+
+    # Parse HTML content
+    bodies = _TWEET_BODY_RE.findall(html)
     handles = _HANDLE_RE.findall(html)
     names = _NAME_RE.findall(html)
 
-    if not tweet_bodies:
-        raise ValueError(f"No tweet content found at {url}")
+    if not bodies:
+        return Document(raw_text=f"[NO_TWEET] {url}", content_type="tweet")
 
     parts = []
-    for i, body_html in enumerate(tweet_bodies[:10]):
+    for i, body_html in enumerate(bodies[:10]):
         text = " ".join(_strip_tags(body_html).split())
         if not text:
             continue
@@ -67,7 +102,7 @@ def extract_tweet(url: str) -> Document:
             parts.append(f"@{handle}: {text}")
 
     if not parts:
-        raise ValueError(f"No tweet content found at {url}")
+        return Document(raw_text=f"[NO_TWEET] {url}", content_type="tweet")
 
     raw_text = parts[0]
     if len(parts) > 1:
