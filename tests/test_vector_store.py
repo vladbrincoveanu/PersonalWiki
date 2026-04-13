@@ -162,6 +162,22 @@ def test_graph_hop_respects_top_k():
     assert len(result) == 3
 
 
+def test_graph_hop_only_includes_hop1_and_hop2():
+    """Verify only 1-hop and 2-hop links are included; 3+ hops must not appear."""
+    store = make_store()
+    # Chain: a.md -> b.md -> c.md -> d.md
+    store.upsert("notes/a.md", "content a", [0.1] * 384, ["notes/b.md"], {"title": "A"})
+    store.upsert("notes/b.md", "content b", [0.2] * 384, ["notes/c.md"], {"title": "B"})
+    store.upsert("notes/c.md", "content c", [0.3] * 384, ["notes/d.md"], {"title": "C"})
+    store.upsert("notes/d.md", "content d", [0.4] * 384, [], {"title": "D"})
+    result = store._graph_hop(["notes/a.md"], top_k=10, hop1_weight=0.5, hop2_weight=0.25)
+    paths = [r["path"] for r in result]
+    # hop-1: b.md, hop-2: c.md — d.md is hop-3 and must NOT appear
+    assert "notes/b.md" in paths
+    assert "notes/c.md" in paths
+    assert "notes/d.md" not in paths
+
+
 # --- Tests for _rrf_merge ---
 
 from core.vector_store import _rrf_merge
@@ -224,6 +240,26 @@ def test_rrf_merge_accumulates_scores():
     a_item = next(item for item in result if item["path"] == "a.md")
     # RRF score = 1.0/(60+1) + 1.0/(60+1) = 2/(61) ≈ 0.0328
     assert abs(a_item["score"] - 2 / 61) < 0.001
+
+
+def test_rrf_merge_boosts_multi_signal_results():
+    """A result appearing in both vector and BM25 ranks higher than single-signal."""
+    # a.md: rank 1 in both streams (multi-signal)
+    # b.md: rank 1 in vector only (single-signal)
+    vector_list = [
+        {"path": "a.md", "score": 0.9, "rank": 1},
+        {"path": "b.md", "score": 0.8, "rank": 2},
+    ]
+    bm25_list = [
+        {"path": "a.md", "score": 0.9, "rank": 1},
+    ]
+    # Vector weight 1.0, BM25 weight 0.9, k=60
+    result = _rrf_merge([vector_list, bm25_list], weights=[1.0, 0.9], k=60, top_k=5)
+    a_score = next(item["score"] for item in result if item["path"] == "a.md")
+    b_score = next(item["score"] for item in result if item["path"] == "b.md")
+    # a.md gets: 1.0/(60+1) + 0.9/(60+1) = 1.9/61 ≈ 0.0311
+    # b.md gets: 0.8/(60+2) = 0.8/62 ≈ 0.0129
+    assert a_score > b_score
 
 
 # --- Tests for hybrid_search ---
