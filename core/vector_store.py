@@ -24,17 +24,20 @@ def _rrf_merge(
     weights: list[float],
     k: float = 60.0,
     top_k: int = 5,
+    multi_signal_boost: float = 0.005,
 ) -> list[dict]:
     """
     Reciprocal Rank Fusion across N ranked lists.
     ranked_lists: list of lists, each sorted descending.
-                  Each item is {path, score, rank, ...}
     weights: parallel list of weights per stream
     k: RRF constant (default 60)
+    top_k: number of results to return
+    multi_signal_boost: bonus added to paths appearing in 2+ streams (top-3 per stream)
     Returns: merged list of {path, score, rank} sorted by RRF score descending.
     """
     path_scores: dict[str, float] = {}
 
+    # RRF accumulation
     for ranked_list, weight in zip(ranked_lists, weights):
         for item in ranked_list:
             path = item["path"]
@@ -44,6 +47,17 @@ def _rrf_merge(
             rrf_score = weight / (k + rank)
             path_scores[path] = path_scores.get(path, 0.0) + rrf_score
 
+    # Multi-signal boost: reward notes appearing in multiple streams
+    path_stream_count: dict[str, int] = {}
+    for ranked_list in ranked_lists:
+        for item in ranked_list[:3]:  # top-3 per stream
+            path_stream_count[item["path"]] = path_stream_count.get(item["path"], 0) + 1
+
+    for path, count in path_stream_count.items():
+        if count >= 2:
+            path_scores[path] += multi_signal_boost * (count - 1)
+
+    # Sort and return top_k
     sorted_paths = sorted(path_scores.items(), key=lambda x: x[1], reverse=True)
     return [
         {"path": path, "score": score, "rank": rank}
@@ -94,7 +108,7 @@ class VectorStore:
             meta = json.loads(meta)
         return float(meta.get("_mtime", 0.0))
 
-    def hybrid_search(self, query: str, top_k: int = 5) -> list[dict]:
+    def hybrid_search(self, query: str, top_k: int = 5, min_score: float = 0.001) -> list[dict]:
         """
         Unified search across vector, BM25, and graph hop streams via RRF.
         Returns list of {path, score, rank, metadata} sorted by RRF score descending.
@@ -143,6 +157,10 @@ class VectorStore:
             k=60,
             top_k=top_k,
         )
+
+        # Filter noise — if top result scores below threshold, return empty
+        if merged and merged[0]["score"] < min_score:
+            return []
 
         # Attach metadata from collected map
         for item in merged:

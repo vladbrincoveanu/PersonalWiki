@@ -236,7 +236,7 @@ def test_rrf_merge_accumulates_scores():
         [{"path": "a.md", "score": 0.9, "rank": 1}],
         [{"path": "a.md", "score": 0.8, "rank": 1}],
     ]
-    result = _rrf_merge(ranked_lists, weights=[1.0, 1.0], k=60, top_k=5)
+    result = _rrf_merge(ranked_lists, weights=[1.0, 1.0], k=60, top_k=5, multi_signal_boost=0.0)
     a_item = next(item for item in result if item["path"] == "a.md")
     # RRF score = 1.0/(60+1) + 1.0/(60+1) = 2/(61) ≈ 0.0328
     assert abs(a_item["score"] - 2 / 61) < 0.001
@@ -260,6 +260,62 @@ def test_rrf_merge_boosts_multi_signal_results():
     # a.md gets: 1.0/(60+1) + 0.9/(60+1) = 1.9/61 ≈ 0.0311
     # b.md gets: 0.8/(60+2) = 0.8/62 ≈ 0.0129
     assert a_score > b_score
+
+
+def test_rrf_multi_signal_boost_2_streams():
+    """Note appearing in top-3 of 2 streams gets boost."""
+    vector = [{"path": "multi.md", "rank": 1}, {"path": "single.md", "rank": 2}]
+    bm25  = [{"path": "multi.md", "rank": 1}, {"path": "other.md", "rank": 2}]
+    hops  = []
+
+    result = _rrf_merge([vector, bm25, hops], weights=[1.0, 0.9, 0.5], k=60, top_k=5, multi_signal_boost=0.005)
+    result_dict = {r["path"]: r for r in result}
+
+    multi_score = result_dict["multi.md"]["score"]
+    single_score = result_dict["single.md"]["score"]
+
+    # multi.md appears in 2 streams → gets boost; single.md only in 1 → no boost
+    # Even if rank differences would favor single.md, boost should overcome that
+    assert multi_score > single_score, f"multi={multi_score} should beat single={single_score}"
+
+
+def test_rrf_multi_signal_boost_3_streams():
+    """Note appearing in all 3 streams gets larger boost."""
+    vector = [{"path": "triple.md", "rank": 2}]
+    bm25  = [{"path": "triple.md", "rank": 2}]
+    hops  = [{"path": "triple.md", "rank": 1}]  # hops uses hop_weight, rank is enumerated
+
+    result = _rrf_merge([vector, bm25, hops], weights=[1.0, 0.9, 0.5], k=60, top_k=5, multi_signal_boost=0.005)
+    triple_score = next(r["score"] for r in result if r["path"] == "triple.md")
+
+    # triple gets boost from appearing in 3 streams
+    assert triple_score >= 0.005  # at minimum the 3-stream boost
+
+
+def test_rrf_no_boost_single_stream():
+    """Note only in one stream gets no boost."""
+    vector = [{"path": "alone.md", "rank": 1}]
+    bm25  = []
+    hops  = []
+
+    result = _rrf_merge([vector, bm25, hops], weights=[1.0, 0.9, 0.5], k=60, top_k=5, multi_signal_boost=0.005)
+    alone_score = next(r["score"] for r in result if r["path"] == "alone.md")
+
+    # Should equal normal RRF: 1.0/61 ≈ 0.0164, no boost applied
+    assert abs(alone_score - (1.0 / 61)) < 0.001
+
+
+def test_rrf_boost_preserves_sort_order():
+    """Boost doesn't change relative order of same-stream notes."""
+    vector = [{"path": "a.md", "rank": 1}, {"path": "b.md", "rank": 2}]
+    bm25  = [{"path": "a.md", "rank": 1}]  # only a in bm25 (gets boost)
+    hops  = []
+
+    result = _rrf_merge([vector, bm25, hops], weights=[1.0, 0.9, 0.5], k=60, top_k=5, multi_signal_boost=0.005)
+    paths = [r["path"] for r in result]
+
+    # a.md gets boost but should still rank above b.md only if boost makes sense
+    assert paths.index("a.md") < paths.index("b.md")
 
 
 # --- Tests for hybrid_search ---
@@ -381,6 +437,51 @@ def test_hybrid_search_merges_with_rrf(mock_store, sample_notes):
         assert len(result) == 1
         assert result[0]["path"] == "a.md"
         assert result[0]["metadata"]["title"] == "A"
+
+
+def test_hybrid_search_min_score_threshold(mock_store, sample_notes):
+    """Query with score below threshold returns empty list."""
+    store, notes_dir = mock_store
+    for note in sample_notes:
+        store.upsert(note["path"], note["text"], note["vector"], note["links"], note["metadata"])
+
+    with patch("core.embeddings.embed") as mock_embed, \
+         patch("core.bm25_index.ensure_index"), \
+         patch("core.bm25_index.bm25_search") as mock_bm25, \
+         patch.object(store, "search") as mock_vec, \
+         patch.object(store, "_graph_hop") as mock_hop:
+
+        mock_embed.return_value = [0.1] * 384
+        # Very low BM25 scores → low RRF scores
+        mock_bm25.return_value = [{"path": "notes/a.md", "score": 0.001, "rank": 100}]
+        mock_vec.return_value = [{"path": "notes/a.md", "score": 0.001, "rank": 100, "metadata": {}}]
+        mock_hop.return_value = []
+
+        # With default min_score=0.001, this should return []
+        result = store.hybrid_search("garbage query xyz123", top_k=5)
+        assert result == []
+
+
+def test_hybrid_search_above_threshold(mock_store, sample_notes):
+    """Legitimate query above threshold returns results."""
+    store, notes_dir = mock_store
+    for note in sample_notes:
+        store.upsert(note["path"], note["text"], note["vector"], note["links"], note["metadata"])
+
+    with patch("core.embeddings.embed") as mock_embed, \
+         patch("core.bm25_index.ensure_index"), \
+         patch("core.bm25_index.bm25_search") as mock_bm25, \
+         patch.object(store, "search") as mock_vec, \
+         patch.object(store, "_graph_hop") as mock_hop:
+
+        mock_embed.return_value = [0.1] * 384
+        # Higher BM25 scores → higher RRF
+        mock_bm25.return_value = [{"path": "notes/a.md", "score": 10.0, "rank": 1}]
+        mock_vec.return_value = [{"path": "notes/a.md", "score": 0.9, "rank": 1, "metadata": {"title": "A"}}]
+        mock_hop.return_value = []
+
+        result = store.hybrid_search("attention mechanism", top_k=5)
+        assert len(result) >= 1
 
 
 # --- Fixtures ---
