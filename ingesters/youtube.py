@@ -4,6 +4,12 @@ import subprocess
 import tempfile
 import urllib.request
 from ingesters import Document
+from youtube_transcript_api import (
+    YouTubeTranscriptApi,
+    NoTranscriptFound,
+    TranscriptsDisabled,
+    VideoUnavailable,
+)
 
 _TIMESTAMP_RE = re.compile(r"^\d{2}:\d{2}:\d{2}[.,]\d{3}\s*-->.*$", re.MULTILINE)
 _TAG_RE = re.compile(r"<[^>]+>")
@@ -69,6 +75,83 @@ def _extract_video_id(url: str) -> str | None:
     """Extract video ID from YouTube URL."""
     m = re.search(r'(?:v=|/)([a-zA-Z0-9_-]{11})', url)
     return m.group(1) if m else None
+
+
+def _try_youtube_transcript_api(video_id: str) -> str | None:
+    """Try to fetch English transcript via youtube-transcript-api.
+
+    Strategy:
+    1. Manually-created English transcript
+    2. Auto-generated English transcript
+    3. Any transcript in any language (last resort)
+
+    Returns transcript text or None if all strategies fail.
+    """
+    try:
+        ytt = YouTubeTranscriptApi()
+        all_transcripts = ytt.list(video_id)
+
+        # Try for English first
+        en_transcripts = all_transcripts.find_transcript(["en"])
+
+        # Prefer manually-created over auto-generated
+        transcript = (
+            en_transcripts.find_manually_created_transcript()
+            or en_transcripts.find_generated_transcript()
+        )
+
+        if not transcript:
+            # Last resort: any transcript in any language
+            if all_transcripts:
+                transcript = all_transcripts[0]
+            else:
+                return None
+
+        snippets = transcript.fetch()
+        text = " ".join(snippet["text"] for snippet in snippets)
+        return text.strip() if text.strip() else None
+
+    except (NoTranscriptFound, TranscriptsDisabled, VideoUnavailable):
+        return None
+    except Exception:
+        # RequestBlocked, IpBlocked, etc. — fall through to yt-dlp
+        return None
+
+
+def _try_whisper_transcription(url: str) -> str | None:
+    """Download audio via yt-dlp and transcribe with Whisper base model.
+
+    Called as last resort when no captions are available.
+    Uses whisper 'base' model for speed (CPU, ~2x realtime).
+    """
+    try:
+        import whisper
+        import subprocess
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            audio_path = os.path.join(tmpdir, "audio.mp3")
+
+            # Download audio only (no video) — fastest approach
+            cmd = [
+                "yt-dlp",
+                "-x", "--audio-format", "mp3",
+                "--output", audio_path,
+                "--quiet", "--no-warnings",
+                url,
+            ]
+            result = subprocess.run(cmd, capture_output=True, timeout=120)
+            if result.returncode != 0:
+                return None
+
+            # Transcribe with Whisper base model
+            model = whisper.load_model("base")
+            transcription = model.transcribe(audio_path, fp16=False)
+            text = transcription["text"].strip()
+            return text if text else None
+
+    except Exception:
+        return None
 
 
 def _is_english_text(text: str, min_latin_ratio: float = 0.7) -> bool:

@@ -219,3 +219,132 @@ def test_auto_caption_tier_skips_non_english(monkeypatch, tmp_path):
     # Should have fallen through to API
     assert api_called == ["abc123DEF12"]
     assert "API transcript fallback" in doc.raw_text
+
+
+def test_youtube_transcript_api_manually_created(monkeypatch):
+    """youtube-transcript-api finds manually-created English transcript."""
+    import ingesters.youtube as yt
+
+    class FakeSnippet:
+        def __init__(self, text):
+            self.text = text
+
+    class FakeTranscript:
+        def __init__(self, snippets):
+            self._snippets = snippets
+        def fetch(self):
+            return [{"text": s.text} for s in self._snippets]
+
+    class FakeTranscriptList:
+        def __init__(self, en_transcript):
+            self._en = en_transcript
+        def find_transcript(self, langs):
+            return self
+        def find_manually_created_transcript(self):
+            return self._en
+        def find_generated_transcript(self):
+            return None
+
+    fake_api_calls = []
+
+    class FakeYTT:
+        def list(self, video_id):
+            fake_api_calls.append(video_id)
+            return FakeTranscriptList(FakeTranscript([FakeSnippet("Hello from transcript API")]))
+
+    monkeypatch.setattr("ingesters.youtube.YouTubeTranscriptApi", FakeYTT)
+
+    result = yt._try_youtube_transcript_api("abc123DEF12")
+    assert result is not None
+    assert "Hello from transcript API" in result
+    assert fake_api_calls == ["abc123DEF12"]
+
+
+def test_youtube_transcript_api_auto_generated(monkeypatch):
+    """No manually-created, falls back to auto-generated."""
+    import ingesters.youtube as yt
+
+    class FakeSnippet:
+        def __init__(self, text):
+            self.text = text
+
+    class FakeTranscript:
+        def __init__(self, snippets):
+            self._snippets = snippets
+        def fetch(self):
+            return [{"text": s.text} for s in self._snippets]
+
+    class FakeTranscriptList:
+        def __init__(self, en_transcript):
+            self._en = en_transcript
+        def find_transcript(self, langs):
+            return self
+        def find_manually_created_transcript(self):
+            return None
+        def find_generated_transcript(self):
+            return self._en
+
+    class FakeYTT:
+        def list(self, video_id):
+            return FakeTranscriptList(FakeTranscript([FakeSnippet("Auto-generated transcript")]))
+
+    monkeypatch.setattr("ingesters.youtube.YouTubeTranscriptApi", FakeYTT)
+
+    result = yt._try_youtube_transcript_api("abc123DEF12")
+    assert result is not None
+    assert "Auto-generated transcript" in result
+
+
+def test_youtube_transcript_api_falls_through(monkeypatch):
+    """API raises NoTranscriptFound → returns None (falls through to yt-dlp)."""
+    import ingesters.youtube as yt
+    from youtube_transcript_api import NoTranscriptFound
+
+    def mock_ytt(video_id):
+        raise NoTranscriptFound("abc123", "en")
+
+    monkeypatch.setattr("ingesters.youtube.YouTubeTranscriptApi", mock_ytt)
+
+    result = yt._try_youtube_transcript_api("abc123DEF12")
+    assert result is None
+
+
+def test_whisper_transcription(monkeypatch, tmp_path):
+    """yt-dlp downloads audio, Whisper transcribes it."""
+    import ingesters.youtube as yt
+    from unittest.mock import MagicMock
+
+    # Create a fake audio file in tmpdir
+    audio_file = tmp_path / "audio.mp3"
+    audio_file.write_bytes(b"fake mp3 audio")
+
+    subprocess_calls = []
+    def mock_run(cmd, **kwargs):
+        subprocess_calls.append(cmd)
+        # yt-dlp would write the file there
+        return None
+
+    mock_model = MagicMock()
+    mock_model.transcribe.return_value = {"text": "Whisper transcribed text from audio"}
+
+    whisper_calls = []
+    def mock_load_model(model_name):
+        whisper_calls.append(model_name)
+        return mock_model
+
+    # Patch tempfile.TemporaryDirectory to use our tmp_path
+    import tempfile
+    import contextlib
+
+    orig_td = tempfile.TemporaryDirectory
+    def mock_td():
+        return contextlib.contextmanager(lambda: (yield str(tmp_path)))
+
+    monkeypatch.setattr("subprocess.run", mock_run)
+    monkeypatch.setattr("ingesters.youtube.whisper.load_model", mock_load_model)
+    monkeypatch.setattr("tempfile.TemporaryDirectory", mock_td)
+
+    result = yt._try_whisper_transcription("https://youtube.com/watch?v=abc123DEF12")
+    assert result is not None
+    assert "Whisper transcribed text" in result
+    assert "abc123DEF12" in subprocess_calls[0][-1]  # URL in yt-dlp command
