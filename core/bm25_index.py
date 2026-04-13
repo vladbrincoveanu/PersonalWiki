@@ -2,16 +2,16 @@
 Lazy-built in-memory BM25 index of all vault notes.
 Refreshes automatically every 5 minutes.
 """
-import os
 import time
 import frontmatter
 from rank_bm25 import BM25Okapi
+from config import NOTES_DIR
 
 
 def _simple_tokenizer(text: str) -> list[str]:
     """Split on whitespace and lowercase."""
     return text.lower().split()
-from config import NOTES_DIR
+
 
 _INDEX_TTL_SECONDS = 300  # 5 minutes
 

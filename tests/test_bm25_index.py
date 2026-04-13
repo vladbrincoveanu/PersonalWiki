@@ -28,3 +28,4 @@ def test_invalidate_then_rebuild():
     # After invalidation, a new index is built
     assert index1 is not None
     assert index2 is not None
+    assert index1 is not index2
