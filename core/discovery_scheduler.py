@@ -20,6 +20,7 @@ _logger = logging.getLogger(__name__)
 class DiscoveryScheduler:
     def __init__(self):
         self._running = False
+        self._scheduler_task: asyncio.Task | None = None
         self._keywords: list[str] = []
         self._seen_urls: set[str] = set()
         self._in_flight: set[str] = set()
@@ -195,7 +196,7 @@ class DiscoveryScheduler:
 
             if elapsed >= INTEREST_REFRESH_INTERVAL:
                 await self._refresh_keywords()
-                last_refresh = time.monotonic()
+            last_refresh = time.monotonic()
 
             try:
                 await self._run_discovery_cycle()
@@ -207,11 +208,17 @@ class DiscoveryScheduler:
         if not DISCOVERY_ENABLED:
             _logger.info("Discovery: disabled via DISCOVERY_ENABLED")
             return
+        if self._running or self._scheduler_task is not None:
+            _logger.warning("Discovery scheduler already running")
+            return
         self._running = True
         self._pipeline_func = pipeline_func
-        asyncio.create_task(self._scheduler_loop())
+        self._scheduler_task = asyncio.create_task(self._scheduler_loop())
         _logger.info("Discovery scheduler started")
 
     def stop(self):
         self._running = False
+        if self._scheduler_task:
+            self._scheduler_task.cancel()
+            self._scheduler_task = None
         _logger.info("Discovery scheduler stopped")
