@@ -20,7 +20,7 @@ def _search_library_status(name: str, slug: str) -> Optional[dict]:
     Uses GitHub API for GitHub-hosted projects, PyPI API otherwise.
     Returns None if nothing found.
     """
-    github_api = f"https://api.github.com/repos/{slug.replace('-', '_')}"
+    github_api = f"https://api.github.com/repos/{slug}"
     try:
         resp = requests.get(
             github_api, timeout=5, headers={"Accept": "application/vnd.github.v3+json"}
