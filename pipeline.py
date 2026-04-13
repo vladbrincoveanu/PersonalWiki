@@ -11,6 +11,7 @@ from core.minimax_client import enrich
 from ingesters.web import extract_url
 from ingesters.pdf import extract_pdf_full
 from vault.writer import write_note
+from vault.entity_status import fetch_entity_status
 
 
 def _is_pdf_url(url: str) -> bool:
@@ -79,9 +80,17 @@ async def run_pipeline(
     yield "Enriching with Minimax..."
     note = await asyncio.to_thread(enrich, raw_text, similar_titles, source)
 
+    # Step 3.5: Check entity status
+    yield "Checking entity status..."
+    entity_statuses = await asyncio.to_thread(
+        fetch_entity_status, note.get("entities", [])
+    )
+
     # Step 4: Write
     yield "Saving note..."
-    path = write_note(note, source=source, images=images)
+    path = write_note(
+        note, source=source, images=images, entity_statuses=entity_statuses
+    )
 
     # Step 5: Index
     yield "Indexing..."
