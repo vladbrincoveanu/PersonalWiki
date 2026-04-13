@@ -190,6 +190,36 @@ def test_tweet_strips_html_correctly():
     assert "<" not in result
 
 
+def test_tweet_publish_twitter_oembed(monkeypatch):
+    """publish.twitter.com oEmbed returns tweet text."""
+    import ingesters.tweet as tw
+
+    oembed_calls = []
+    def mock_urlopen(url, timeout=10):
+        url_str = url.get_full_url() if hasattr(url, 'get_full_url') else str(url)
+        if "publish.twitter.com" in url_str:
+            oembed_calls.append(url_str)
+            import json
+            response = json.dumps({
+                "html": "<blockquote><p>Hello from oEmbed</p></blockquote>",
+                "text": "Hello from oEmbed"
+            })
+            from unittest.mock import MagicMock
+            m = MagicMock()
+            m.__enter__ = lambda s: s
+            m.__exit__ = lambda s, *a: None
+            m.status = 200
+            m.read.return_value = response.encode()
+            return m
+        raise Exception("all other sources failed")
+
+    monkeypatch.setattr("urllib.request.urlopen", mock_urlopen)
+
+    doc = tw.extract_tweet("https://twitter.com/user/status/123")
+    assert "Hello from oEmbed" in doc.raw_text
+    assert doc.content_type == "tweet"
+
+
 def test_tweet_nitter_rss_fallback(monkeypatch):
     """All Nitter HTML instances fail, RSS feed returns content."""
     import ingesters.tweet as tw

@@ -1,5 +1,6 @@
 import re
 import urllib.request
+import urllib.parse
 from ingesters import Document
 
 # Expanded instance pool (primary + expanded + vxitter and other reliable forks)
@@ -83,6 +84,26 @@ def _fetch_via_nitter_rss(username: str, tweet_id: str) -> str | None:
     return None
 
 
+def _fetch_via_publish_twitter(username: str, tweet_id: str) -> str | None:
+    """Use Twitter's publish.twitter.com oEmbed endpoint."""
+    tweet_url = f"https://twitter.com/{username}/status/{tweet_id}"
+    url = f"https://publish.twitter.com/oembed?url={urllib.parse.quote(tweet_url)}"
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            if resp.status != 200:
+                return None
+            import json
+            data = json.loads(resp.read().decode("utf-8", errors="replace"))
+            # Prefer html field, strip blockquote tags
+            html = data.get("html", "")
+            if html:
+                return _strip_tags(html)
+            return _strip_tags(data.get("text", ""))
+    except Exception:
+        return None
+
+
 def extract_tweet(url: str) -> Document:
     m = re.match(r"https?://(?:twitter\.com|x\.com)/([^/?#]+)/status/(\d+)", url)
     if not m:
@@ -116,6 +137,12 @@ def extract_tweet(url: str) -> Document:
         syndication_text = _fetch_via_syndication(username, tweet_id)
         if syndication_text and syndication_text.strip():
             return Document(raw_text=syndication_text.strip(), content_type="tweet")
+
+    # Try publish.twitter.com oEmbed if syndication failed
+    if html is None:
+        oembed_text = _fetch_via_publish_twitter(username, tweet_id)
+        if oembed_text and oembed_text.strip():
+            return Document(raw_text=oembed_text.strip(), content_type="tweet")
 
     # All sources failed — return graceful stub (don't raise)
     if html is None:
