@@ -1,4 +1,5 @@
 .env
+.worktrees/
 .venv/
 .vke_index/
 __pycache__/
