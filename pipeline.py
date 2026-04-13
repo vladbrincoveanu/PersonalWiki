@@ -30,11 +30,18 @@ def _is_pdf_url(url: str) -> bool:
 async def _run_gap_searches(gap_entities: list[str]):
     """
     Submit one-shot searches for each gap entity and trigger pipeline
-    for the top result.
+    for the top result. Best-effort — failures are logged and silently ignored.
     """
+    import logging
+    logger = logging.getLogger(__name__)
+
     try:
         from core.discovery_scheduler import DiscoveryScheduler
+    except Exception as e:
+        logger.warning("Cannot import DiscoveryScheduler for gap search: %s", e)
+        return
 
+    try:
         scheduler = DiscoveryScheduler()
         for entity in gap_entities[:5]:
             results = await scheduler._search_keyword(entity)
@@ -42,8 +49,8 @@ async def _run_gap_searches(gap_entities: list[str]):
                 url = result.get("url")
                 if url:
                     await _run_gap_search_pipeline(url)
-    except Exception:
-        pass  # best-effort gap filling
+    except Exception as e:
+        logger.debug("Gap search failed (best-effort): %s", e)
 
 
 async def _run_gap_search_pipeline(url: str):
