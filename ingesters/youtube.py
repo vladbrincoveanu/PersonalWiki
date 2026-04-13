@@ -13,6 +13,7 @@ _SUBTITLE_TIERS = [
     {"args": ["--write-subs", "--write-auto-subs", "--sub-langs", "en",      "--sub-format", "vtt", "--skip-download"], "name": "en"},
     {"args": ["--write-subs", "--write-auto-subs", "--sub-langs", "en.*",    "--sub-format", "vtt", "--skip-download"], "name": "en-regex"},
     {"args": ["--write-subs", "--write-auto-subs", "--all-subs",                                             "--skip-download"], "name": "all"},
+    {"args": ["--write-auto-subs", "--write-subs", "--sub-langs", "en",      "--sub-format", "vtt", "--skip-download"], "name": "auto-en"},
 ]
 
 _TIMEOUT_SECONDS = 30
@@ -97,11 +98,15 @@ def _try_subtitle_tiers(url: str, tmpdir: str) -> str | None:
     for tier in _SUBTITLE_TIERS:
         vtt_files = _run_yt_dlp(tier["args"], tmpdir)
         if vtt_files:
-            with open(vtt_files[0], encoding="utf-8") as f:
-                vtt_text = f.read()
-            transcript = _parse_vtt(vtt_text)
-            if transcript.strip():
-                return transcript
+            for vtt_file in vtt_files:
+                with open(vtt_file, encoding="utf-8") as f:
+                    vtt_text = f.read()
+                # For auto-en tier, filter for English; for other tiers accept all
+                if tier["name"] == "auto-en" and not _has_english_cues(vtt_text):
+                    continue  # try next VTT file or next tier
+                transcript = _parse_vtt(vtt_text)
+                if transcript.strip():
+                    return transcript
     return None
 
 

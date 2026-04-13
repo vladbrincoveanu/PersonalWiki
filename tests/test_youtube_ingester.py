@@ -141,7 +141,8 @@ def test_is_english_text_latin_ratio():
     assert _is_english_text("你好世界") is False  # Chinese — no Latin chars
     assert _is_english_text("Привет мир") is False  # Cyrillic
     # Mixed: should return True if ratio >= 0.7
-    assert _is_english_text("Hello 世界") is False  # 6/10 Latin = 0.6 < 0.7
+    assert _is_english_text("Hello 世界") is True   # 5/6 Latin = 0.83 >= 0.7
+    assert _is_english_text("你好世H") is False  # 1/5 Latin = 0.2 < 0.7
 
 
 def test_has_english_cues_with_lang_attribute():
@@ -163,3 +164,58 @@ def test_has_english_cues_rejects_non_english():
     from ingesters.youtube import _has_english_cues
     vtt = "WEBVTT\n\n00:00:00.000 --> 00:00:05.000\nこれは日本語の字幕です"
     assert _has_english_cues(vtt) is False
+
+
+def test_auto_caption_tier_finds_english_auto_subs(monkeypatch, tmp_path):
+    """auto-en tier with lang=en-US in VTT returns transcript."""
+    import ingesters.youtube as yt
+
+    vtt_content = (
+        "WEBVTT\n\n"
+        "00:00:00.000 --> 00:00:05.000 align:start position:50% lang=en-US\n"
+        "Hello from auto-generated captions\n\n"
+        "00:00:05.000 --> 00:00:10.000 align:start position:50% lang=en-US\n"
+        "This is English auto-captioned content"
+    )
+    vtt_file = tmp_path / "video.en.vtt"
+    vtt_file.write_text(vtt_content)
+
+    calls = []
+    def mock_listdir(d):
+        calls.append(d)
+        return ["video.en.vtt"]
+
+    monkeypatch.setattr("os.listdir", mock_listdir)
+
+    result = yt._try_subtitle_tiers("https://youtube.com/watch?v=abc123DEF12", str(tmp_path))
+    assert result is not None
+    assert "Hello from auto-generated captions" in result
+
+
+def test_auto_caption_tier_skips_non_english(monkeypatch, tmp_path):
+    """auto-en tier with non-English VTT falls through to API."""
+    import ingesters.youtube as yt
+
+    # Japanese auto-captions — no lang=en, low Latin ratio
+    vtt_content = (
+        "WEBVTT\n\n"
+        "00:00:00.000 --> 00:00:05.000\n"
+        "これは日本語の字幕です\n\n"
+        "00:00:05.000 --> 00:00:10.000\n"
+        "日本語の自動字幕"
+    )
+    vtt_file = tmp_path / "video.en.vtt"
+    vtt_file.write_text(vtt_content)
+
+    api_called = []
+    def mock_transcript_api(video_id):
+        api_called.append(video_id)
+        return "API transcript fallback"
+
+    monkeypatch.setattr("ingesters.youtube._run_yt_dlp", lambda *a, **kw: None)
+    monkeypatch.setattr("ingesters.youtube._fetch_transcript_api", mock_transcript_api)
+
+    doc = yt.extract_youtube("https://youtube.com/watch?v=abc123DEF12")
+    # Should have fallen through to API
+    assert api_called == ["abc123DEF12"]
+    assert "API transcript fallback" in doc.raw_text
