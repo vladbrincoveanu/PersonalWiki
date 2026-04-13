@@ -77,3 +77,58 @@ def test_extract_youtube_no_subtitles_returns_stub(tmp_path, monkeypatch):
     doc = extract_youtube("https://youtube.com/watch?v=nosubs")
     assert doc.raw_text.startswith("[NO_TRANSCRIPT]")
     assert doc.content_type == "video"
+
+
+def test_extract_youtube_tiered_subtitle_fallback(monkeypatch, tmp_path):
+    """Tier 1 (en) fails, tier 2 (en.*) returns transcript."""
+    import ingesters.youtube as yt
+
+    # Write VTT file that tier 2 will find
+    vtt_file = tmp_path / "video.en.vtt"
+    vtt_file.write_text("WEBVTT\n\n00:00:00.000 --> 00:00:05.000\nHello world transcript")
+
+    # Track which tier is being attempted
+    tier_attempted = []
+
+    def mock_listdir(d):
+        tier_attempted.append(d)
+        # Return the vtt file so _run_yt_dlp finds it
+        return ["video.en.vtt"]
+
+    monkeypatch.setattr("os.listdir", mock_listdir)
+
+    # Tier 1 (en) — no vtt file, Tier 2 (en.*) — finds the vtt file
+    result = yt._try_subtitle_tiers("https://youtube.com/watch?v=abc123AB", str(tmp_path))
+    assert result is not None  # tier 2 succeeded
+    assert "Hello world transcript" in result
+
+
+def test_extract_youtube_all_tiers_fail_then_transcript_api(monkeypatch, tmp_path):
+    """All yt-dlp tiers fail, transcript API returns transcript."""
+    import ingesters.youtube as yt
+
+    api_calls = []
+    def mock_transcript_api(video_id):
+        api_calls.append(video_id)
+        return "API transcript text here"
+
+    # Mock _run_yt_dlp to always return None (no VTT files)
+    monkeypatch.setattr("ingesters.youtube._run_yt_dlp", lambda *a, **kw: None)
+    monkeypatch.setattr("ingesters.youtube._fetch_transcript_api", mock_transcript_api)
+
+    # Use 11-char video ID so _extract_video_id matches
+    doc = yt.extract_youtube("https://youtube.com/watch?v=abc123DEF12")
+    assert "API transcript text" in doc.raw_text
+    assert api_calls == ["abc123DEF12"]
+
+
+def test_extract_youtube_returns_stub_when_all_fail(monkeypatch):
+    """All tiers and API fail → return NO_TRANSCRIPT stub."""
+    import ingesters.youtube as yt
+
+    monkeypatch.setattr("ingesters.youtube._run_yt_dlp", lambda *a, **kw: None)
+    monkeypatch.setattr("ingesters.youtube._fetch_transcript_api", lambda vid: None)
+
+    doc = yt.extract_youtube("https://youtube.com/watch?v=abc")
+    assert doc.raw_text.startswith("[NO_TRANSCRIPT]")
+    assert doc.content_type == "video"
