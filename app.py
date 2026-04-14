@@ -4,7 +4,7 @@ import uuid
 import tempfile
 import os
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Form, UploadFile, Request
+from fastapi import FastAPI, Form, UploadFile, Request, HTTPException
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from sse_starlette.sse import EventSourceResponse
@@ -13,16 +13,25 @@ from vault.scanner import scan_vault
 from core.discovery_scheduler import DiscoveryScheduler
 
 _job_queues: dict[str, asyncio.Queue] = {}
+_scheduler: DiscoveryScheduler | None = None
+
+def _get_scheduler() -> DiscoveryScheduler:
+    global _scheduler
+    if _scheduler is None:
+        _scheduler = DiscoveryScheduler()
+        _scheduler.start(pipeline_func=run_pipeline)
+    return _scheduler
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    global _scheduler
     count = await asyncio.to_thread(scan_vault)
     if count:
         print(f"Startup: indexed {count} notes.")
-    scheduler = DiscoveryScheduler()
-    scheduler.start(pipeline_func=run_pipeline)
+    _scheduler = DiscoveryScheduler()
+    _scheduler.start(pipeline_func=run_pipeline)
     yield
-    scheduler.stop()
+    _scheduler.stop()
 
 app = FastAPI(lifespan=lifespan)
 templates = Jinja2Templates(directory="templates")
@@ -88,6 +97,44 @@ async def stream(job_id: str):
                 break
             yield {"event": "message", "data": msg}
     return EventSourceResponse(generate())
+
+
+@app.get("/keywords")
+async def get_keywords():
+    """Return all keywords with breakdown between manual and graph-derived."""
+    from core.graph_interests import extract_interests
+    scheduler = _get_scheduler()
+    manual = scheduler._keywords  # already merged list
+    graph = extract_interests()
+    keywords = list(dict.fromkeys([*graph, *manual]))
+    return {
+        "keywords": keywords,
+        "manual": [k for k in manual if k in keywords],
+        "graph": graph,
+        "total": len(keywords),
+    }
+
+
+@app.post("/keywords/add")
+async def add_keyword(keyword: str = Form(...)):
+    """Add a manual keyword to .interests."""
+    scheduler = _get_scheduler()
+    try:
+        scheduler.add_keyword(keyword)
+    except ValueError:
+        raise HTTPException(status_code=409, detail=f"Keyword '{keyword}' already exists")
+    return {"added": keyword}
+
+
+@app.post("/keywords/remove")
+async def remove_keyword(keyword: str = Form(...)):
+    """Remove a manual keyword from .interests and purge related files."""
+    scheduler = _get_scheduler()
+    try:
+        purged = scheduler.remove_keyword(keyword)
+    except (KeyError, ValueError):
+        raise HTTPException(status_code=404, detail=f"Keyword '{keyword}' not found")
+    return {"removed": keyword, "purged": purged, "purged_count": len(purged)}
 
 
 if __name__ == "__main__":
