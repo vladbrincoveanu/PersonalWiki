@@ -6,13 +6,17 @@ deduplicates against LanceDB, triggers pipeline for new URLs.
 import asyncio
 import logging
 import os
+import re
 import time
+import urllib.request
+import xml.etree.ElementTree as ET
 from config import (
     DISCOVERY_ENABLED,
     DISCOVERY_INTERVAL,
     INTEREST_REFRESH_INTERVAL,
     MAX_URLS_PER_CYCLE,
 )
+from ingesters.web import extract_url
 
 _logger = logging.getLogger(__name__)
 
@@ -72,9 +76,7 @@ class DiscoveryScheduler:
 
     async def _search_arxiv(self, keyword: str, max_results: int = 3) -> list[dict]:
         """Search arXiv API for keyword."""
-        import urllib.request
         import urllib.parse
-        import xml.etree.ElementTree as ET
 
         query = urllib.parse.quote(f"all:{keyword}")
         url = f"http://export.arxiv.org/api/query?search_query={query}&max_results={max_results}"
@@ -153,11 +155,6 @@ class DiscoveryScheduler:
         Search DespreBursa.ro via sitemap and category pages.
         Returns list of {url, title, snippet, source} dicts.
         """
-        import re
-        import urllib.request
-        import xml.etree.ElementTree as ET
-        from ingesters.web import extract_url
-
         results = []
 
         # Tier 1: Sitemap

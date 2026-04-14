@@ -1,5 +1,5 @@
 import pytest, asyncio
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, AsyncMock
 
 def test_discovery_scheduler_initializes():
     from core.discovery_scheduler import DiscoveryScheduler
@@ -21,3 +21,100 @@ async def test_keyword_refresh():
     with patch("core.graph_interests.extract_interests", return_value=["RLHF", "KV-cache"]):
         await scheduler._refresh_keywords()
     assert scheduler._keywords == ["RLHF", "KV-cache"]
+
+
+def test_search_desprebursa_sitemap_parsing():
+    """Tier 1: sitemap XML is parsed and filtered by keyword in URL."""
+    from core.discovery_scheduler import DiscoveryScheduler
+    from unittest.mock import MagicMock
+
+    sitemap_xml = """<?xml version="1.0" encoding="UTF-8"?>
+    <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+      <url><loc>https://www.desprebursa.ro/actualmente-bursele-cresc-pe-fondul-datelor-macroeconomice</loc></url>
+      <url><loc>https://www.desprebursa.ro/companii/articol-despre-burse</loc></url>
+      <url><loc>https://www.desprebursa.ro/politica-monetara-a-marilor-banci-centrale</loc></url>
+    </urlset>"""
+
+    mock_response = MagicMock()
+    mock_response.read.return_value = sitemap_xml.encode("utf-8")
+    mock_response.__enter__ = MagicMock(return_value=mock_response)
+    mock_response.__exit__ = MagicMock(return_value=False)
+
+    scheduler = DiscoveryScheduler()
+    with patch("core.discovery_scheduler.urllib.request.urlopen", return_value=mock_response) as mock_urlopen:
+        results = asyncio.run(scheduler._search_desprebursa("companii"))
+
+    # Only 1 URL contains "companii": the second one
+    assert len(results) == 1
+    assert results[0]["url"] == "https://www.desprebursa.ro/companii/articol-despre-burse"
+    assert all(r["source"] == "desprebursa" for r in results)
+    mock_urlopen.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_search_desprebursa_falls_back_to_category_crawl():
+    """Tier 2: when sitemap fails, category pages are crawled and filtered by keyword."""
+    from core.discovery_scheduler import DiscoveryScheduler
+
+    html_with_links = """
+    <html>
+      <body>
+        <a href="https://www.desprebursa.ro/companii/analiza-bursala">Analiza bursala</a>
+        <a href="https://www.desprebursa.ro/politica/rata-inflatiei">Rata inflatiei</a>
+        <a href="https://www.desprebursa.ro/companii/raport-trim1">Raport trim1</a>
+      </body>
+    </html>"""
+
+    async def mock_extract_url(url):
+        return html_with_links
+
+    scheduler = DiscoveryScheduler()
+    with patch("core.discovery_scheduler.urllib.request.urlopen", side_effect=ValueError("sitemap failed")):
+        with patch("core.discovery_scheduler.extract_url", mock_extract_url):
+            results = await scheduler._search_desprebursa("companii", limit=2)
+
+    # Should extract article links from HTML, filter by keyword "companii"
+    assert len(results) == 2
+    assert all("companii" in r["url"].lower() for r in results)
+    assert all(r["source"] == "desprebursa" for r in results)
+
+
+@pytest.mark.asyncio
+async def test_search_desprebursa_respects_limit():
+    """Tier 2 fills remaining slots when Tier 1 returns fewer than limit, then stops at limit."""
+    from core.discovery_scheduler import DiscoveryScheduler
+
+    # Sitemap returns 2 non-matching URLs (Tier 1 adds 0 matching results)
+    sitemap_xml = """<?xml version="1.0" encoding="UTF-8"?>
+    <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+      <url><loc>https://www.desprebursa.ro/macro-piete/date-pib</loc></loc></url>
+      <url><loc>https://www.desprebursa.ro/briefings/saptamana-financiara</loc></loc></url>
+    </urlset>"""
+
+    mock_sitemap_response = MagicMock()
+    mock_sitemap_response.read.return_value = sitemap_xml.encode("utf-8")
+    mock_sitemap_response.__enter__ = MagicMock(return_value=mock_sitemap_response)
+    mock_sitemap_response.__exit__ = MagicMock(return_value=False)
+
+    # 3 article links, all containing "companii" - exactly enough to reach limit=3
+    html_with_links = """
+    <html>
+      <body>
+        <a href="https://www.desprebursa.ro/companii/analiza-bursala">Analiza bursala</a>
+        <a href="https://www.desprebursa.ro/companii/raport-trim1">Raport trim1</a>
+        <a href="https://www.desprebursa.ro/companii/evaluare-actiuni">Evaluare actiuni</a>
+      </body>
+    </html>"""
+
+    scheduler = DiscoveryScheduler()
+    with patch("core.discovery_scheduler.urllib.request.urlopen", return_value=mock_sitemap_response):
+        with patch("core.discovery_scheduler.extract_url", new_callable=AsyncMock, return_value=html_with_links) as mock_extract:
+            results = await scheduler._search_desprebursa("companii", limit=3)
+
+    # Tier 1: 0 matching (sitemap URLs don't contain "companii")
+    # Tier 2: adds 3 from category page, hits limit=3, stops
+    assert len(results) == 3
+    assert all("companii" in r["url"].lower() for r in results)
+    assert all(r["source"] == "desprebursa" for r in results)
+    # Tier 2 should have run because Tier 1 returned fewer than limit
+    assert mock_extract.call_count >= 1
