@@ -8,6 +8,7 @@ import json
 import logging
 import os
 import re
+import threading
 import time
 import urllib.request
 import xml.etree.ElementTree as ET
@@ -45,7 +46,6 @@ class DiscoveryScheduler:
         self._pipeline_func = None
         self._warm_seen_urls()
         # Eagerly load keywords in background so /keywords is ready before first poll
-        import threading
         t = threading.Thread(target=self._blocking_refresh, daemon=True)
         t.start()
 
