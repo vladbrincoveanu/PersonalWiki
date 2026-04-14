@@ -18,17 +18,15 @@ Analyze this content and respond with JSON in exactly this structure:
   "key_facts": ["fact 1", "fact 2", "fact 3"],
   "cross_links": ["existing-note-slug-1", "existing-note-slug-2"],
   "entities": [
-    {{"name": "Display Name", "slug": "display-name", "type": "concept|person|place|institution|dataset|method"}}
+    {{"name": "Display Name", "slug": "display-name", "type": "concept|person|institution|dataset|method"}}
   ],
   "figure_captions": ["one-line caption for figure 1 inferred from surrounding text", "caption for figure 2"],
   "why_saved_hint": "one sentence about why this source is worth keeping"
 }}
 
 Rules:
-- language: ALWAYS translate ALL extracted content (title, tags, summary, key_facts, entities, why_saved_hint) into ENGLISH, even if the source material is in Romanian or another language.
-- tags & entities (the "keys"): Keep these extremely short (1-3 words max). NO full sentences or long descriptive phrases. They should represent core topics, key points, concepts, places, people, institutions, datasets, or methods. Ensure they are sensible and accurate.
-- entities: slug must be lowercase English words with hyphens (e.g. "MIMIC-IV" → "mimic-iv", "Bucharest" → "bucharest"). Only include entities that appear meaningfully in the content.
-- figure_captions: the raw content contains <!-- image --> placeholders where figures appear. Generate one caption per placeholder IN ORDER based on the surrounding text. Return an empty list if there are no <!-- image --> placeholders. Translate captions to English as well.
+- entities: extract recurring concepts, people, institutions, datasets, and methods that deserve their own notes. slug must be lowercase with hyphens (e.g. "MIMIC-IV" → "mimic-iv"). Only include entities that appear meaningfully in the content.
+- figure_captions: the raw content contains <!-- image --> placeholders where figures appear. Generate one caption per placeholder IN ORDER based on the surrounding text. Return an empty list if there are no <!-- image --> placeholders.
 - cross_links: use slugs of existing notes listed below only if genuinely relevant.
 - why_saved_hint: one sentence starter for a personal note about relevance — be specific, not generic.
 
