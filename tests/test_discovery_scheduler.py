@@ -188,4 +188,6 @@ def test_remove_keyword_removes_and_purges():
         assert "to-remove" not in scheduler._keywords
         assert "stay" in scheduler._keywords
         assert tmp_interests.read_text(encoding="utf-8").strip() == ""
-        assert any("note.md" in d for d in deleted)
+        # File with real content keeps wikilink stripped but file itself preserved
+        assert (Path(tmp_vault) / "notes" / "note.md").exists()
+        assert "[[to-remove]]" not in (Path(tmp_vault) / "notes" / "note.md").read_text()

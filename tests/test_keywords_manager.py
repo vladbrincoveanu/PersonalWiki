@@ -67,26 +67,56 @@ class TestRemoveKeyword:
 
 
 class TestPurgeKeyword:
-    def test_purge_deletes_files_containing_keyword(self, tmp_path):
+    def test_purge_strips_wikilinks_but_keeps_file_with_real_content(self, tmp_path):
         vault = tmp_path / "vault"
         vault.mkdir()
-        (vault / "doc1.md").write_text("python is great")
-        (vault / "doc2.md").write_text("rust is fast")
-        (vault / "doc3.md").write_text("python and rust")
+        content = "# python\n\n[[python]] is a programming language.\n## Summary\nGreat language."
+        (vault / "doc1.md").write_text(content, encoding="utf-8")
+        (vault / "doc2.md").write_text("rust is fast", encoding="utf-8")
         deleted = purge_keyword("python", vault)
-        assert len(deleted) == 2
-        assert not (vault / "doc1.md").exists()
-        assert not (vault / "doc3.md").exists()
+        assert len(deleted) == 0
+        assert (vault / "doc1.md").exists()
+        # wikilink stripped but rest of content preserved
+        assert "python is a programming language" in (vault / "doc1.md").read_text(encoding="utf-8")
+        assert "[[python]]" not in (vault / "doc1.md").read_text(encoding="utf-8")
         assert (vault / "doc2.md").exists()
 
-    def test_purge_matches_raw_text_not_just_wikilink(self, tmp_path):
+    def test_purge_deletes_orphan_stub_with_only_wikilink(self, tmp_path):
         vault = tmp_path / "vault"
         vault.mkdir()
-        (vault / "doc1.md").write_text("Check [[python]] for info")
-        (vault / "doc2.md").write_text("python programming")
-        (vault / "doc3.md").write_text("use python3")
+        (vault / "stub.md").write_text("# python\n\n[[python]]\n", encoding="utf-8")
+        (vault / "real.md").write_text("# python\n\n[[python]]\n## Summary\nA great language.\n", encoding="utf-8")
         deleted = purge_keyword("python", vault)
-        assert len(deleted) == 3
-        assert not (vault / "doc1.md").exists()
-        assert not (vault / "doc2.md").exists()
-        assert not (vault / "doc3.md").exists()
+        assert len(deleted) == 1
+        assert str(vault / "stub.md") in deleted
+        assert not (vault / "stub.md").exists()
+        assert (vault / "real.md").exists()
+
+    def test_purge_deletes_orphan_with_keyword_title_no_wikilink(self, tmp_path):
+        vault = tmp_path / "vault"
+        vault.mkdir()
+        # filename stem matches keyword so it's detected as a title-orphan
+        (vault / "bitcoin.md").write_text("# bitcoin\n\n", encoding="utf-8")
+        deleted = purge_keyword("bitcoin", vault)
+        assert len(deleted) == 1
+        assert not (vault / "bitcoin.md").exists()
+
+    def test_purge_preserves_frontmatter(self, tmp_path):
+        vault = tmp_path / "vault"
+        vault.mkdir()
+        fm = "---\ntitle: python\nsource: https://example.com\n---\n[[python]] is great.\n"
+        (vault / "doc.md").write_text(fm, encoding="utf-8")
+        purge_keyword("python", vault)
+        content = (vault / "doc.md").read_text(encoding="utf-8")
+        assert content.startswith("---")
+        assert "title: python" in content
+        assert "[[python]]" not in content
+        assert "is great." in content
+
+    def test_purge_ignores_files_without_wikilink(self, tmp_path):
+        vault = tmp_path / "vault"
+        vault.mkdir()
+        (vault / "doc.md").write_text("python is a language", encoding="utf-8")
+        deleted = purge_keyword("python", vault)
+        assert len(deleted) == 0
+        assert (vault / "doc.md").exists()
