@@ -1,4 +1,5 @@
 import pytest
+from pathlib import Path
 from unittest.mock import patch, AsyncMock, MagicMock
 
 
@@ -13,11 +14,14 @@ async def test_pipeline_url_yields_progress_steps():
     mock_store.exists.return_value = False
 
     mock_doc = MagicMock()
-    mock_doc.raw_text = "Raw content from URL."
+    mock_doc.raw_text = "Real extracted content from the web page that is definitely over one hundred characters long for testing purposes."
     mock_doc.images = []
 
     with (
-        patch("ingesters.router.extract", AsyncMock(return_value=mock_doc)),
+        patch("ingesters.news.extract_news", AsyncMock(return_value=MagicMock(
+            raw_text="Real extracted content from the web page that is definitely over one hundred characters long for testing purposes.",
+            images=[]
+        ))),
         patch("pipeline._is_pdf_url", return_value=False),
         patch("pipeline.embed", return_value=[0.1] * 384),
         patch("pipeline.get_store", return_value=mock_store),
@@ -30,7 +34,7 @@ async def test_pipeline_url_yields_progress_steps():
                 "summary": "Summary.",
                 "key_facts": ["Fact"],
                 "cross_links": ["existing-note"],
-                "raw_text": "Raw.",
+                "raw_text": "Real extracted content from the web page that is definitely over one hundred characters long for testing purposes.",
                 "error": False,
             },
         ),
@@ -81,9 +85,12 @@ async def test_pipeline_handles_extraction_error():
 
 
 @pytest.mark.asyncio
-async def test_pipeline_pdf_url_passes_images_to_writer():
+async def test_pipeline_pdf_url_passes_images_to_writer(tmp_path):
     from pipeline import run_pipeline
     from ingesters.pdf import PdfExtractResult
+
+    fake_pdf = tmp_path / "fake.pdf"
+    fake_pdf.write_bytes(b"%PDF-1.0\nfake pdf content")
 
     mock_store = MagicMock()
     mock_store.exists.return_value = False
@@ -101,10 +108,14 @@ async def test_pipeline_pdf_url_passes_images_to_writer():
         written_images.extend(images)
         return "/vault/notes/paper.md"
 
+    def fake_urlretrieve(url, filename):
+        Path(filename).write_bytes(b"%PDF-1.0\nfake pdf")
+        return (filename, {})
+
     with (
         patch("pipeline.get_store", return_value=mock_store),
         patch("pipeline._is_pdf_url", return_value=True),
-        patch("urllib.request.urlretrieve", return_value=("/tmp/fake.pdf", {})),
+        patch("urllib.request.urlretrieve", side_effect=fake_urlretrieve),
         patch("ingesters.pdf.extract_pdf_full", return_value=fake_result),
         patch("pipeline.embed", return_value=[0.1] * 384),
         patch(
@@ -142,8 +153,9 @@ async def test_pipeline_runs_entity_status_search():
     with (
         patch("pipeline.get_store", return_value=mock_store),
         patch("pipeline._is_pdf_url", return_value=False),
-        patch("ingesters.router.extract", AsyncMock(return_value=MagicMock(
-            raw_text="Raw content from URL.", images=[]
+        patch("ingesters.news.extract_news", AsyncMock(return_value=MagicMock(
+            raw_text="Real extracted content from the web page that is definitely over one hundred characters long for testing purposes.",
+            images=[]
         ))),
         patch("pipeline.embed", return_value=[0.1] * 384),
         patch(
@@ -158,7 +170,7 @@ async def test_pipeline_runs_entity_status_search():
                 "entities": [{"name": "PyTorch", "slug": "pytorch", "type": "library"}],
                 "figure_captions": [],
                 "why_saved_hint": "",
-                "raw_text": "Some content.",
+                "raw_text": "Real extracted content from the web page that is definitely over one hundred characters long for testing purposes.",
                 "error": False,
             },
         ),
@@ -194,12 +206,12 @@ async def test_pipeline_calls_detect_gaps_and_attaches_gap_entities():
     enriched_note = {
         "title": "Test Note", "type": "article", "tags": ["ai"],
         "summary": "Summary.", "key_facts": ["Fact"],
-        "cross_links": [], "raw_text": "Raw.", "error": False,
+        "cross_links": [], "raw_text": "Real extracted content from the web page that is definitely over one hundred characters long for testing purposes.", "error": False,
         "entities": [{"name": "MissingEntity", "slug": "missing-entity"}],
     }
 
     with patch("pipeline.get_store", return_value=mock_store), \
-         patch("ingesters.router.extract", AsyncMock(return_value=MagicMock(raw_text="Raw content.", images=[]))), \
+         patch("ingesters.news.extract_news", AsyncMock(return_value=MagicMock(raw_text="Real extracted content from the web page that is definitely over one hundred characters long for testing purposes.", images=[]))), \
          patch("pipeline._is_pdf_url", return_value=False), \
          patch("pipeline.embed", return_value=[0.1] * 384), \
          patch("pipeline.enrich", return_value=enriched_note), \
@@ -225,12 +237,12 @@ async def test_pipeline_no_gap_searches_when_no_gaps():
 
     enriched_note = {
         "title": "Test Note", "type": "article", "tags": [],
-        "summary": "S.", "key_facts": [], "cross_links": [], "raw_text": "Raw.", "error": False,
+        "summary": "S.", "key_facts": [], "cross_links": [], "raw_text": "Real extracted content from the web page that is definitely over one hundred characters long for testing purposes.", "error": False,
         "entities": [],
     }
 
     with patch("pipeline.get_store", return_value=mock_store), \
-         patch("ingesters.router.extract", AsyncMock(return_value=MagicMock(raw_text="Raw content.", images=[]))), \
+         patch("ingesters.news.extract_news", AsyncMock(return_value=MagicMock(raw_text="Real extracted content from the web page that is definitely over one hundred characters long for testing purposes.", images=[]))), \
          patch("pipeline._is_pdf_url", return_value=False), \
          patch("pipeline.embed", return_value=[0.1] * 384), \
          patch("pipeline.enrich", return_value=enriched_note), \

@@ -12,6 +12,18 @@ from pathlib import Path
 import requests
 from config import VAULT_PATH, INTEREST_HUB_TOP_K, INTEREST_LEAF_TOP_K, MINIMAX_API_KEY, MINIMAX_MODEL, MINIMAX_API_URL
 
+
+def _load_suppressed_for_extract(keywords_file: Path) -> set[str]:
+    """Load suppressed keywords for extract_interests (called in-thread, no circular deps)."""
+    suppressed_file = keywords_file.parent / (keywords_file.name + "-suppressed")
+    if not suppressed_file.exists():
+        return set()
+    return {
+        line.strip()
+        for line in suppressed_file.read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.strip().startswith("#")
+    }
+
 _logger = logging.getLogger(__name__)
 
 # Keywords to exclude from interest extraction — covers common orphan/uninformative note titles
@@ -88,8 +100,9 @@ async def _filter_keywords_via_llm(candidates: list[str]) -> list[str]:
         resp.raise_for_status()
         data = resp.json()
         content = data["choices"][0]["message"]["content"].strip()
-        content = content.removeprefix("```json").removeprefix("```").strip()
-        validated = json.loads(content)
+        content = content.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+        decoder = json.JSONDecoder()
+        validated, _ = decoder.raw_decode(content)
         if isinstance(validated, list) and all(isinstance(k, str) for k in validated):
             _logger.info("LLM filtered %d candidates -> %d validated", len(candidates), len(validated))
             return validated
@@ -221,11 +234,16 @@ def extract_interests(vault_path: str | Path | None = None) -> list[str]:
         candidates.append(kw)
 
     # LLM validation: ask which candidates are good web search topics
+    # Also filter against suppressed blocklist
+    keywords_file = Path(vault_path) / "_keywords" if isinstance(vault_path, str) else vault_path / "_keywords"
+    suppressed = _load_suppressed_for_extract(keywords_file)
+
     try:
         loop = asyncio.new_event_loop()
         result = loop.run_until_complete(_filter_keywords_via_llm(candidates))
         loop.close()
-        return result
+        # Filter out suppressed keywords from LLM result
+        return [kw for kw in result if kw not in suppressed]
     except Exception as e:
-        _logger.warning("LLM filter failed: %s — returning candidates unfiltered", e)
-        return candidates
+        _logger.warning("LLM filter failed: %s — returning candidates (suppressed excluded)", e)
+        return [kw for kw in candidates if kw not in suppressed]

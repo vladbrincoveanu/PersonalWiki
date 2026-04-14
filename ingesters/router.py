@@ -49,9 +49,24 @@ async def extract(url: str) -> Document:
         # Download PDF to temp file and extract
         from ingesters.pdf import extract_pdf_full
         import tempfile
+        import os
         with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
-            await asyncio.to_thread(urllib.request.urlretrieve, url, tmp.name)
-            result = await asyncio.to_thread(extract_pdf_full, tmp.name)
+            tmp_path = tmp.name
+        await asyncio.to_thread(urllib.request.urlretrieve, url, tmp_path)
+        # Validate magic bytes before passing to docling
+        with open(tmp_path, "rb") as f:
+            header = f.read(5)
+        if header != b"%PDF-":
+            os.unlink(tmp_path)
+            raise ValueError(
+                f"URL has .pdf extension but content is not a valid PDF "
+                f"(got header: {header!r}). Treating as web page instead."
+            )
+        try:
+            result = await asyncio.to_thread(extract_pdf_full, tmp_path)
+        finally:
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)
         return Document(
             raw_text=result.markdown,
             content_type="paper",

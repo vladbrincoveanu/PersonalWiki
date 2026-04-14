@@ -4,6 +4,7 @@ Timer-driven: refreshes keywords from graph, fires searches per keyword,
 deduplicates against LanceDB, triggers pipeline for new URLs.
 """
 import asyncio
+import json
 import logging
 import os
 import re
@@ -31,6 +32,7 @@ from pathlib import Path
 _logger = logging.getLogger(__name__)
 
 KEYWORDS_FILE = Path(VAULT_PATH) / "_keywords"
+_SEEN_URLS_FILE = Path.home() / ".personalWiki" / "discovery_seen_urls.json"
 
 
 class DiscoveryScheduler:
@@ -41,6 +43,32 @@ class DiscoveryScheduler:
         self._seen_urls: set[str] = set()
         self._in_flight: set[str] = set()
         self._pipeline_func = None
+        self._warm_seen_urls()
+
+    def _warm_seen_urls(self):
+        """Populate _seen_urls from disk cache and vector store."""
+        # Load from disk cache first
+        if _SEEN_URLS_FILE.exists():
+            try:
+                self._seen_urls = set(json.loads(_SEEN_URLS_FILE.read_text()))
+            except Exception:
+                pass
+        # Also warm from vector store
+        try:
+            from core.vector_store import get_store
+            store = get_store()
+            for url in store.get_all_paths():
+                self._seen_urls.add(url)
+        except Exception as e:
+            _logger.debug("Could not warm seen_urls from store: %s", e)
+
+    def _persist_seen_urls(self):
+        """Save seen URLs to disk for persistence across restarts."""
+        try:
+            _SEEN_URLS_FILE.parent.mkdir(parents=True, exist_ok=True)
+            _SEEN_URLS_FILE.write_text(json.dumps(list(self._seen_urls)))
+        except Exception as e:
+            _logger.debug("Could not persist seen_urls: %s", e)
 
     def _is_new_url(self, url: str) -> bool:
         if url in self._seen_urls or url in self._in_flight:
@@ -92,6 +120,7 @@ class DiscoveryScheduler:
         """
         Search across sources for a keyword.
         Returns list of {url, title, snippet, source} dicts.
+        Snippets are enriched generically for any source that returned empty ones.
         """
         results = []
 
@@ -115,7 +144,39 @@ class DiscoveryScheduler:
         except Exception as e:
             _logger.warning("Discovery: DespreBursa search failed for %s: %s", keyword, e)
 
-        return results
+        # Generic snippet enrichment: fetch content for any result with an empty snippet
+        return await self._enrich_snippets(results)
+
+    async def _enrich_snippets(self, results: list[dict]) -> list[dict]:
+        """Post-process: fetch article content for any result with an empty snippet.
+
+        Works generically for any source. arXiv/HN/MiniMax already return real snippets
+        so this is mostly a no-op for them. DespreBursa also fetches its own snippets,
+        so this is a fallback for any future source that returns empty ones.
+        """
+        async def fetch_one(result: dict) -> dict:
+            if result.get("snippet"):
+                return result
+            url = result.get("url", "")
+            if not url:
+                return result
+            snippet = await self._fetch_article_snippet(url)
+            result["snippet"] = snippet
+            return result
+
+        return await asyncio.gather(*[fetch_one(r) for r in results])
+
+    async def _fetch_article_snippet(self, url: str) -> str:
+        """Fetch article page and extract first meaningful paragraph as snippet."""
+        try:
+            text = await extract_url(url)
+            for para in text.split("\n\n"):
+                para = para.strip()
+                if len(para) > 80:
+                    return para[:200]
+            return ""
+        except Exception:
+            return ""
 
     async def _search_arxiv(self, keyword: str, max_results: int = 3) -> list[dict]:
         """Search arXiv API for keyword."""
@@ -186,21 +247,25 @@ class DiscoveryScheduler:
         resp = requests.post(MINIMAX_API_URL, headers=headers, json=payload, timeout=30)
         resp.raise_for_status()
         data = resp.json()
-        content = data["choices"][0]["message"]["content"].strip()
+        content = (data.get("choices", [{}])[0].get("message", {}).get("content") or "").strip()
+        if not content:
+            _logger.warning("Discovery: MiniMax returned empty content for %s", keyword)
+            return []
         # Strip markdown code fences if present
-        content = content.removeprefix("```json").removeprefix("```").strip()
-        results = json.loads(content)
+        content = content.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+        decoder = json.JSONDecoder()
+        results, _ = decoder.raw_decode(content)
         return [{"url": r["url"], "title": r["title"], "snippet": r["snippet"][:200], "source": "minimax"}
                 for r in results[:limit]]
 
     async def _search_desprebursa(self, keyword: str, limit: int = 5) -> list[dict]:
         """
         Search DespreBursa.ro via sitemap and category pages.
-        Returns list of {url, title, snippet, source} dicts.
+        Returns list of {url, title, snippet, source} dicts with real content.
         """
         results = []
 
-        # Tier 1: Sitemap
+        # Tier 1: Sitemap — stop early if we hit limit
         try:
             sitemap_url = "https://www.desprebursa.ro/sitemap.xml"
             req = urllib.request.Request(sitemap_url, headers={"User-Agent": "Mozilla/5.0"})
@@ -210,6 +275,8 @@ class DiscoveryScheduler:
             ns = {"sm": "http://www.sitemaps.org/schemas/sitemap/0.9"}
             keyword_lower = keyword.lower()
             for url_elem in root.findall("sm:url/sm:loc", ns):
+                if len(results) >= limit:
+                    break
                 loc = url_elem.text.strip() if url_elem.text else ""
                 if keyword_lower in loc.lower():
                     results.append({
@@ -218,15 +285,19 @@ class DiscoveryScheduler:
                         "snippet": "",
                         "source": "desprebursa",
                     })
-                    if len(results) >= limit:
-                        return results
         except Exception as e:
             _logger.warning("Discovery: DespreBursa sitemap fetch failed: %s", e)
 
-        # Tier 2: Category page crawl (only if we need more results)
+        # If sitemap gave us enough results, skip category crawling entirely
         if len(results) >= limit:
+            urls = [r["url"] for r in results]
+            snippets = await asyncio.gather(*[self._fetch_article_snippet(u) for u in urls])
+            for r, snippet in zip(results, snippets):
+                if snippet:
+                    r["snippet"] = snippet
             return results
 
+        # Tier 2: Category page crawl — only if we need more results
         category_pages = [
             "https://www.desprebursa.ro/categorii-publicatii/bvb",
             "https://www.desprebursa.ro/categorii-publicatii/companii",
@@ -240,7 +311,6 @@ class DiscoveryScheduler:
                 break
             try:
                 text = await extract_url(cat_url)
-                # Extract article links from HTML
                 link_pattern = re.compile(r'href="(https://www\.desprebursa\.ro/[^"#]+)"')
                 for match in link_pattern.finditer(text):
                     url = match.group(1)
@@ -252,9 +322,17 @@ class DiscoveryScheduler:
                             "source": "desprebursa",
                         })
                         if len(results) >= limit:
-                            return results
+                            break
             except Exception as e:
                 _logger.warning("Discovery: DespreBursa category page failed %s: %s", cat_url, e)
+
+        # Fetch snippets for found articles concurrently
+        if results:
+            urls = [r["url"] for r in results]
+            snippets = await asyncio.gather(*[self._fetch_article_snippet(u) for u in urls])
+            for r, snippet in zip(results, snippets):
+                if snippet:
+                    r["snippet"] = snippet
 
         return results
 
@@ -274,6 +352,7 @@ class DiscoveryScheduler:
                     continue
                 if store.exists(url):
                     self._seen_urls.add(url)
+                    self._persist_seen_urls()
                     continue
 
                 _logger.info("Discovery: ingesting %s — %s", url, result["title"])
@@ -283,6 +362,7 @@ class DiscoveryScheduler:
                         asyncio.create_task(self._run_pipeline(url))
                     ingested += 1
                     self._seen_urls.add(url)
+                    self._persist_seen_urls()
                 except Exception as e:
                     _logger.error("Discovery: failed to queue %s: %s", url, e)
                 finally:

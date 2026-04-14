@@ -23,6 +23,9 @@ _SUBTITLE_TIERS = [
 
 _TIMEOUT_SECONDS = 30
 
+# Browsers to try for cookie extraction (in order of preference)
+_COOKIE_BROWSERS = ["firefox", "chrome", "safari"]
+
 
 def _parse_vtt(vtt_text: str) -> str:
     # Remove WEBVTT header block
@@ -42,9 +45,28 @@ def _parse_vtt(vtt_text: str) -> str:
     return " ".join(deduped)
 
 
+def _build_cookie_args() -> list[str]:
+    """Return --cookies-from-browser args for the first available browser."""
+    for browser in _COOKIE_BROWSERS:
+        try:
+            result = subprocess.run(
+                ["yt-dlp", f"--cookies-from-browser={browser}", "--version"],
+                capture_output=True, timeout=5,
+            )
+            if result.returncode == 0:
+                return [f"--cookies-from-browser={browser}"]
+        except Exception:
+            continue
+    return []
+
+
 def _run_yt_dlp(url: str, args: list[str], tmpdir: str) -> list[str] | None:
-    """Run yt-dlp with given args in tmpdir. Returns list of VTT file paths or None."""
-    cmd = ["yt-dlp"] + args + ["--output", os.path.join(tmpdir, "%(id)s"), "--quiet", url]
+    """Run yt-dlp with given args in tmpdir. Returns list of VTT file paths or None.
+    
+    Automatically injects --cookies-from-browser to bypass YouTube bot detection.
+    """
+    cookie_args = _build_cookie_args()
+    cmd = ["yt-dlp"] + cookie_args + args + ["--output", os.path.join(tmpdir, "%(id)s"), "--quiet", url]
     try:
         subprocess.run(cmd, capture_output=True, timeout=_TIMEOUT_SECONDS)
         vtt_files = [f for f in os.listdir(tmpdir) if f.endswith(".vtt")]
@@ -61,18 +83,72 @@ def _extract_video_id(url: str) -> str | None:
     return m.group(1) if m else None
 
 
+def _export_browser_cookies(video_id: str) -> str | None:
+    """Export browser cookies to a Netscape-format temp file via yt-dlp.
+    
+    Tries Firefox first, then Chrome. Returns the path to the temp cookie file,
+    or None if export fails or produces an empty file.
+    """
+    for browser in _COOKIE_BROWSERS:
+        try:
+            import tempfile as _tf
+            tmp = _tf.NamedTemporaryFile(suffix=".txt", delete=False)
+            cookie_file = tmp.name
+            tmp.close()
+            result = subprocess.run(
+                [
+                    "yt-dlp",
+                    f"--cookies-from-browser={browser}",
+                    f"--cookies={cookie_file}",
+                    "--skip-download", "--quiet",
+                    f"https://www.youtube.com/watch?v={video_id}",
+                ],
+                capture_output=True, timeout=30,
+            )
+            if os.path.exists(cookie_file) and os.path.getsize(cookie_file) > 0:
+                return cookie_file
+        except Exception:
+            continue
+    return None
+
+
+def _session_from_cookie_file(cookie_file: str):
+    """Build a requests.Session with cookies loaded from a Netscape cookie file."""
+    import requests as _req
+    import http.cookiejar as _cj
+    session = _req.Session()
+    jar = _cj.MozillaCookieJar(cookie_file)
+    try:
+        jar.load(ignore_discard=True, ignore_expires=True)
+        session.cookies.update(jar)
+    except Exception:
+        pass
+    return session
+
+
 def _try_youtube_transcript_api(video_id: str) -> str | None:
     """Try to fetch English transcript via youtube-transcript-api.
 
     Strategy:
-    1. Manually-created English transcript
+    1. Manually-created English transcript (prefer manual > auto-generated)
     2. Auto-generated English transcript
     3. Any transcript in any language (last resort)
 
+    Injects browser cookies into the requests session to bypass IpBlocked errors.
     Returns transcript text or None if all strategies fail.
     """
     try:
-        ytt = YouTubeTranscriptApi()
+        # Build a session with browser cookies to bypass IP blocks
+        http_client = None
+        cookie_file = _export_browser_cookies(video_id)
+        if cookie_file:
+            http_client = _session_from_cookie_file(cookie_file)
+            try:
+                os.unlink(cookie_file)
+            except Exception:
+                pass
+
+        ytt = YouTubeTranscriptApi(http_client=http_client)
         all_transcripts = ytt.list(video_id)
 
         # Find best English transcript: manually-created > auto-generated

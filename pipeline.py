@@ -98,6 +98,20 @@ async def run_pipeline(
         if tmp_pdf_path and os.path.exists(tmp_pdf_path):
             os.unlink(tmp_pdf_path)
 
+    # Step 1.5: Content quality gate — skip bad extractions
+    stripped = raw_text.strip()
+    _error_signals = ["[PAYWALLED]", "[PAYWALL]", "404", "Page not found", "[BOTECTED]"]
+    has_images = bool(images)
+    if any(sig in stripped for sig in _error_signals):
+        yield f"Skipped: error signal detected in content"
+        return
+    if not stripped and not has_images:
+        yield f"Skipped: no extractable content ({len(stripped)} chars)"
+        return
+    if len(stripped) < 100 and not has_images:
+        yield f"Skipped: no extractable content ({len(stripped)} chars, no images)"
+        return
+
     # Step 2: Find similar
     yield "Finding similar notes..."
     vector = embed(raw_text[:MAX_EMBED_CHARS])

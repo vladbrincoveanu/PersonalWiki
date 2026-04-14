@@ -66,9 +66,6 @@ def write_note(
         "tags": note.get("tags", []),
         "ingested": ingested_date,
     }
-    if note.get("error"):
-        metadata["confidence"] = "low"
-
     cross_links = note.get("cross_links", [])
     cross_links_section = ""
     if cross_links:

@@ -66,27 +66,6 @@ def test_write_note_frontmatter_correct():
         assert post.metadata["source"] == "https://example.com"
 
 
-def test_write_note_error_adds_confidence_low():
-    note = {
-        "title": "Bad PDF",
-        "type": "paper",
-        "tags": [],
-        "summary": "",
-        "key_facts": [],
-        "cross_links": [],
-        "raw_text": "Some raw.",
-        "error": True,
-    }
-    with tempfile.TemporaryDirectory() as tmp:
-        notes_dir = Path(tmp) / "notes"
-        notes_dir.mkdir()
-        with patch("vault.writer.NOTES_DIR", notes_dir):
-            path = write_note(note, source="/path/to/file.pdf")
-
-        post = frontmatter.load(path)
-        assert post.metadata.get("confidence") == "low"
-
-
 def _minimal_png() -> bytes:
     sig = b"\x89PNG\r\n\x1a\n"
     ihdr_data = struct.pack(">IIBBBBB", 1, 1, 8, 2, 0, 0, 0)

@@ -98,6 +98,13 @@ class VectorStore:
         rows = self._table.search().where(f"path = '{path}'").limit(1).to_list()
         return len(rows) > 0
 
+    def get_all_paths(self) -> list[str]:
+        """Return all indexed URLs/paths."""
+        try:
+            return [row["path"] for row in self._table.to_list() if row.get("path")]
+        except Exception:
+            return []
+
     def get_mtime(self, path: str) -> float:
         """Return stored mtime for a path, or 0.0 if not found."""
         rows = self._table.search().where(f"path = '{path}'").limit(1).to_list()
