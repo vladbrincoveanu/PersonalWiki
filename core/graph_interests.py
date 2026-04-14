@@ -27,6 +27,7 @@ _NOISE_KEYWORDS: frozenset[str] = frozenset({
     "none",
     "undefined",
     "null",
+    "attachments",
 })
 
 
@@ -37,17 +38,29 @@ def _is_noise_keyword(kw: str) -> bool:
         return True
     if stripped in _NOISE_KEYWORDS:
         return True
-    # Reject single characters, pure numbers, or very short strings
-    if len(stripped) <= 2:
-        return True
     return False
 
 
 def _parse_wikilinks(text: str) -> list[str]:
-    """Return list of note titles linked via [[wikilink]], stripping pipe syntax."""
+    """Return list of note titles linked via [[wikilink]], stripping pipe syntax.
+
+    Filters out attachment paths (images, files in attachments/ folder).
+    """
     # Strip pipe syntax: [[B|Display B]] -> B
     raw = re.findall(r"\[\[([^\]]+)\]\]", text)
-    return [link.split("|", 1)[0].strip() for link in raw]
+    result = []
+    for link in raw:
+        title = link.split("|", 1)[0].strip()
+        # Skip attachment paths (images, PDFs, etc.)
+        if title.lower().startswith("attachments/"):
+            continue
+        if "/" in title or "\\" in title:
+            continue
+        # Skip obvious file references with extensions
+        if re.search(r"\.(png|jpg|jpeg|gif|webp|pdf|svg|mp3|mp4)$", title, re.I):
+            continue
+        result.append(title)
+    return result
 
 
 def _strip_frontmatter(content: str) -> str:
