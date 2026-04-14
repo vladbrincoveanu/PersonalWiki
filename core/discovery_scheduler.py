@@ -163,7 +163,8 @@ class DiscoveryScheduler:
         # Tier 1: Sitemap
         try:
             sitemap_url = "https://www.desprebursa.ro/sitemap.xml"
-            with urllib.request.urlopen(sitemap_url, timeout=15) as resp:
+            req = urllib.request.Request(sitemap_url, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=15) as resp:
                 data = resp.read().decode("utf-8")
             root = ET.fromstring(data)
             ns = {"sm": "http://www.sitemaps.org/schemas/sitemap/0.9"}
