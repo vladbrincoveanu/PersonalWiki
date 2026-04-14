@@ -76,21 +76,26 @@ def _try_youtube_transcript_api(video_id: str) -> str | None:
         ytt = YouTubeTranscriptApi()
         all_transcripts = ytt.list(video_id)
 
-        # Try for English first
-        en_transcripts = all_transcripts.find_transcript(["en"])
+        # Find best English transcript: manually-created > auto-generated
+        english_transcripts = []
+        for t in all_transcripts:
+            if t.language_code.startswith("en"):
+                english_transcripts.append(t)
 
         # Prefer manually-created over auto-generated
-        transcript = (
-            en_transcripts.find_manually_created_transcript()
-            or en_transcripts.find_generated_transcript()
-        )
+        transcript = None
+        for t in english_transcripts:
+            if not t.is_generated:
+                transcript = t
+                break
+        if not transcript and english_transcripts:
+            transcript = english_transcripts[0]
+
+        if not transcript and all_transcripts:
+            transcript = all_transcripts[0]
 
         if not transcript:
-            # Last resort: any transcript in any language
-            if all_transcripts:
-                transcript = all_transcripts[0]
-            else:
-                return None
+            return None
 
         snippets = transcript.fetch()
         text = " ".join(snippet["text"] for snippet in snippets)

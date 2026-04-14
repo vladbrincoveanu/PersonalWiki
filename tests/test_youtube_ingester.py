@@ -262,27 +262,28 @@ def test_youtube_transcript_api_manually_created(monkeypatch):
             self.text = text
 
     class FakeTranscript:
-        def __init__(self, snippets):
+        def __init__(self, snippets, language_code="en", is_generated=False):
             self._snippets = snippets
+            self.language_code = language_code
+            self.is_generated = is_generated
         def fetch(self):
             return [{"text": s.text} for s in self._snippets]
 
     class FakeTranscriptList:
-        def __init__(self, en_transcript):
-            self._en = en_transcript
-        def find_transcript(self, langs):
-            return self
-        def find_manually_created_transcript(self):
-            return self._en
-        def find_generated_transcript(self):
-            return None
+        def __init__(self, transcripts):
+            self._transcripts = transcripts
+        def __iter__(self):
+            return iter(self._transcripts)
 
     fake_api_calls = []
 
     class FakeYTT:
         def list(self, video_id):
             fake_api_calls.append(video_id)
-            return FakeTranscriptList(FakeTranscript([FakeSnippet("Hello from transcript API")]))
+            # Manually-created English transcript
+            return FakeTranscriptList([
+                FakeTranscript([FakeSnippet("Hello from transcript API")], language_code="en", is_generated=False)
+            ])
 
     monkeypatch.setattr("ingesters.youtube.YouTubeTranscriptApi", FakeYTT)
 
@@ -301,24 +302,25 @@ def test_youtube_transcript_api_auto_generated(monkeypatch):
             self.text = text
 
     class FakeTranscript:
-        def __init__(self, snippets):
+        def __init__(self, snippets, language_code="en", is_generated=False):
             self._snippets = snippets
+            self.language_code = language_code
+            self.is_generated = is_generated
         def fetch(self):
             return [{"text": s.text} for s in self._snippets]
 
     class FakeTranscriptList:
-        def __init__(self, en_transcript):
-            self._en = en_transcript
-        def find_transcript(self, langs):
-            return self
-        def find_manually_created_transcript(self):
-            return None
-        def find_generated_transcript(self):
-            return self._en
+        def __init__(self, transcripts):
+            self._transcripts = transcripts
+        def __iter__(self):
+            return iter(self._transcripts)
 
     class FakeYTT:
         def list(self, video_id):
-            return FakeTranscriptList(FakeTranscript([FakeSnippet("Auto-generated transcript")]))
+            # Auto-generated English transcript (no manually-created available)
+            return FakeTranscriptList([
+                FakeTranscript([FakeSnippet("Auto-generated transcript")], language_code="en", is_generated=True)
+            ])
 
     monkeypatch.setattr("ingesters.youtube.YouTubeTranscriptApi", FakeYTT)
 
