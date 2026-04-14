@@ -1,5 +1,6 @@
-import pytest, asyncio
+import pytest, asyncio, tempfile, os
 from unittest.mock import patch, MagicMock, AsyncMock
+from pathlib import Path
 
 def test_discovery_scheduler_initializes():
     from core.discovery_scheduler import DiscoveryScheduler
@@ -115,3 +116,70 @@ async def test_search_desprebursa_respects_limit():
     assert all(r["source"] == "desprebursa" for r in results)
     # Tier 2 should have run because Tier 1 returned fewer than limit
     assert mock_extract.call_count >= 1
+
+
+@pytest.mark.asyncio
+async def test_refresh_keywords_includes_manual():
+    """Manual keywords from .interests are merged with graph keywords."""
+    from core.discovery_scheduler import DiscoveryScheduler, INTERESTS_FILE
+
+    with tempfile.TemporaryDirectory() as tmp_vault:
+        tmp_interests = Path(tmp_vault) / ".interests"
+        tmp_interests.write_text("manual-keyword\n", encoding="utf-8")
+        with patch("core.discovery_scheduler.INTERESTS_FILE", tmp_interests):
+            with patch("core.graph_interests.extract_interests", return_value=["graph-kw"]):
+                scheduler = DiscoveryScheduler()
+                await scheduler._refresh_keywords()
+        assert "manual-keyword" in scheduler._keywords
+        assert "graph-kw" in scheduler._keywords
+        assert len(scheduler._keywords) == 2
+
+
+def test_add_keyword_appends_and_activates():
+    """add_keyword writes to .interests and adds to _keywords if not present."""
+    from core.discovery_scheduler import DiscoveryScheduler, INTERESTS_FILE
+
+    with tempfile.TemporaryDirectory() as tmp_vault:
+        tmp_interests = Path(tmp_vault) / ".interests"
+        with patch("core.discovery_scheduler.INTERESTS_FILE", tmp_interests):
+            scheduler = DiscoveryScheduler()
+            scheduler._keywords = ["existing"]
+            scheduler.add_keyword("new-kw")
+        assert "new-kw" in scheduler._keywords
+        assert "existing" in scheduler._keywords
+        assert tmp_interests.read_text(encoding="utf-8") == "new-kw\n"
+
+
+def test_add_keyword_does_not_duplicate():
+    """add_keyword does not add duplicate to _keywords if already present."""
+    from core.discovery_scheduler import DiscoveryScheduler, INTERESTS_FILE
+
+    with tempfile.TemporaryDirectory() as tmp_vault:
+        tmp_interests = Path(tmp_vault) / ".interests"
+        tmp_interests.write_text("existing\n", encoding="utf-8")
+        with patch("core.discovery_scheduler.INTERESTS_FILE", tmp_interests):
+            scheduler = DiscoveryScheduler()
+            scheduler._keywords = ["existing"]
+            scheduler.add_keyword("existing")
+        assert scheduler._keywords.count("existing") == 1
+
+
+def test_remove_keyword_removes_and_purges():
+    """remove_keyword removes from .interests and _keywords, calls purge_keyword."""
+    from core.discovery_scheduler import DiscoveryScheduler, INTERESTS_FILE
+
+    with tempfile.TemporaryDirectory() as tmp_vault:
+        tmp_interests = Path(tmp_vault) / ".interests"
+        tmp_interests.write_text("to-remove\n", encoding="utf-8")
+        tmp_note = Path(tmp_vault) / "notes" / "note.md"
+        tmp_note.parent.mkdir(parents=True, exist_ok=True)
+        tmp_note.write_text("Content about [[to-remove]] and more", encoding="utf-8")
+        with patch("core.discovery_scheduler.INTERESTS_FILE", tmp_interests):
+            with patch("core.discovery_scheduler.VAULT_PATH", tmp_vault):
+                scheduler = DiscoveryScheduler()
+                scheduler._keywords = ["to-remove", "stay"]
+                deleted = scheduler.remove_keyword("to-remove")
+        assert "to-remove" not in scheduler._keywords
+        assert "stay" in scheduler._keywords
+        assert tmp_interests.read_text(encoding="utf-8").strip() == ""
+        assert any("note.md" in d for d in deleted)

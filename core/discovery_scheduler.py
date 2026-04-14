@@ -15,10 +15,20 @@ from config import (
     DISCOVERY_INTERVAL,
     INTEREST_REFRESH_INTERVAL,
     MAX_URLS_PER_CYCLE,
+    VAULT_PATH,
+)
+from core.keywords_manager import (
+    load_manual_keywords as _load_manual_keywords,
+    add_keyword as _km_add,
+    remove_keyword as _km_remove,
+    purge_keyword as _km_purge,
 )
 from ingesters.web import extract_url
+from pathlib import Path
 
 _logger = logging.getLogger(__name__)
+
+INTERESTS_FILE = Path(VAULT_PATH) / ".interests"
 
 
 class DiscoveryScheduler:
@@ -36,14 +46,36 @@ class DiscoveryScheduler:
         return True
 
     async def _refresh_keywords(self):
-        """Re-extract interests from vault graph."""
+        """Re-extract interests from vault graph and merge manual keywords."""
         try:
             from core.graph_interests import extract_interests
             keywords = extract_interests()
-            self._keywords = keywords
-            _logger.info("Discovery: refreshed %d interest keywords", len(keywords))
+            manual = _load_manual_keywords(INTERESTS_FILE)
+            merged = list(dict.fromkeys([*keywords, *manual]))
+            self._keywords = merged
+            _logger.info("Discovery: refreshed %d interest keywords (%d graph + %d manual)",
+                          len(merged), len(keywords), len(manual))
         except Exception as e:
             _logger.warning("Discovery: failed to refresh keywords: %s", e)
+
+    def add_keyword(self, keyword: str):
+        """Add a manual keyword to .interests and activate it in _keywords."""
+        try:
+            _km_add(keyword, INTERESTS_FILE)
+        except ValueError:
+            pass  # already in file; still ensure it's in _keywords
+        if keyword not in self._keywords:
+            self._keywords.append(keyword)
+        _logger.info("Discovery: added manual keyword %r", keyword)
+
+    def remove_keyword(self, keyword: str) -> list[str]:
+        """Remove keyword from .interests and _keywords; purge from vault via purge_keyword."""
+        _km_remove(keyword, INTERESTS_FILE)
+        if keyword in self._keywords:
+            self._keywords.remove(keyword)
+        deleted = _km_purge(keyword, Path(VAULT_PATH))
+        _logger.info("Discovery: removed manual keyword %r, purged %d files", keyword, len(deleted))
+        return deleted
 
     async def _search_keyword(self, keyword: str) -> list[dict]:
         """
