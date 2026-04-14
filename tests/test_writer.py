@@ -6,14 +6,18 @@ from unittest.mock import patch
 import frontmatter
 from vault.writer import write_note, slugify
 
+
 def test_slugify_basic():
     assert slugify("PagedAttention Paper") == "pagedattention-paper"
+
 
 def test_slugify_special_chars():
     assert slugify("GPT-4: What's New?") == "gpt-4-whats-new"
 
+
 def test_slugify_extra_spaces():
     assert slugify("  hello   world  ") == "hello-world"
+
 
 def test_write_note_creates_file():
     note = {
@@ -35,6 +39,7 @@ def test_write_note_creates_file():
         assert path.endswith("test-note.md")
         assert Path(path).exists()
 
+
 def test_write_note_frontmatter_correct():
     note = {
         "title": "Test Article",
@@ -50,13 +55,16 @@ def test_write_note_frontmatter_correct():
         notes_dir = Path(tmp) / "notes"
         notes_dir.mkdir()
         with patch("vault.writer.NOTES_DIR", notes_dir):
-            path = write_note(note, source="https://example.com", ingested_date="2026-04-10")
+            path = write_note(
+                note, source="https://example.com", ingested_date="2026-04-10"
+            )
 
         post = frontmatter.load(path)
         assert post.metadata["title"] == "Test Article"
         assert post.metadata["type"] == "article"
         assert "ai" in post.metadata["tags"]
         assert post.metadata["source"] == "https://example.com"
+
 
 def test_write_note_error_adds_confidence_low():
     note = {
@@ -80,16 +88,21 @@ def test_write_note_error_adds_confidence_low():
 
 
 def _minimal_png() -> bytes:
-    sig = b'\x89PNG\r\n\x1a\n'
-    ihdr_data = struct.pack('>IIBBBBB', 1, 1, 8, 2, 0, 0, 0)
-    ihdr_crc = zlib.crc32(b'IHDR' + ihdr_data)
-    ihdr = struct.pack('>I', 13) + b'IHDR' + ihdr_data + struct.pack('>I', ihdr_crc)
-    raw = b'\x00\xff\x00\x00'  # filter byte + 1 RGB pixel
+    sig = b"\x89PNG\r\n\x1a\n"
+    ihdr_data = struct.pack(">IIBBBBB", 1, 1, 8, 2, 0, 0, 0)
+    ihdr_crc = zlib.crc32(b"IHDR" + ihdr_data)
+    ihdr = struct.pack(">I", 13) + b"IHDR" + ihdr_data + struct.pack(">I", ihdr_crc)
+    raw = b"\x00\xff\x00\x00"  # filter byte + 1 RGB pixel
     compressed = zlib.compress(raw)
-    idat_crc = zlib.crc32(b'IDAT' + compressed)
-    idat = struct.pack('>I', len(compressed)) + b'IDAT' + compressed + struct.pack('>I', idat_crc)
-    iend_crc = zlib.crc32(b'IEND')
-    iend = struct.pack('>I', 0) + b'IEND' + struct.pack('>I', iend_crc)
+    idat_crc = zlib.crc32(b"IDAT" + compressed)
+    idat = (
+        struct.pack(">I", len(compressed))
+        + b"IDAT"
+        + compressed
+        + struct.pack(">I", idat_crc)
+    )
+    iend_crc = zlib.crc32(b"IEND")
+    iend = struct.pack(">I", 0) + b"IEND" + struct.pack(">I", iend_crc)
     return sig + ihdr + idat + iend
 
 
@@ -112,9 +125,13 @@ def test_write_note_saves_images_and_replaces_placeholders():
         notes_dir = tmp_path / "notes"
         notes_dir.mkdir()
 
-        with patch("vault.writer.NOTES_DIR", notes_dir), \
-             patch("vault.writer.VAULT_PATH", tmp_path):
-            path = write_note(note, source="https://example.com/paper.pdf", images=images)
+        with (
+            patch("vault.writer.NOTES_DIR", notes_dir),
+            patch("vault.writer.VAULT_PATH", tmp_path),
+        ):
+            path = write_note(
+                note, source="https://example.com/paper.pdf", images=images
+            )
 
         post = frontmatter.load(path)
         body = post.content
@@ -146,8 +163,10 @@ def test_write_note_no_images_unchanged():
         notes_dir = tmp_path / "notes"
         notes_dir.mkdir()
 
-        with patch("vault.writer.NOTES_DIR", notes_dir), \
-             patch("vault.writer.VAULT_PATH", tmp_path):
+        with (
+            patch("vault.writer.NOTES_DIR", notes_dir),
+            patch("vault.writer.VAULT_PATH", tmp_path),
+        ):
             path = write_note(note, source="https://example.com")
 
         post = frontmatter.load(path)
@@ -176,8 +195,10 @@ def test_write_note_entities_section():
         tmp_path = Path(tmp)
         notes_dir = tmp_path / "notes"
         notes_dir.mkdir()
-        with patch("vault.writer.NOTES_DIR", notes_dir), \
-             patch("vault.writer.VAULT_PATH", tmp_path):
+        with (
+            patch("vault.writer.NOTES_DIR", notes_dir),
+            patch("vault.writer.VAULT_PATH", tmp_path),
+        ):
             path = write_note(note, source="https://example.com")
 
         post = frontmatter.load(path)
@@ -204,8 +225,10 @@ def test_write_note_why_saved_section():
         tmp_path = Path(tmp)
         notes_dir = tmp_path / "notes"
         notes_dir.mkdir()
-        with patch("vault.writer.NOTES_DIR", notes_dir), \
-             patch("vault.writer.VAULT_PATH", tmp_path):
+        with (
+            patch("vault.writer.NOTES_DIR", notes_dir),
+            patch("vault.writer.VAULT_PATH", tmp_path),
+        ):
             path = write_note(note, source="https://example.com")
 
         post = frontmatter.load(path)
@@ -234,8 +257,10 @@ def test_write_note_figure_captions_injected():
         tmp_path = Path(tmp)
         notes_dir = tmp_path / "notes"
         notes_dir.mkdir()
-        with patch("vault.writer.NOTES_DIR", notes_dir), \
-             patch("vault.writer.VAULT_PATH", tmp_path):
+        with (
+            patch("vault.writer.NOTES_DIR", notes_dir),
+            patch("vault.writer.VAULT_PATH", tmp_path),
+        ):
             path = write_note(note, source="https://example.com", images=images)
 
         post = frontmatter.load(path)
@@ -265,8 +290,10 @@ def test_write_note_fewer_captions_than_figures_no_error():
         tmp_path = Path(tmp)
         notes_dir = tmp_path / "notes"
         notes_dir.mkdir()
-        with patch("vault.writer.NOTES_DIR", notes_dir), \
-             patch("vault.writer.VAULT_PATH", tmp_path):
+        with (
+            patch("vault.writer.NOTES_DIR", notes_dir),
+            patch("vault.writer.VAULT_PATH", tmp_path),
+        ):
             path = write_note(note, source="https://example.com", images=images)
 
         post = frontmatter.load(path)
@@ -298,8 +325,10 @@ def test_write_note_entity_without_slug_excluded_from_wikilinks():
         tmp_path = Path(tmp)
         notes_dir = tmp_path / "notes"
         notes_dir.mkdir()
-        with patch("vault.writer.NOTES_DIR", notes_dir), \
-             patch("vault.writer.VAULT_PATH", tmp_path):
+        with (
+            patch("vault.writer.NOTES_DIR", notes_dir),
+            patch("vault.writer.VAULT_PATH", tmp_path),
+        ):
             path = write_note(note, source="https://example.com")
 
         post = frontmatter.load(path)
@@ -325,10 +354,87 @@ def test_write_note_no_entities_section_when_empty():
         tmp_path = Path(tmp)
         notes_dir = tmp_path / "notes"
         notes_dir.mkdir()
-        with patch("vault.writer.NOTES_DIR", notes_dir), \
-             patch("vault.writer.VAULT_PATH", tmp_path):
+        with (
+            patch("vault.writer.NOTES_DIR", notes_dir),
+            patch("vault.writer.VAULT_PATH", tmp_path),
+        ):
             path = write_note(note, source="https://example.com")
 
         post = frontmatter.load(path)
         assert "## Entities" not in post.content
         assert "## Why I Saved This" not in post.content
+
+
+def test_write_note_recent_developments_section():
+    note = {
+        "title": "Test Paper",
+        "type": "paper",
+        "tags": [],
+        "summary": "A summary.",
+        "key_facts": [],
+        "cross_links": [],
+        "raw_text": "Some content.",
+        "error": False,
+        "entities": [
+            {"name": "PyTorch", "slug": "pytorch", "type": "library"},
+            {"name": "MIMIC-IV", "slug": "mimic-iv", "type": "dataset"},
+        ],
+        "figure_captions": [],
+        "why_saved_hint": "",
+    }
+    entity_statuses = [
+        {
+            "name": "PyTorch",
+            "slug": "pytorch",
+            "version": "v2.5.1",
+            "status": "actively maintained",
+            "source": "PyPI",
+        },
+    ]
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        notes_dir = tmp_path / "notes"
+        notes_dir.mkdir()
+        with (
+            patch("vault.writer.NOTES_DIR", notes_dir),
+            patch("vault.writer.VAULT_PATH", tmp_path),
+        ):
+            path = write_note(
+                note, source="https://example.com", entity_statuses=entity_statuses
+            )
+
+        post = frontmatter.load(path)
+        assert "## Recent Developments" in post.content
+        assert "PyTorch" in post.content
+        assert "v2.5.1" in post.content
+        assert "actively maintained" in post.content
+
+
+def test_write_note_no_recent_developments_when_empty_statuses():
+    note = {
+        "title": "Test Paper",
+        "type": "paper",
+        "tags": [],
+        "summary": "A summary.",
+        "key_facts": [],
+        "cross_links": [],
+        "raw_text": "Some content.",
+        "error": False,
+        "entities": [
+            {"name": "MIMIC-IV", "slug": "mimic-iv", "type": "dataset"},
+        ],
+        "figure_captions": [],
+        "why_saved_hint": "",
+    }
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        notes_dir = tmp_path / "notes"
+        notes_dir.mkdir()
+        with (
+            patch("vault.writer.NOTES_DIR", notes_dir),
+            patch("vault.writer.VAULT_PATH", tmp_path),
+        ):
+            path = write_note(note, source="https://example.com", entity_statuses=[])
+
+        post = frontmatter.load(path)
+        assert "## Recent Developments" not in post.content
