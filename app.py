@@ -101,21 +101,13 @@ async def stream(job_id: str):
 
 @app.get("/keywords")
 async def get_keywords():
-    """Return all keywords with breakdown between manual and graph-derived."""
-    from core.graph_interests import extract_interests
-    from core.keywords_manager import load_manual_keywords
-    from config import VAULT_PATH
-    from pathlib import Path
+    """Return the scheduler's pre-loaded merged keyword list."""
     scheduler = _get_scheduler()
-    interests_path = Path(VAULT_PATH) / "_keywords"
-    manual = load_manual_keywords(interests_path)
-    graph = await asyncio.to_thread(extract_interests)
-    keywords = list(dict.fromkeys(graph + manual))
     return {
-        "keywords": keywords,
-        "manual": manual,
-        "graph": graph,
-        "total": len(keywords),
+        "keywords": scheduler._keywords,
+        "manual": [],  # not needed for display
+        "graph": [],   # not needed for display
+        "total": len(scheduler._keywords),
     }
 
 

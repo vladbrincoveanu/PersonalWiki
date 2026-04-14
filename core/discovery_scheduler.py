@@ -44,6 +44,19 @@ class DiscoveryScheduler:
         self._in_flight: set[str] = set()
         self._pipeline_func = None
         self._warm_seen_urls()
+        # Eagerly load keywords in background so /keywords is ready before first poll
+        import threading
+        t = threading.Thread(target=self._blocking_refresh, daemon=True)
+        t.start()
+
+    def _blocking_refresh(self):
+        """Run _refresh_keywords synchronously in a thread (for __init__)."""
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            loop.run_until_complete(self._refresh_keywords())
+        finally:
+            loop.close()
 
     def _warm_seen_urls(self):
         """Populate _seen_urls from disk cache and vector store."""
