@@ -63,6 +63,11 @@ class DiscoveryScheduler:
         except Exception as e:
             _logger.warning("Discovery: MiniMax search failed for %s: %s", keyword, e)
 
+        try:
+            results.extend(await self._search_desprebursa(keyword))
+        except Exception as e:
+            _logger.warning("Discovery: DespreBursa search failed for %s: %s", keyword, e)
+
         return results
 
     async def _search_arxiv(self, keyword: str, max_results: int = 3) -> list[dict]:
@@ -142,6 +147,75 @@ class DiscoveryScheduler:
         results = json.loads(content)
         return [{"url": r["url"], "title": r["title"], "snippet": r["snippet"][:200], "source": "minimax"}
                 for r in results[:limit]]
+
+    async def _search_desprebursa(self, keyword: str, limit: int = 5) -> list[dict]:
+        """
+        Search DespreBursa.ro via sitemap and category pages.
+        Returns list of {url, title, snippet, source} dicts.
+        """
+        import re
+        import urllib.request
+        import xml.etree.ElementTree as ET
+        from ingesters.web import extract_url
+
+        results = []
+
+        # Tier 1: Sitemap
+        try:
+            sitemap_url = "https://www.desprebursa.ro/sitemap.xml"
+            with urllib.request.urlopen(sitemap_url, timeout=15) as resp:
+                data = resp.read().decode("utf-8")
+            root = ET.fromstring(data)
+            ns = {"sm": "http://www.sitemaps.org/schemas/sitemap/0.9"}
+            keyword_lower = keyword.lower()
+            for url_elem in root.findall("sm:url/sm:loc", ns):
+                loc = url_elem.text.strip() if url_elem.text else ""
+                if keyword_lower in loc.lower():
+                    results.append({
+                        "url": loc,
+                        "title": loc.split("/")[-1],
+                        "snippet": "",
+                        "source": "desprebursa",
+                    })
+                    if len(results) >= limit:
+                        return results
+        except Exception as e:
+            _logger.warning("Discovery: DespreBursa sitemap fetch failed: %s", e)
+
+        # Tier 2: Category page crawl (only if we need more results)
+        if len(results) >= limit:
+            return results
+
+        category_pages = [
+            "https://www.desprebursa.ro/categorii-publicatii/bvb",
+            "https://www.desprebursa.ro/categorii-publicatii/companii",
+            "https://www.desprebursa.ro/categorii-publicatii/macro-piete",
+            "https://www.desprebursa.ro/categorii-publicatii/strategie",
+            "https://www.desprebursa.ro/categorii-publicatii/briefings",
+        ]
+        keyword_lower = keyword.lower()
+        for cat_url in category_pages:
+            if len(results) >= limit:
+                break
+            try:
+                text = await extract_url(cat_url)
+                # Extract article links from HTML
+                link_pattern = re.compile(r'href="(https://www\.desprebursa\.ro/[^"#]+)"')
+                for match in link_pattern.finditer(text):
+                    url = match.group(1)
+                    if keyword_lower in url.lower():
+                        results.append({
+                            "url": url,
+                            "title": url.split("/")[-1],
+                            "snippet": "",
+                            "source": "desprebursa",
+                        })
+                        if len(results) >= limit:
+                            return results
+            except Exception as e:
+                _logger.warning("Discovery: DespreBursa category page failed %s: %s", cat_url, e)
+
+        return results
 
     async def _run_discovery_cycle(self):
         """One discovery pass: search all keywords, ingest new URLs."""
