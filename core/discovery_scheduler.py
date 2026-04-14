@@ -60,10 +60,7 @@ class DiscoveryScheduler:
 
     def add_keyword(self, keyword: str):
         """Add a manual keyword to .interests and activate it in _keywords."""
-        try:
-            _km_add(keyword, INTERESTS_FILE)
-        except ValueError:
-            pass  # already in file; still ensure it's in _keywords
+        _km_add(keyword, INTERESTS_FILE)
         if keyword not in self._keywords:
             self._keywords.append(keyword)
         _logger.info("Discovery: added manual keyword %r", keyword)

@@ -103,13 +103,17 @@ async def stream(job_id: str):
 async def get_keywords():
     """Return all keywords with breakdown between manual and graph-derived."""
     from core.graph_interests import extract_interests
+    from core.keywords_manager import load_manual_keywords
+    from config import VAULT_PATH
+    from pathlib import Path
     scheduler = _get_scheduler()
-    manual = scheduler._keywords  # already merged list
+    interests_path = Path(VAULT_PATH) / ".interests"
+    manual = load_manual_keywords(interests_path)
     graph = extract_interests()
-    keywords = list(dict.fromkeys([*graph, *manual]))
+    keywords = list(dict.fromkeys(graph + manual))
     return {
         "keywords": keywords,
-        "manual": [k for k in manual if k in keywords],
+        "manual": manual,
         "graph": graph,
         "total": len(keywords),
     }

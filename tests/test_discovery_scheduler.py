@@ -150,8 +150,8 @@ def test_add_keyword_appends_and_activates():
         assert tmp_interests.read_text(encoding="utf-8") == "new-kw\n"
 
 
-def test_add_keyword_does_not_duplicate():
-    """add_keyword does not add duplicate to _keywords if already present."""
+def test_add_keyword_raises_on_duplicate():
+    """add_keyword raises ValueError when keyword already exists in .interests."""
     from core.discovery_scheduler import DiscoveryScheduler, INTERESTS_FILE
 
     with tempfile.TemporaryDirectory() as tmp_vault:
@@ -160,7 +160,9 @@ def test_add_keyword_does_not_duplicate():
         with patch("core.discovery_scheduler.INTERESTS_FILE", tmp_interests):
             scheduler = DiscoveryScheduler()
             scheduler._keywords = ["existing"]
-            scheduler.add_keyword("existing")
+            with pytest.raises(ValueError, match="already exists"):
+                scheduler.add_keyword("existing")
+        # _keywords unchanged since keyword was already present
         assert scheduler._keywords.count("existing") == 1
 
 
