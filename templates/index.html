@@ -254,13 +254,11 @@
             const span = document.createElement('span');
             span.className = 'kw-chip' + (isManual ? '' : ' auto');
             span.textContent = kw;
-            if (isManual) {
-                const btn = document.createElement('button');
-                btn.textContent = '✕';
-                btn.title = 'Remove keyword';
-                btn.onclick = () => removeKeyword(kw);
-                span.appendChild(btn);
-            }
+            const btn = document.createElement('button');
+            btn.textContent = '✕';
+            btn.title = isManual ? 'Remove keyword' : 'Suppress keyword and delete related files';
+            btn.onclick = () => removeKeyword(kw, isManual);
+            span.appendChild(btn);
             return span;
         }
 
@@ -283,15 +281,29 @@
             }
         }
 
-        async function removeKeyword(kw) {
-            if (!confirm('Remove keyword "' + kw + '"? This may trigger auto-purge.')) return;
+        async function removeKeyword(kw, isManual) {
+            const action = isManual ? 'remove' : 'suppress';
+            const msg = isManual
+                ? `Remove manual keyword "${kw}"?\n\nThis will delete all MD files containing [[${kw}]] from your vault.`
+                : `Suppress graph keyword "${kw}"?\n\nThis will delete all MD files containing [[${kw}]] or #${kw} tags from your vault.\n\nThe keyword will be blocklisted and won't reappear.`;
+            if (!confirm(msg)) return;
             try {
-                const res = await fetch('/keywords/remove', {
+                const endpoint = isManual ? '/keywords/remove' : '/keywords/suppress';
+                const res = await fetch(endpoint, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                     body: 'keyword=' + encodeURIComponent(kw)
                 });
-                if (res.ok) loadKeywords();
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.purged_count > 0) {
+                        alert(`Removed. ${data.purged_count} file(s) deleted.`);
+                    }
+                    loadKeywords();
+                } else {
+                    const err = await res.text();
+                    alert('Failed: ' + err);
+                }
             } catch (e) {
                 console.error('Failed to remove keyword', e);
             }

@@ -19,7 +19,11 @@ def test_deduplication_against_seen_urls():
 async def test_keyword_refresh():
     from core.discovery_scheduler import DiscoveryScheduler
     scheduler = DiscoveryScheduler()
-    with patch("core.graph_interests.extract_interests", return_value=["RLHF", "KV-cache"]):
+    with (
+        patch("core.graph_interests.extract_interests", return_value=["RLHF", "KV-cache"]),
+        patch("core.discovery_scheduler._load_manual_keywords", return_value=[]),
+        patch("core.discovery_scheduler._load_suppressed", return_value=[]),
+    ):
         await scheduler._refresh_keywords()
     assert scheduler._keywords == ["RLHF", "KV-cache"]
 
@@ -121,12 +125,12 @@ async def test_search_desprebursa_respects_limit():
 @pytest.mark.asyncio
 async def test_refresh_keywords_includes_manual():
     """Manual keywords from .interests are merged with graph keywords."""
-    from core.discovery_scheduler import DiscoveryScheduler, INTERESTS_FILE
+    from core.discovery_scheduler import DiscoveryScheduler, KEYWORDS_FILE
 
     with tempfile.TemporaryDirectory() as tmp_vault:
         tmp_interests = Path(tmp_vault) / ".interests"
         tmp_interests.write_text("manual-keyword\n", encoding="utf-8")
-        with patch("core.discovery_scheduler.INTERESTS_FILE", tmp_interests):
+        with patch("core.discovery_scheduler.KEYWORDS_FILE", tmp_interests):
             with patch("core.graph_interests.extract_interests", return_value=["graph-kw"]):
                 scheduler = DiscoveryScheduler()
                 await scheduler._refresh_keywords()
@@ -137,11 +141,11 @@ async def test_refresh_keywords_includes_manual():
 
 def test_add_keyword_appends_and_activates():
     """add_keyword writes to .interests and adds to _keywords if not present."""
-    from core.discovery_scheduler import DiscoveryScheduler, INTERESTS_FILE
+    from core.discovery_scheduler import DiscoveryScheduler, KEYWORDS_FILE
 
     with tempfile.TemporaryDirectory() as tmp_vault:
         tmp_interests = Path(tmp_vault) / ".interests"
-        with patch("core.discovery_scheduler.INTERESTS_FILE", tmp_interests):
+        with patch("core.discovery_scheduler.KEYWORDS_FILE", tmp_interests):
             scheduler = DiscoveryScheduler()
             scheduler._keywords = ["existing"]
             scheduler.add_keyword("new-kw")
@@ -152,12 +156,12 @@ def test_add_keyword_appends_and_activates():
 
 def test_add_keyword_raises_on_duplicate():
     """add_keyword raises ValueError when keyword already exists in .interests."""
-    from core.discovery_scheduler import DiscoveryScheduler, INTERESTS_FILE
+    from core.discovery_scheduler import DiscoveryScheduler, KEYWORDS_FILE
 
     with tempfile.TemporaryDirectory() as tmp_vault:
         tmp_interests = Path(tmp_vault) / ".interests"
         tmp_interests.write_text("existing\n", encoding="utf-8")
-        with patch("core.discovery_scheduler.INTERESTS_FILE", tmp_interests):
+        with patch("core.discovery_scheduler.KEYWORDS_FILE", tmp_interests):
             scheduler = DiscoveryScheduler()
             scheduler._keywords = ["existing"]
             with pytest.raises(ValueError, match="already exists"):
@@ -168,7 +172,7 @@ def test_add_keyword_raises_on_duplicate():
 
 def test_remove_keyword_removes_and_purges():
     """remove_keyword removes from .interests and _keywords, calls purge_keyword."""
-    from core.discovery_scheduler import DiscoveryScheduler, INTERESTS_FILE
+    from core.discovery_scheduler import DiscoveryScheduler, KEYWORDS_FILE
 
     with tempfile.TemporaryDirectory() as tmp_vault:
         tmp_interests = Path(tmp_vault) / ".interests"
@@ -176,7 +180,7 @@ def test_remove_keyword_removes_and_purges():
         tmp_note = Path(tmp_vault) / "notes" / "note.md"
         tmp_note.parent.mkdir(parents=True, exist_ok=True)
         tmp_note.write_text("Content about [[to-remove]] and more", encoding="utf-8")
-        with patch("core.discovery_scheduler.INTERESTS_FILE", tmp_interests):
+        with patch("core.discovery_scheduler.KEYWORDS_FILE", tmp_interests):
             with patch("core.discovery_scheduler.VAULT_PATH", tmp_vault):
                 scheduler = DiscoveryScheduler()
                 scheduler._keywords = ["to-remove", "stay"]

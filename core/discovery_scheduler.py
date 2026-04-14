@@ -22,13 +22,15 @@ from core.keywords_manager import (
     add_keyword as _km_add,
     remove_keyword as _km_remove,
     purge_keyword as _km_purge,
+    suppress_keyword as _km_suppress,
+    load_suppressed_keywords as _load_suppressed,
 )
 from ingesters.web import extract_url
 from pathlib import Path
 
 _logger = logging.getLogger(__name__)
 
-INTERESTS_FILE = Path(VAULT_PATH) / ".interests"
+KEYWORDS_FILE = Path(VAULT_PATH) / "_keywords"
 
 
 class DiscoveryScheduler:
@@ -50,28 +52,40 @@ class DiscoveryScheduler:
         try:
             from core.graph_interests import extract_interests
             keywords = extract_interests()
-            manual = _load_manual_keywords(INTERESTS_FILE)
+            manual = _load_manual_keywords(KEYWORDS_FILE)
+            suppressed = _load_suppressed(KEYWORDS_FILE)
+            # Filter out suppressed keywords from graph extraction
+            keywords = [kw for kw in keywords if kw not in suppressed]
             merged = list(dict.fromkeys([*keywords, *manual]))
             self._keywords = merged
-            _logger.info("Discovery: refreshed %d interest keywords (%d graph + %d manual)",
-                          len(merged), len(keywords), len(manual))
+            _logger.info("Discovery: refreshed %d interest keywords (%d graph + %d manual, %d suppressed)",
+                          len(merged), len(keywords), len(manual), len(suppressed))
         except Exception as e:
             _logger.warning("Discovery: failed to refresh keywords: %s", e)
 
     def add_keyword(self, keyword: str):
-        """Add a manual keyword to .interests and activate it in _keywords."""
-        _km_add(keyword, INTERESTS_FILE)
+        """Add a manual keyword to _keywords and activate it."""
+        _km_add(keyword, KEYWORDS_FILE)
         if keyword not in self._keywords:
             self._keywords.append(keyword)
         _logger.info("Discovery: added manual keyword %r", keyword)
 
     def remove_keyword(self, keyword: str) -> list[str]:
-        """Remove keyword from .interests and _keywords; purge from vault via purge_keyword."""
-        _km_remove(keyword, INTERESTS_FILE)
+        """Remove keyword from _keywords; purge from vault via purge_keyword."""
+        _km_remove(keyword, KEYWORDS_FILE)
         if keyword in self._keywords:
             self._keywords.remove(keyword)
         deleted = _km_purge(keyword, Path(VAULT_PATH))
         _logger.info("Discovery: removed manual keyword %r, purged %d files", keyword, len(deleted))
+        return deleted
+
+    def suppress_keyword(self, keyword: str) -> list[str]:
+        """Suppress a graph keyword: add to blocklist and purge matching vault files."""
+        _km_suppress(keyword, KEYWORDS_FILE)
+        if keyword in self._keywords:
+            self._keywords.remove(keyword)
+        deleted = _km_purge(keyword, Path(VAULT_PATH))
+        _logger.info("Discovery: suppressed graph keyword %r, purged %d files", keyword, len(deleted))
         return deleted
 
     async def _search_keyword(self, keyword: str) -> list[dict]:

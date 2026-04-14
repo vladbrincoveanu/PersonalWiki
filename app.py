@@ -107,7 +107,7 @@ async def get_keywords():
     from config import VAULT_PATH
     from pathlib import Path
     scheduler = _get_scheduler()
-    interests_path = Path(VAULT_PATH) / ".interests"
+    interests_path = Path(VAULT_PATH) / "_keywords"
     manual = load_manual_keywords(interests_path)
     graph = extract_interests()
     keywords = list(dict.fromkeys(graph + manual))
@@ -132,13 +132,21 @@ async def add_keyword(keyword: str = Form(...)):
 
 @app.post("/keywords/remove")
 async def remove_keyword(keyword: str = Form(...)):
-    """Remove a manual keyword from .interests and purge related files."""
+    """Remove a manual keyword from _keywords and purge related files."""
     scheduler = _get_scheduler()
     try:
         purged = scheduler.remove_keyword(keyword)
     except (KeyError, ValueError):
         raise HTTPException(status_code=404, detail=f"Keyword '{keyword}' not found")
     return {"removed": keyword, "purged": purged, "purged_count": len(purged)}
+
+
+@app.post("/keywords/suppress")
+async def suppress_keyword(keyword: str = Form(...)):
+    """Suppress a graph keyword: block it from discovery and purge related files."""
+    scheduler = _get_scheduler()
+    purged = scheduler.suppress_keyword(keyword)
+    return {"suppressed": keyword, "purged": purged, "purged_count": len(purged)}
 
 
 if __name__ == "__main__":
