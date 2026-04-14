@@ -1,12 +1,16 @@
 """
 Extracts interest keywords from the vault graph.
 Hub nodes (high connectivity) and leaf nodes (specialized topics) become search keywords.
+Keywords are validated via LLM to ensure they are good web search topics.
 """
+import asyncio
+import json
 import logging
 import re
 import os
 from pathlib import Path
-from config import VAULT_PATH, INTEREST_HUB_TOP_K, INTEREST_LEAF_TOP_K
+import requests
+from config import VAULT_PATH, INTEREST_HUB_TOP_K, INTEREST_LEAF_TOP_K, MINIMAX_API_KEY, MINIMAX_MODEL, MINIMAX_API_URL
 
 _logger = logging.getLogger(__name__)
 
@@ -39,6 +43,60 @@ def _is_noise_keyword(kw: str) -> bool:
     if stripped in _NOISE_KEYWORDS:
         return True
     return False
+
+
+async def _filter_keywords_via_llm(candidates: list[str]) -> list[str]:
+    """
+    Ask the LLM to validate which candidates are good web search topics.
+    Returns a filtered list of keywords that are specific enough to find relevant content.
+    Falls back to returning all candidates on failure.
+    """
+    if not candidates or not MINIMAX_API_KEY:
+        return candidates
+
+    prompt = (
+        "You are a research topic validator. Given a list of candidate keywords from a personal knowledge graph,\n"
+        "return the subset that are SPECIFIC TOPICS worth searching the web for.\n\n"
+        "RULES:\n"
+        "- Accept: proper research topics, technologies, methods, company/product names, field names,\n"
+        "  person names, dataset names, and concepts that appear in academic/technical content.\n"
+        "- Accept note titles that look like meaningful topics (even if short, e.g. 'RLHF', 'LLaMA', 'k8s').\n"
+        "- Reject ONLY: clearly non-topics like '404', 'page not found', 'readme', 'untitled',\n"
+        "  'index', attachment paths, numeric IDs without meaning, or strings that are just symbols.\n"
+        "- Be permissive: when in doubt, include the keyword. It's better to have extra topics\n"
+        "  than to miss valid ones.\n\n"
+        f"Candidates ({len(candidates)} total):\n" +
+        "\n".join(f"- {kw}" for kw in candidates[:50]) +
+        "\n\nReturn a JSON array of ACCEPTED keywords (max 30). Be permissive — include most candidates."
+    )
+
+    headers = {
+        "Authorization": f"Bearer {MINIMAX_API_KEY}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "model": MINIMAX_MODEL,
+        "messages": [
+            {"role": "system", "content": "You are a strict topic validator. Return valid JSON array only."},
+            {"role": "user", "content": prompt},
+        ],
+    }
+
+    try:
+        loop = asyncio.get_event_loop()
+        resp = await loop.run_in_executor(None, lambda: requests.post(MINIMAX_API_URL, headers=headers, json=payload, timeout=30))
+        resp.raise_for_status()
+        data = resp.json()
+        content = data["choices"][0]["message"]["content"].strip()
+        content = content.removeprefix("```json").removeprefix("```").strip()
+        validated = json.loads(content)
+        if isinstance(validated, list) and all(isinstance(k, str) for k in validated):
+            _logger.info("LLM filtered %d candidates -> %d validated", len(candidates), len(validated))
+            return validated
+    except Exception as e:
+        _logger.warning("LLM keyword filter failed: %s — using all candidates", e)
+
+    return candidates
 
 
 def _parse_wikilinks(text: str) -> list[str]:
@@ -127,9 +185,12 @@ def _scan_vault(vault_path: str | Path) -> tuple[dict[str, dict], list[str]]:
 
 def extract_interests(vault_path: str | Path | None = None) -> list[str]:
     """
-    Returns deduplicated list of interest keyword strings.
+    Returns deduplicated list of interest keyword strings (sync, blocking).
     Derived from hub score (inbound+outbound) and leaf score (outbound only),
-    plus frontmatter tags. Noise keywords (Untitled, 404, etc.) are filtered out.
+    plus frontmatter tags. Noise keywords are filtered. Candidates are then
+    validated via LLM to ensure they are good web search topics.
+
+    Note: for async callers, prefer extract_interests_async() to avoid nested loops.
     """
     if vault_path is None:
         vault_path = os.environ.get("VAULT_PATH", str(VAULT_PATH))
@@ -152,10 +213,19 @@ def extract_interests(vault_path: str | Path | None = None) -> list[str]:
 
     # deduplicate while preserving order, filter noise
     seen: set[str] = set()
-    result: list[str] = []
+    candidates: list[str] = []
     for kw in hub_keywords + leaf_keywords + tags:
         if kw in seen or _is_noise_keyword(kw):
             continue
         seen.add(kw)
-        result.append(kw)
-    return result
+        candidates.append(kw)
+
+    # LLM validation: ask which candidates are good web search topics
+    try:
+        loop = asyncio.new_event_loop()
+        result = loop.run_until_complete(_filter_keywords_via_llm(candidates))
+        loop.close()
+        return result
+    except Exception as e:
+        _logger.warning("LLM filter failed: %s — returning candidates unfiltered", e)
+        return candidates

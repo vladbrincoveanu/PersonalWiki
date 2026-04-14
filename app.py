@@ -109,7 +109,7 @@ async def get_keywords():
     scheduler = _get_scheduler()
     interests_path = Path(VAULT_PATH) / "_keywords"
     manual = load_manual_keywords(interests_path)
-    graph = extract_interests()
+    graph = await asyncio.to_thread(extract_interests)
     keywords = list(dict.fromkeys(graph + manual))
     return {
         "keywords": keywords,

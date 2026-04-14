@@ -51,7 +51,7 @@ class DiscoveryScheduler:
         """Re-extract interests from vault graph and merge manual keywords."""
         try:
             from core.graph_interests import extract_interests
-            keywords = extract_interests()
+            keywords = await asyncio.to_thread(extract_interests)
             manual = _load_manual_keywords(KEYWORDS_FILE)
             suppressed = _load_suppressed(KEYWORDS_FILE)
             # Filter out suppressed keywords from graph extraction
