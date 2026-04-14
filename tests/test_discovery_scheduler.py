@@ -65,12 +65,9 @@ async def test_search_desprebursa_falls_back_to_category_crawl():
       </body>
     </html>"""
 
-    async def mock_extract_url(url):
-        return html_with_links
-
     scheduler = DiscoveryScheduler()
     with patch("core.discovery_scheduler.urllib.request.urlopen", side_effect=ValueError("sitemap failed")):
-        with patch("core.discovery_scheduler.extract_url", mock_extract_url):
+        with patch("core.discovery_scheduler.extract_url", new_callable=AsyncMock, return_value=html_with_links):
             results = await scheduler._search_desprebursa("companii", limit=2)
 
     # Should extract article links from HTML, filter by keyword "companii"
