@@ -10,6 +10,38 @@ from config import VAULT_PATH, INTEREST_HUB_TOP_K, INTEREST_LEAF_TOP_K
 
 _logger = logging.getLogger(__name__)
 
+# Keywords to exclude from interest extraction — covers common orphan/uninformative note titles
+_NOISE_KEYWORDS: frozenset[str] = frozenset({
+    "untitled",
+    "404",
+    "page not found",
+    "index",
+    "readme",
+    "read me",
+    "note",
+    "notes",
+    "new note",
+    "new",
+    "untitled note",
+    "no title",
+    "none",
+    "undefined",
+    "null",
+})
+
+
+def _is_noise_keyword(kw: str) -> bool:
+    """Return True if keyword is uninformative noise (orphan pages, generic titles, etc.)."""
+    stripped = kw.strip().lower()
+    if not stripped:
+        return True
+    if stripped in _NOISE_KEYWORDS:
+        return True
+    # Reject single characters, pure numbers, or very short strings
+    if len(stripped) <= 2:
+        return True
+    return False
+
 
 def _parse_wikilinks(text: str) -> list[str]:
     """Return list of note titles linked via [[wikilink]], stripping pipe syntax."""
@@ -84,7 +116,7 @@ def extract_interests(vault_path: str | Path | None = None) -> list[str]:
     """
     Returns deduplicated list of interest keyword strings.
     Derived from hub score (inbound+outbound) and leaf score (outbound only),
-    plus frontmatter tags.
+    plus frontmatter tags. Noise keywords (Untitled, 404, etc.) are filtered out.
     """
     if vault_path is None:
         vault_path = os.environ.get("VAULT_PATH", str(VAULT_PATH))
@@ -105,11 +137,12 @@ def extract_interests(vault_path: str | Path | None = None) -> list[str]:
     hub_keywords = [t for t, _ in hub_nodes[:INTEREST_HUB_TOP_K]]
     leaf_keywords = [t for t, _ in leaf_nodes[:INTEREST_LEAF_TOP_K]]
 
-    # deduplicate while preserving order
+    # deduplicate while preserving order, filter noise
     seen: set[str] = set()
     result: list[str] = []
     for kw in hub_keywords + leaf_keywords + tags:
-        if kw not in seen:
-            seen.add(kw)
-            result.append(kw)
+        if kw in seen or _is_noise_keyword(kw):
+            continue
+        seen.add(kw)
+        result.append(kw)
     return result

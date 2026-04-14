@@ -12,8 +12,12 @@ async def test_pipeline_url_yields_progress_steps():
     ]
     mock_store.exists.return_value = False
 
+    mock_doc = MagicMock()
+    mock_doc.raw_text = "Raw content from URL."
+    mock_doc.images = []
+
     with (
-        patch("pipeline.extract_url", AsyncMock(return_value="Raw content from URL.")),
+        patch("ingesters.router.extract", AsyncMock(return_value=mock_doc)),
         patch("pipeline._is_pdf_url", return_value=False),
         patch("pipeline.embed", return_value=[0.1] * 384),
         patch("pipeline.get_store", return_value=mock_store),
@@ -67,7 +71,7 @@ async def test_pipeline_handles_extraction_error():
 
     with (
         patch("pipeline.get_store", return_value=mock_store),
-        patch("pipeline.extract_url", AsyncMock(side_effect=ValueError("unreachable"))),
+        patch("ingesters.news.extract_news", AsyncMock(side_effect=ValueError("unreachable"))),
     ):
         messages = []
         async for msg in run_pipeline(url="https://bad-url.com"):
@@ -101,7 +105,7 @@ async def test_pipeline_pdf_url_passes_images_to_writer():
         patch("pipeline.get_store", return_value=mock_store),
         patch("pipeline._is_pdf_url", return_value=True),
         patch("urllib.request.urlretrieve", return_value=("/tmp/fake.pdf", {})),
-        patch("pipeline.extract_pdf_full", return_value=fake_result),
+        patch("ingesters.pdf.extract_pdf_full", return_value=fake_result),
         patch("pipeline.embed", return_value=[0.1] * 384),
         patch(
             "pipeline.enrich",
@@ -117,14 +121,7 @@ async def test_pipeline_pdf_url_passes_images_to_writer():
             },
         ),
         patch("pipeline.write_note", side_effect=capture_write_note),
-        patch("asyncio.to_thread", new_callable=MagicMock) as mock_to_thread,
     ):
-        # Make asyncio.to_thread return the fake_result for extract_pdf_full
-        # and delegate normally for enrich (synchronous mock above handles it)
-        async def fake_to_thread(fn, *args, **kwargs):
-            return fn(*args, **kwargs)
-
-        mock_to_thread.side_effect = fake_to_thread
 
         messages = []
         async for msg in run_pipeline(url="https://arxiv.org/pdf/2510.18518"):
@@ -145,7 +142,9 @@ async def test_pipeline_runs_entity_status_search():
     with (
         patch("pipeline.get_store", return_value=mock_store),
         patch("pipeline._is_pdf_url", return_value=False),
-        patch("pipeline.extract_url", AsyncMock(return_value="Raw content from URL.")),
+        patch("ingesters.router.extract", AsyncMock(return_value=MagicMock(
+            raw_text="Raw content from URL.", images=[]
+        ))),
         patch("pipeline.embed", return_value=[0.1] * 384),
         patch(
             "pipeline.enrich",
@@ -200,7 +199,7 @@ async def test_pipeline_calls_detect_gaps_and_attaches_gap_entities():
     }
 
     with patch("pipeline.get_store", return_value=mock_store), \
-         patch("pipeline.extract_url", AsyncMock(return_value="Raw content.")), \
+         patch("ingesters.router.extract", AsyncMock(return_value=MagicMock(raw_text="Raw content.", images=[]))), \
          patch("pipeline._is_pdf_url", return_value=False), \
          patch("pipeline.embed", return_value=[0.1] * 384), \
          patch("pipeline.enrich", return_value=enriched_note), \
@@ -231,7 +230,7 @@ async def test_pipeline_no_gap_searches_when_no_gaps():
     }
 
     with patch("pipeline.get_store", return_value=mock_store), \
-         patch("pipeline.extract_url", AsyncMock(return_value="Raw content.")), \
+         patch("ingesters.router.extract", AsyncMock(return_value=MagicMock(raw_text="Raw content.", images=[]))), \
          patch("pipeline._is_pdf_url", return_value=False), \
          patch("pipeline.embed", return_value=[0.1] * 384), \
          patch("pipeline.enrich", return_value=enriched_note), \

@@ -9,8 +9,7 @@ from core.embeddings import embed
 from core.vector_store import get_store
 from core.minimax_client import enrich
 from core.gap_detector import detect_gaps
-from ingesters.web import extract_url
-from ingesters.pdf import extract_pdf_full
+from ingesters.router import extract, extract_pdf
 from vault.writer import write_note
 from vault.entity_status import fetch_entity_status
 
@@ -81,20 +80,17 @@ async def run_pipeline(
     tmp_pdf_path = None
     images: list[bytes] = []
     try:
-        if url and _is_pdf_url(url):
-            yield "Detected PDF URL — downloading..."
-            with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
-                tmp_pdf_path = tmp.name
-            await asyncio.to_thread(urllib.request.urlretrieve, url, tmp_pdf_path)
-            result = await asyncio.to_thread(extract_pdf_full, tmp_pdf_path)
-            raw_text = result.markdown
-            images = result.images
-        elif url:
-            raw_text = await extract_url(url)
+        if url:
+            doc = await extract(url)
+            raw_text = doc.raw_text
+            images = doc.images if hasattr(doc, "images") and doc.images else []
+        elif pdf_path:
+            doc = extract_pdf(pdf_path)
+            raw_text = doc.raw_text
+            images = doc.images if hasattr(doc, "images") and doc.images else []
         else:
-            result = await asyncio.to_thread(extract_pdf_full, pdf_path)
-            raw_text = result.markdown
-            images = result.images
+            yield "Error: No url or pdf_path provided."
+            return
     except Exception as e:
         yield f"Error during extraction: {e}"
         return

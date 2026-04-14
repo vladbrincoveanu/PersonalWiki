@@ -3,7 +3,6 @@ import re
 import subprocess
 import tempfile
 from ingesters import Document
-import whisper
 from youtube_transcript_api import (
     YouTubeTranscriptApi,
     NoTranscriptFound,
@@ -43,9 +42,9 @@ def _parse_vtt(vtt_text: str) -> str:
     return " ".join(deduped)
 
 
-def _run_yt_dlp(args: list[str], tmpdir: str) -> list[str] | None:
+def _run_yt_dlp(url: str, args: list[str], tmpdir: str) -> list[str] | None:
     """Run yt-dlp with given args in tmpdir. Returns list of VTT file paths or None."""
-    cmd = ["yt-dlp"] + args + ["--output", os.path.join(tmpdir, "%(id)s"), "--quiet"]
+    cmd = ["yt-dlp"] + args + ["--output", os.path.join(tmpdir, "%(id)s"), "--quiet", url]
     try:
         subprocess.run(cmd, capture_output=True, timeout=_TIMEOUT_SECONDS)
         vtt_files = [f for f in os.listdir(tmpdir) if f.endswith(".vtt")]
@@ -115,6 +114,7 @@ def _try_whisper_transcription(url: str) -> str | None:
     Uses whisper 'base' model for speed (CPU, ~2x realtime).
     """
     try:
+        import whisper
         import subprocess
         import tempfile
 
@@ -168,7 +168,7 @@ def _has_english_cues(vtt_text: str) -> bool:
 def _try_subtitle_tiers(url: str, tmpdir: str) -> str | None:
     """Try each subtitle tier. Returns transcript text or None."""
     for tier in _SUBTITLE_TIERS:
-        vtt_files = _run_yt_dlp(tier["args"], tmpdir)
+        vtt_files = _run_yt_dlp(url, tier["args"], tmpdir)
         if vtt_files:
             for vtt_file in vtt_files:
                 with open(vtt_file, encoding="utf-8") as f:
