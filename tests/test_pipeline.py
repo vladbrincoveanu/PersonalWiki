@@ -182,3 +182,65 @@ async def test_pipeline_runs_entity_status_search():
 
         mock_status.assert_called_once()
         assert any("Saved" in r for r in messages)
+
+
+@pytest.mark.asyncio
+async def test_pipeline_calls_detect_gaps_and_attaches_gap_entities():
+    from pipeline import run_pipeline
+
+    mock_store = MagicMock()
+    mock_store.exists.return_value = False
+    mock_store.search.return_value = []
+
+    enriched_note = {
+        "title": "Test Note", "type": "article", "tags": ["ai"],
+        "summary": "Summary.", "key_facts": ["Fact"],
+        "cross_links": [], "raw_text": "Raw.", "error": False,
+        "entities": [{"name": "MissingEntity", "slug": "missing-entity"}],
+    }
+
+    with patch("pipeline.get_store", return_value=mock_store), \
+         patch("pipeline.extract_url", AsyncMock(return_value="Raw content.")), \
+         patch("pipeline._is_pdf_url", return_value=False), \
+         patch("pipeline.embed", return_value=[0.1] * 384), \
+         patch("pipeline.enrich", return_value=enriched_note), \
+         patch("pipeline.write_note", return_value="/vault/notes/test-note.md"), \
+         patch("pipeline.detect_gaps", return_value=["MissingEntity"]) as mock_detect, \
+         patch("pipeline.asyncio.create_task") as mock_create_task:
+
+        messages = []
+        async for msg in run_pipeline(url="https://example.com"):
+            messages.append(msg)
+
+        mock_detect.assert_called_once_with(enriched_note["entities"])
+        assert any("Saved" in m for m in messages)
+
+
+@pytest.mark.asyncio
+async def test_pipeline_no_gap_searches_when_no_gaps():
+    from pipeline import run_pipeline
+
+    mock_store = MagicMock()
+    mock_store.exists.return_value = False
+    mock_store.search.return_value = []
+
+    enriched_note = {
+        "title": "Test Note", "type": "article", "tags": [],
+        "summary": "S.", "key_facts": [], "cross_links": [], "raw_text": "Raw.", "error": False,
+        "entities": [],
+    }
+
+    with patch("pipeline.get_store", return_value=mock_store), \
+         patch("pipeline.extract_url", AsyncMock(return_value="Raw content.")), \
+         patch("pipeline._is_pdf_url", return_value=False), \
+         patch("pipeline.embed", return_value=[0.1] * 384), \
+         patch("pipeline.enrich", return_value=enriched_note), \
+         patch("pipeline.write_note", return_value="/vault/notes/test-note.md"), \
+         patch("pipeline.detect_gaps", return_value=[]) as mock_detect, \
+         patch("pipeline.asyncio.create_task") as mock_create_task:
+
+        async for _ in run_pipeline(url="https://example.com"):
+            pass
+
+        mock_detect.assert_called_once()
+        mock_create_task.assert_not_called()

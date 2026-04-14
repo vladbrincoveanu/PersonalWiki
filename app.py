@@ -10,6 +10,7 @@ from fastapi.templating import Jinja2Templates
 from sse_starlette.sse import EventSourceResponse
 from pipeline import run_pipeline
 from vault.scanner import scan_vault
+from core.discovery_scheduler import DiscoveryScheduler
 
 _job_queues: dict[str, asyncio.Queue] = {}
 
@@ -18,7 +19,10 @@ async def lifespan(app: FastAPI):
     count = await asyncio.to_thread(scan_vault)
     if count:
         print(f"Startup: indexed {count} notes.")
+    scheduler = DiscoveryScheduler()
+    scheduler.start(pipeline_func=run_pipeline)
     yield
+    scheduler.stop()
 
 app = FastAPI(lifespan=lifespan)
 templates = Jinja2Templates(directory="templates")

@@ -16,3 +16,11 @@ MINIMAX_API_URL = "https://api.minimax.io/v1/text/chatcompletion_v2"
 EMBED_MODEL = "BAAI/bge-small-en-v1.5"
 TOP_K_SIMILAR = 3
 MAX_EMBED_CHARS = 2000
+
+# Autonomous discovery
+DISCOVERY_ENABLED = os.getenv("DISCOVERY_ENABLED", "true").lower() == "true"
+DISCOVERY_INTERVAL = int(os.getenv("DISCOVERY_INTERVAL", "3600"))
+INTEREST_HUB_TOP_K = int(os.getenv("INTEREST_HUB_TOP_K", "15"))
+INTEREST_LEAF_TOP_K = int(os.getenv("INTEREST_LEAF_TOP_K", "10"))
+INTEREST_REFRESH_INTERVAL = int(os.getenv("INTEREST_REFRESH_INTERVAL", "21600"))
+MAX_URLS_PER_CYCLE = int(os.getenv("MAX_URLS_PER_CYCLE", "10"))
