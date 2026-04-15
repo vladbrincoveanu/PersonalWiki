@@ -124,7 +124,21 @@ async def run_pipeline(
 
     # Step 3: Enrich
     yield "Enriching with Minimax..."
-    note = await asyncio.to_thread(enrich, raw_text, similar_titles, source)
+    if doc.content_type == "video" and len(raw_text) > 60_000:
+        # Video + long transcript: use semantic chunking + synthesis
+        from core.minimax_client import semantic_chunk, enrich_video_synthesis
+        chunks = semantic_chunk(raw_text)
+        chunk_results = []
+        for chunk in chunks:
+            result = await asyncio.to_thread(enrich, chunk.text, similar_titles, source)
+            chunk_results.append(result)
+        note = await asyncio.to_thread(enrich_video_synthesis, chunk_results, source, similar_titles)
+    elif doc.content_type == "video":
+        # Video + short transcript: direct enrich (no truncation needed)
+        note = await asyncio.to_thread(enrich, raw_text, similar_titles, source)
+    else:
+        # Article / paper: direct enrich
+        note = await asyncio.to_thread(enrich, raw_text, similar_titles, source)
 
     # Step 3.5a: Check entity status
     yield "Checking entity status..."

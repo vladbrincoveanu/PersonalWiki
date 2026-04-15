@@ -199,7 +199,7 @@ def _build_prompt(raw_text: str, similar_titles: list[str], source: str) -> str:
     return _NOTE_TEMPLATE.format(
         source=source,
         similar=similar_str,
-        raw_text=raw_text[:6000],
+        raw_text=raw_text,
     )
 
 
