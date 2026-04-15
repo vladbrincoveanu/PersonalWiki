@@ -21,7 +21,10 @@ Analyze this content and respond with JSON in exactly this structure:
     {{"name": "Display Name", "slug": "display-name", "type": "concept|person|institution|dataset|method"}}
   ],
   "figure_captions": ["one-line caption for figure 1 inferred from surrounding text", "caption for figure 2"],
-  "why_saved_hint": "one sentence about why this source is worth keeping"
+  "why_saved_hint": "one sentence about why this source is worth keeping",
+  "chapters": [{{"time": "MM:SS", "title": "Chapter title"}}, ...],
+  "key_quotes": [{{"text": "quoted text", "speaker": "Speaker name"}}, ...],
+  "topics_covered": ["topic1", "topic2", "topic3"]
 }}
 
 Rules:
@@ -29,6 +32,7 @@ Rules:
 - figure_captions: the raw content contains <!-- image --> placeholders where figures appear. Generate one caption per placeholder IN ORDER based on the surrounding text. Return an empty list if there are no <!-- image --> placeholders.
 - cross_links: use slugs of existing notes listed below only if genuinely relevant.
 - why_saved_hint: one sentence starter for a personal note about relevance — be specific, not generic.
+- video type: extract chapters (timestamp + title from transcript markers), key quotes (exact quoted text + speaker attribution), topics covered (list of specific topics)
 
 Source: {source}
 
@@ -62,6 +66,9 @@ def enrich(raw_text: str, similar_titles: list[str], source: str) -> dict:
             "entities": [],
             "figure_captions": [],
             "why_saved_hint": "",
+            "chapters": [],
+            "key_quotes": [],
+            "topics_covered": [],
             "raw_text": raw_text,
             "error": True,
         }
@@ -93,6 +100,9 @@ def enrich(raw_text: str, similar_titles: list[str], source: str) -> dict:
         data.setdefault("entities", [])
         data.setdefault("figure_captions", [])
         data.setdefault("why_saved_hint", "")
+        data.setdefault("chapters", [])
+        data.setdefault("key_quotes", [])
+        data.setdefault("topics_covered", [])
         data.setdefault("raw_text", raw_text)
         data.setdefault("error", False)
         return data
@@ -108,6 +118,9 @@ def enrich(raw_text: str, similar_titles: list[str], source: str) -> dict:
             "entities": [],
             "figure_captions": [],
             "why_saved_hint": "",
+            "chapters": [],
+            "key_quotes": [],
+            "topics_covered": [],
             "raw_text": raw_text,
             "error": True,
         }

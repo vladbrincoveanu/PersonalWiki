@@ -38,6 +38,224 @@ def _replace_image_placeholders(
     return result
 
 
+def _build_body(note: dict, entity_statuses: list[dict] = ()) -> str:
+    """Dispatcher — branches on note['type'] to the appropriate template builder."""
+    note_type = note.get("type", "article")
+    if note_type == "video":
+        return _build_video_body(note)
+    elif note_type == "paper":
+        return _build_paper_body(note, entity_statuses=entity_statuses)
+    else:
+        # article or unknown — fall back to article template
+        return _build_article_body(note, entity_statuses=entity_statuses)
+
+
+def _build_video_body(note: dict) -> str:
+    summary = note.get("summary", "_Not available._")
+
+    # Timestamped chapters
+    chapters = note.get("chapters", [])
+    if chapters:
+        chapters_lines = "\n".join(
+            f"- [{c['time']}] {c['title']}" for c in chapters if c.get("time") and c.get("title")
+        )
+        chapters_section = f"\n## Timestamped Chapters\n{chapters_lines}\n"
+    else:
+        chapters_section = ""
+
+    # Key quotes
+    quotes = note.get("quotes", [])
+    if quotes:
+        quotes_lines = "\n".join(
+            f"> \"{q['text']}\" — {q['speaker']}"
+            for q in quotes if q.get("text")
+        )
+        quotes_section = f"\n## Key Quotes\n{quotes_lines}\n"
+    else:
+        quotes_section = ""
+
+    # Topics covered
+    topics = note.get("topics", [])
+    if topics:
+        topics_lines = "\n".join(f"- {t}" for t in topics)
+        topics_section = f"\n## Topics Covered\n{topics_lines}\n"
+    else:
+        topics_section = ""
+
+    # Why I saved this
+    why_saved_hint = note.get("why_saved_hint", "")
+    if why_saved_hint:
+        why_saved_section = (
+            f"\n## Why I Saved This\n> {why_saved_hint}\n\n_(edit this)_\n"
+        )
+    else:
+        why_saved_section = ""
+
+    # Transcript (selected sections) — wrapped in <details>
+    raw_text = note.get("raw_text", "")
+    if raw_text:
+        raw_section = (
+            f"\n## Transcript (Selected Sections)\n"
+            f"<details>\n<summary>Full transcript</summary>\n\n{raw_text}\n\n</details>"
+        )
+    else:
+        raw_section = ""
+
+    body = (
+        f"## Summary\n{summary}\n"
+        f"{chapters_section}{quotes_section}{topics_section}{why_saved_section}{raw_section}"
+    )
+    return body
+
+
+def _build_paper_body(note: dict, entity_statuses: list[dict] = ()) -> str:
+    summary = note.get("summary", "_Not available._")
+
+    # TL;DR
+    tldr = note.get("tldr", "")
+    if tldr:
+        tldr_section = f"\n## TL;DR\n_{tldr}_\n"
+    else:
+        tldr_section = ""
+
+    # Key Findings
+    key_facts = note.get("key_facts", [])
+    if key_facts:
+        facts_str = "\n".join(f"- {f}" for f in key_facts)
+    else:
+        facts_str = "_None extracted._"
+    key_findings_section = f"\n## Key Findings\n{facts_str}\n"
+
+    # Method / Architecture
+    method = note.get("method", "")
+    if method:
+        method_section = f"\n## Method / Architecture\n{method}\n"
+    else:
+        method_section = ""
+
+    # Benchmarks
+    benchmarks = note.get("benchmarks", "")
+    if benchmarks:
+        benchmarks_section = f"\n## Benchmarks\n{benchmarks}\n"
+    else:
+        benchmarks_section = ""
+
+    # Related Entities (## Entities for backward compat with existing tests)
+    entities = note.get("entities", [])
+    if entities:
+        links = " · ".join(
+            f"[[{e['name']}]]" for e in entities if e.get("name") and e.get("slug")
+        )
+        if links:
+            related_entities_section = f"\n## Entities\n{links}\n"
+        else:
+            related_entities_section = ""
+    else:
+        related_entities_section = ""
+
+    # My Knowledge Says (cross-links)
+    cross_links = note.get("cross_links", [])
+    if cross_links:
+        links_str = ", ".join(f"[[{l}]]" for l in cross_links)
+        my_knowledge_section = f"\n## My Knowledge Says\n{links_str}\n"
+    else:
+        my_knowledge_section = ""
+
+    # Why I Saved This
+    why_saved_hint = note.get("why_saved_hint", "")
+    if why_saved_hint:
+        why_saved_section = (
+            f"\n## Why I Saved This\n> {why_saved_hint}\n\n_(edit this)_\n"
+        )
+    else:
+        why_saved_section = ""
+
+    # Recent Developments
+    recent_dev_section = ""
+    if entity_statuses:
+        prose = _build_prose(entity_statuses)
+        if prose:
+            recent_dev_section = f"\n## Recent Developments\n{prose}\n"
+
+    # Raw Extract
+    raw_text = note.get("raw_text", "")
+    if raw_text:
+        raw_section = (
+            f"\n## Raw Extract\n"
+            f"<details>\n<summary>Original extracted text</summary>\n\n{raw_text}\n\n</details>"
+        )
+    else:
+        raw_section = ""
+
+    body = (
+        f"## Summary\n{summary}\n"
+        f"{tldr_section}{key_findings_section}{method_section}{benchmarks_section}"
+        f"{related_entities_section}{my_knowledge_section}{why_saved_section}{recent_dev_section}{raw_section}"
+    )
+    return body
+
+
+def _build_article_body(note: dict, entity_statuses: list[dict] = ()) -> str:
+    """Article template (backward compatible). entity_statuses is passed separately
+    since it is a param of write_note(), not part of the note dict."""
+    summary = note.get("summary", "_Not available._")
+
+    # Key Facts
+    key_facts = note.get("key_facts", [])
+    facts_str = (
+        "\n".join(f"- {f}" for f in key_facts) if key_facts else "_None extracted._"
+    )
+
+    # Entities section
+    entities = note.get("entities", [])
+    entities_section = ""
+    if entities:
+        links = " · ".join(
+            f"[[{e['name']}]]" for e in entities if e.get("name") and e.get("slug")
+        )
+        if links:
+            entities_section = f"\n## Entities\n{links}\n"
+
+    # Why I Saved This
+    why_saved_hint = note.get("why_saved_hint", "")
+    why_saved_section = ""
+    if why_saved_hint:
+        why_saved_section = (
+            f"\n## Why I Saved This\n> {why_saved_hint}\n\n_(edit this)_\n"
+        )
+
+    # Recent Developments
+    recent_dev_section = ""
+    if entity_statuses:
+        prose = _build_prose(entity_statuses)
+        if prose:
+            recent_dev_section = f"\n## Recent Developments\n{prose}\n"
+
+    # My Knowledge Says (cross-links)
+    cross_links = note.get("cross_links", [])
+    cross_links_section = ""
+    if cross_links:
+        links_str = ", ".join(f"[[{l}]]" for l in cross_links)
+        cross_links_section = f"\n## My Knowledge Says\n{links_str}\n"
+
+    # Raw Extract
+    raw_text = note.get("raw_text", "")
+    if raw_text:
+        raw_section = (
+            f"\n## Raw Extract\n"
+            f"<details>\n<summary>Original extracted text</summary>\n\n{raw_text}\n\n</details>"
+        )
+    else:
+        raw_section = ""
+
+    body = (
+        f"## Summary\n{summary}\n\n"
+        f"## Key Facts\n{facts_str}\n"
+        f"{entities_section}{why_saved_section}{recent_dev_section}{cross_links_section}{raw_section}"
+    )
+    return body
+
+
 def write_note(
     note: dict,
     source: str,
@@ -66,57 +284,16 @@ def write_note(
         "tags": note.get("tags", []),
         "ingested": ingested_date,
     }
-    cross_links = note.get("cross_links", [])
-    cross_links_section = ""
-    if cross_links:
-        links_str = ", ".join(f"[[{l}]]" for l in cross_links)
-        cross_links_section = f"\n## My Knowledge Says\n{links_str}\n"
 
-    key_facts = note.get("key_facts", [])
-    facts_str = (
-        "\n".join(f"- {f}" for f in key_facts) if key_facts else "_None extracted._"
-    )
-
-    entities = note.get("entities", [])
-    entities_section = ""
-    if entities:
-        links = " · ".join(
-            f"[[{e['name']}]]" for e in entities if e.get("name") and e.get("slug")
-        )
-        if links:
-            entities_section = f"\n## Entities\n{links}\n"
-
-    why_saved_hint = note.get("why_saved_hint", "")
-    why_saved_section = ""
-    if why_saved_hint:
-        why_saved_section = (
-            f"\n## Why I Saved This\n> {why_saved_hint}\n\n_(edit this)_\n"
-        )
-
-    recent_dev_section = ""
-    if entity_statuses:
-        prose = _build_prose(entity_statuses)
-        if prose:
-            recent_dev_section = f"\n## Recent Developments\n{prose}\n"
-
+    # Replace image placeholders before building body
     figure_captions = note.get("figure_captions", [])
-    raw_text = note.get("raw_text", "")
     if images:
         _save_images(images, final_slug)
-        raw_text = _replace_image_placeholders(
-            raw_text, final_slug, len(images), figure_captions
+        note["raw_text"] = _replace_image_placeholders(
+            note.get("raw_text", ""), final_slug, len(images), figure_captions
         )
 
-    raw_section = (
-        f"\n## Raw Extract\n<details>\n<summary>Original extracted text</summary>"
-        f"\n\n{raw_text}\n\n</details>"
-    )
-
-    body = (
-        f"## Summary\n{note.get('summary', '_Not available._')}\n\n"
-        f"## Key Facts\n{facts_str}"
-        f"{entities_section}{why_saved_section}{recent_dev_section}{cross_links_section}{raw_section}"
-    )
+    body = _build_body(note, entity_statuses=entity_statuses)
 
     post = frontmatter.Post(body, **metadata)
     with open(filepath, "w", encoding="utf-8") as f:

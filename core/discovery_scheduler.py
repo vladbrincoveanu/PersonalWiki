@@ -44,6 +44,10 @@ class DiscoveryScheduler:
         self._seen_urls: set[str] = set()
         self._in_flight: set[str] = set()
         self._pipeline_func = None
+        # Amplification loop state
+        self._url_keyword_lineage: dict[str, str] = {}  # url -> keyword that discovered it
+        self._keyword_scores: dict[str, int] = {}       # keyword -> quality score
+        self._discovery_cycle_count = 0                  # count for echo chamber guard
         self._warm_seen_urls()
         # Eagerly load keywords in background so /keywords is ready before first poll
         t = threading.Thread(target=self._blocking_refresh, daemon=True)
@@ -128,6 +132,53 @@ class DiscoveryScheduler:
         deleted = _km_purge(keyword, Path(VAULT_PATH))
         _logger.info("Discovery: suppressed graph keyword %r, purged %d files", keyword, len(deleted))
         return deleted
+
+    def record_discovery(self, url: str, keyword: str):
+        """Record that a URL was discovered via a keyword. Used for cycle detection."""
+        if url not in self._url_keyword_lineage:
+            self._url_keyword_lineage[url] = keyword
+
+    async def _amplify_from_note(self, note: dict):
+        """Extract new keywords from a recently written note and add to pool."""
+        from core.keyword_extractor import extract_keywords_from_note
+
+        title = note.get("title", "")
+        raw_text = note.get("raw_text", "")
+
+        new_keywords = await asyncio.to_thread(extract_keywords_from_note, title, raw_text)
+        if not new_keywords:
+            return
+
+        for kw in new_keywords:
+            score = self._keyword_scores.get(kw, 0)
+            if score < -5:
+                continue
+            if kw not in self._keywords:
+                self._keywords.append(kw)
+                _logger.info("Amplification: added keyword %r from note %r", kw, title)
+
+    def _update_keyword_score(self, keyword: str, delta: int):
+        """Update score for a keyword. Suppresses if below -5."""
+        self._keyword_scores[keyword] = self._keyword_scores.get(keyword, 0) + delta
+        score = self._keyword_scores[keyword]
+        if score < -5 and keyword in self._keywords:
+            self.suppress_keyword(keyword)
+            _logger.info("Amplification: suppressed keyword %r (score %d)", keyword, score)
+
+    def _get_explore_keywords(self) -> list[str]:
+        """Return 1-2 random explore keywords from a broader pool."""
+        explore_pool = [
+            "distributed systems",
+            "program synthesis",
+            "diffusion models",
+            "formal verification",
+            "compilers",
+            "operating systems",
+            "network protocols",
+        ]
+        import random
+        available = [k for k in explore_pool if k not in self._keywords]
+        return random.sample(available, min(2, len(available)))
 
     async def _search_keyword(self, keyword: str) -> list[dict]:
         """
@@ -414,19 +465,31 @@ class DiscoveryScheduler:
 
                 _logger.info("Discovery: ingesting %s — %s", url, result["title"])
                 self._in_flight.add(url)
+                self.record_discovery(url, keyword)  # Track lineage for cycle detection
                 try:
                     if self._pipeline_func:
                         asyncio.create_task(self._run_pipeline(url))
                     ingested += 1
+                    self._update_keyword_score(keyword, +1)  # Successful ingest
                     self._seen_urls.add(url)
                     self._persist_seen_urls()
                 except Exception as e:
+                    self._update_keyword_score(keyword, -2)  # Failed/rejected
                     _logger.error("Discovery: failed to queue %s: %s", url, e)
                 finally:
                     self._in_flight.discard(url)
 
                 if ingested >= MAX_URLS_PER_CYCLE:
                     break
+
+        # Echo chamber guard: every 5th cycle, inject explore keywords
+        self._discovery_cycle_count += 1
+        if self._discovery_cycle_count % 5 == 0:
+            explore_kws = self._get_explore_keywords()
+            for kw in explore_kws:
+                if kw not in self._keywords:
+                    self._keywords.append(kw)
+                    _logger.info("Amplification: explore keyword added %r", kw)
 
     async def _run_pipeline(self, url: str):
         """Run ingestion pipeline for a single URL."""
