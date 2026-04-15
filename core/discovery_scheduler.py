@@ -234,6 +234,7 @@ class DiscoveryScheduler:
     def _search_minimax(self, keyword: str, limit: int = 3) -> list[dict]:
         """
         Web search via MiniMax chat API using a prompt-based approach.
+        URLs are HEAD-validated before returning to filter out hallucinated/dead links.
         Returns list of {url, title, snippet, source}.
         """
         import requests
@@ -245,7 +246,7 @@ class DiscoveryScheduler:
 
         prompt = (
             f'Search the web for: {keyword}\n'
-            'Return exactly 3 results as a JSON array with fields: url, title, snippet (max 150 chars).\n'
+            'Return exactly 5 results as a JSON array with fields: url, title, snippet (max 150 chars).\n'
             'Return ONLY the JSON array, no explanation. Example: '
             '[{"url": "https://...", "title": "...", "snippet": "..."}]'
         )
@@ -267,9 +268,48 @@ class DiscoveryScheduler:
         # Strip markdown code fences if present
         content = content.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
         decoder = json.JSONDecoder()
-        results, _ = decoder.raw_decode(content)
-        return [{"url": r["url"], "title": r["title"], "snippet": r["snippet"][:200], "source": "minimax"}
-                for r in results[:limit]]
+        raw_results, _ = decoder.raw_decode(content)
+
+        # HEAD-validate each URL — MiniMax has no internet access so URLs come from
+        # training data and may be stale or fabricated. We request 5 to have headroom
+        # after filtering, then return the first `limit` that pass.
+        validated = []
+        for r in raw_results:
+            url = r.get("url", "")
+            if not url or not url.startswith("http"):
+                continue
+            try:
+                req = urllib.request.Request(url, method="HEAD", headers={"User-Agent": "Mozilla/5.0"})
+                with urllib.request.urlopen(req, timeout=5) as hresp:
+                    if hresp.status < 400:
+                        # Fetch real snippet via Crawl4AI (replaces LLM-hallucinated snippet)
+                        real_snippet = ""
+                        try:
+                            loop = asyncio.new_event_loop()
+                            asyncio.set_event_loop(loop)
+                            try:
+                                fetch_result = self._fetch_article_snippet(url)
+                                if asyncio.iscoroutine(fetch_result):
+                                    real_snippet = loop.run_until_complete(fetch_result)
+                                else:
+                                    real_snippet = fetch_result
+                            finally:
+                                loop.close()
+                        except Exception:
+                            pass
+
+                        validated.append({
+                            "url": url,
+                            "title": r.get("title", ""),
+                            "snippet": real_snippet[:200] if real_snippet else r.get("snippet", "")[:200],
+                            "source": "minimax",
+                        })
+            except Exception:
+                _logger.debug("Discovery: MiniMax URL failed HEAD check, dropping: %s", url)
+            if len(validated) >= limit:
+                break
+
+        return validated
 
     async def _search_desprebursa(self, keyword: str, limit: int = 5) -> list[dict]:
         """
