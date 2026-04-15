@@ -145,7 +145,7 @@ class DiscoveryScheduler:
         title = note.get("title", "")
         raw_text = note.get("raw_text", "")
 
-        new_keywords = extract_keywords_from_note(title, raw_text)
+        new_keywords = await asyncio.to_thread(extract_keywords_from_note, title, raw_text)
         if not new_keywords:
             return
 
