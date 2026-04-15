@@ -1,21 +1,11 @@
-# Environment variables (API keys)
 .env
-*.env
-
-# Build outputs
-bin/
-obj/
-
-# IDE
-.vs/
-*.user
-
-# OS
-.DS_Store
-
-# Worktrees
 .worktrees/
-
-# DuckDB
-*.duckdb
-vault/
+.venv/
+.vke_index/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+/tmp_uploads/

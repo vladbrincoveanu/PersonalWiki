@@ -1,0 +1,257 @@
+import pytest
+from pathlib import Path
+from unittest.mock import patch, AsyncMock, MagicMock
+
+
+@pytest.mark.asyncio
+async def test_pipeline_url_yields_progress_steps():
+    from pipeline import run_pipeline
+
+    mock_store = MagicMock()
+    mock_store.search.return_value = [
+        {"metadata": {"title": "Existing Note"}, "path": "notes/existing.md"}
+    ]
+    mock_store.exists.return_value = False
+
+    mock_doc = MagicMock()
+    mock_doc.raw_text = "Real extracted content from the web page that is definitely over one hundred characters long for testing purposes. " * 5
+    mock_doc.images = []
+
+    with (
+        patch("ingesters.news.extract_news", AsyncMock(return_value=MagicMock(
+            raw_text="Real extracted content from the web page that is definitely over one hundred characters long for testing purposes. " * 5,
+            images=[]
+        ))),
+        patch("pipeline._is_pdf_url", return_value=False),
+        patch("pipeline.embed", return_value=[0.1] * 384),
+        patch("pipeline.get_store", return_value=mock_store),
+        patch(
+            "pipeline.enrich",
+            return_value={
+                "title": "Test Note",
+                "type": "article",
+                "tags": ["ai"],
+                "summary": "Summary.",
+                "key_facts": ["Fact"],
+                "cross_links": ["existing-note"],
+                "raw_text": "Real extracted content from the web page that is definitely over one hundred characters long for testing purposes. " * 5,
+                "error": False,
+            },
+        ),
+        patch("pipeline.write_note", return_value="/vault/notes/test-note.md"),
+    ):
+        messages = []
+        async for msg in run_pipeline(url="https://example.com"):
+            messages.append(msg)
+
+    assert any("Extracting" in m for m in messages)
+    assert any("similar" in m.lower() for m in messages)
+    assert any("Minimax" in m for m in messages)
+    assert any("Saved" in m for m in messages)
+
+
+@pytest.mark.asyncio
+async def test_pipeline_duplicate_url_detected():
+    from pipeline import run_pipeline
+
+    mock_store = MagicMock()
+    mock_store.exists.return_value = True
+
+    with patch("pipeline.get_store", return_value=mock_store):
+        messages = []
+        async for msg in run_pipeline(url="https://already-ingested.com"):
+            messages.append(msg)
+
+    assert any("already exists" in m.lower() for m in messages)
+    assert not any("Extracting" in m for m in messages)
+
+
+@pytest.mark.asyncio
+async def test_pipeline_handles_extraction_error():
+    from pipeline import run_pipeline
+
+    mock_store = MagicMock()
+    mock_store.exists.return_value = False
+
+    with (
+        patch("pipeline.get_store", return_value=mock_store),
+        patch("ingesters.news.extract_news", AsyncMock(side_effect=ValueError("unreachable"))),
+    ):
+        messages = []
+        async for msg in run_pipeline(url="https://bad-url.com"):
+            messages.append(msg)
+
+    assert any("Error" in m or "error" in m for m in messages)
+
+
+@pytest.mark.asyncio
+async def test_pipeline_pdf_url_passes_images_to_writer(tmp_path):
+    from pipeline import run_pipeline
+    from ingesters.pdf import PdfExtractResult
+
+    fake_pdf = tmp_path / "fake.pdf"
+    fake_pdf.write_bytes(b"%PDF-1.0\nfake pdf content")
+
+    mock_store = MagicMock()
+    mock_store.exists.return_value = False
+    mock_store.search.return_value = []
+
+    fake_result = PdfExtractResult(
+        markdown="# Paper\n\n<!-- image --> some content " + "x" * 500,
+        low_quality=False,
+        images=[b"fakepng1", b"fakepng2"],
+    )
+
+    written_images = []
+
+    def capture_write_note(note, source, images=(), entity_statuses=()):
+        written_images.extend(images)
+        return "/vault/notes/paper.md"
+
+    def fake_urlretrieve(url, filename):
+        Path(filename).write_bytes(b"%PDF-1.0\nfake pdf")
+        return (filename, {})
+
+    with (
+        patch("pipeline.get_store", return_value=mock_store),
+        patch("pipeline._is_pdf_url", return_value=True),
+        patch("urllib.request.urlretrieve", side_effect=fake_urlretrieve),
+        patch("ingesters.pdf.extract_pdf_full", return_value=fake_result),
+        patch("pipeline.embed", return_value=[0.1] * 384),
+        patch(
+            "pipeline.enrich",
+            return_value={
+                "title": "Paper",
+                "type": "paper",
+                "tags": [],
+                "summary": "S.",
+                "key_facts": [],
+                "cross_links": [],
+                "raw_text": "# Paper\n\n<!-- image --> some content " + "x" * 500,
+                "error": False,
+            },
+        ),
+        patch("pipeline.write_note", side_effect=capture_write_note),
+    ):
+
+        messages = []
+        async for msg in run_pipeline(url="https://arxiv.org/pdf/2510.18518"):
+            messages.append(msg)
+
+    assert written_images == [b"fakepng1", b"fakepng2"]
+    assert any("Saved" in m for m in messages)
+
+
+@pytest.mark.asyncio
+async def test_pipeline_runs_entity_status_search():
+    from pipeline import run_pipeline
+
+    mock_store = MagicMock()
+    mock_store.exists.return_value = False
+    mock_store.search.return_value = []
+
+    with (
+        patch("pipeline.get_store", return_value=mock_store),
+        patch("pipeline._is_pdf_url", return_value=False),
+        patch("ingesters.news.extract_news", AsyncMock(return_value=MagicMock(
+            raw_text="Real extracted content from the web page that is definitely over one hundred characters long for testing purposes. " * 5,
+            images=[]
+        ))),
+        patch("pipeline.embed", return_value=[0.1] * 384),
+        patch(
+            "pipeline.enrich",
+            return_value={
+                "title": "Test Paper",
+                "type": "paper",
+                "tags": [],
+                "summary": "A summary.",
+                "key_facts": [],
+                "cross_links": [],
+                "entities": [{"name": "PyTorch", "slug": "pytorch", "type": "library"}],
+                "figure_captions": [],
+                "why_saved_hint": "",
+                "raw_text": "Real extracted content from the web page that is definitely over one hundred characters long for testing purposes. " * 5,
+                "error": False,
+            },
+        ),
+        patch("pipeline.fetch_entity_status") as mock_status,
+        patch("pipeline.write_note", return_value="/vault/notes/test.md"),
+    ):
+        mock_status.return_value = [
+            {
+                "name": "PyTorch",
+                "slug": "pytorch",
+                "version": "v2.5.1",
+                "status": "actively maintained",
+                "source": "PyPI",
+            },
+        ]
+
+        messages = []
+        async for msg in run_pipeline(url="https://example.com/test"):
+            messages.append(msg)
+
+        mock_status.assert_called_once()
+        assert any("Saved" in r for r in messages)
+
+
+@pytest.mark.asyncio
+async def test_pipeline_calls_detect_gaps_and_attaches_gap_entities():
+    from pipeline import run_pipeline
+
+    mock_store = MagicMock()
+    mock_store.exists.return_value = False
+    mock_store.search.return_value = []
+
+    enriched_note = {
+        "title": "Test Note", "type": "article", "tags": ["ai"],
+        "summary": "Summary.", "key_facts": ["Fact"],
+        "cross_links": [], "raw_text": "Real extracted content from the web page that is definitely over one hundred characters long for testing purposes. " * 5, "error": False,
+        "entities": [{"name": "MissingEntity", "slug": "missing-entity"}],
+    }
+
+    with patch("pipeline.get_store", return_value=mock_store), \
+         patch("ingesters.news.extract_news", AsyncMock(return_value=MagicMock(raw_text="Real extracted content from the web page that is definitely over one hundred characters long for testing purposes. " * 5, images=[]))), \
+         patch("pipeline._is_pdf_url", return_value=False), \
+         patch("pipeline.embed", return_value=[0.1] * 384), \
+         patch("pipeline.enrich", return_value=enriched_note), \
+         patch("pipeline.write_note", return_value="/vault/notes/test-note.md"), \
+         patch("pipeline.detect_gaps", return_value=["MissingEntity"]) as mock_detect, \
+         patch("pipeline.asyncio.create_task") as mock_create_task:
+
+        messages = []
+        async for msg in run_pipeline(url="https://example.com"):
+            messages.append(msg)
+
+        mock_detect.assert_called_once_with(enriched_note["entities"])
+        assert any("Saved" in m for m in messages)
+
+
+@pytest.mark.asyncio
+async def test_pipeline_no_gap_searches_when_no_gaps():
+    from pipeline import run_pipeline
+
+    mock_store = MagicMock()
+    mock_store.exists.return_value = False
+    mock_store.search.return_value = []
+
+    enriched_note = {
+        "title": "Test Note", "type": "article", "tags": [],
+        "summary": "S.", "key_facts": [], "cross_links": [], "raw_text": "Real extracted content from the web page that is definitely over one hundred characters long for testing purposes. " * 5, "error": False,
+        "entities": [],
+    }
+
+    with patch("pipeline.get_store", return_value=mock_store), \
+         patch("ingesters.news.extract_news", AsyncMock(return_value=MagicMock(raw_text="Real extracted content from the web page that is definitely over one hundred characters long for testing purposes. " * 5, images=[]))), \
+         patch("pipeline._is_pdf_url", return_value=False), \
+         patch("pipeline.embed", return_value=[0.1] * 384), \
+         patch("pipeline.enrich", return_value=enriched_note), \
+         patch("pipeline.write_note", return_value="/vault/notes/test-note.md"), \
+         patch("pipeline.detect_gaps", return_value=[]) as mock_detect, \
+         patch("pipeline.asyncio.create_task") as mock_create_task:
+
+        async for _ in run_pipeline(url="https://example.com"):
+            pass
+
+        mock_detect.assert_called_once()
+        mock_create_task.assert_not_called()
