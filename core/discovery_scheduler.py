@@ -199,7 +199,7 @@ class DiscoveryScheduler:
             _logger.warning("Discovery: HN search failed for %s: %s", keyword, e)
 
         try:
-            results.extend(self._search_minimax(keyword))
+            results.extend(await self._search_minimax(keyword))
         except Exception as e:
             _logger.warning("Discovery: MiniMax search failed for %s: %s", keyword, e)
 
