@@ -173,7 +173,11 @@ class VectorStore:
         for item in merged:
             item["metadata"] = metadata_map.get(item["path"], {})
 
-        return merged
+        # Track D: Cross-encoder rerank — improve result ordering
+        from core.reranker import CrossEncoderReranker
+        reranker = CrossEncoderReranker()
+        reranked = reranker.rerank(query, merged, top_k=top_k)
+        return reranked
 
     def _get_links_for_paths(self, paths: list[str]) -> dict[str, list[str]]:
         """Fetch the links field from LanceDB for each path in the input list.
