@@ -1,9 +1,159 @@
 import json
 import logging
+import re
 import requests
+from dataclasses import dataclass
+from typing import List
 from config import MINIMAX_API_KEY, MINIMAX_MODEL, MINIMAX_API_URL
 
 _logger = logging.getLogger(__name__)
+
+
+@dataclass
+class Chunk:
+    text: str
+    start_index: int
+    end_index: int
+    chunk_number: int
+    size_chars: int
+
+
+_TIMESTAMP_PATTERN_RE = re.compile(r"^\d{2}:\d{2}:\d{2}[.,]\d{3}\s*-->.+$", re.MULTILINE)
+_CHAPTER_MARKER_RE = re.compile(
+    r"^\s*(?:\[Chapter|Chapter\s*\d+|#{1,3}\s*|##?)\s*[:.\-]?\s*",
+    re.IGNORECASE | re.MULTILINE,
+)
+_PARAGRAPH_BREAK_RE = re.compile(r"\n\n+")
+
+_MIN_CHUNK_SIZE = 60_000
+_OVERLAP_SIZE = 5_000  # 10% overlap for 60k target
+
+
+def semantic_chunk(text: str) -> List[Chunk]:
+    """
+    Split transcript into semantic chunks with 60k char minimum.
+
+    Split priority:
+      1. Explicit chapter / section markers (e.g., [Chapter:], ## Title, ---)
+      2. Large timestamp gaps (> 10s between consecutive cues)
+      3. Paragraph breaks (\n\n) in regions large enough to form a chunk
+      4. Fixed-size fallback with 5k char overlap
+
+    Returns list of Chunk objects sorted by position in transcript.
+    """
+    if len(text) <= _MIN_CHUNK_SIZE:
+        return [
+            Chunk(
+                text=text,
+                start_index=0,
+                end_index=len(text),
+                chunk_number=1,
+                size_chars=len(text),
+            )
+        ]
+
+    # Try to split at chapter markers first
+    boundaries = _find_chapter_boundaries(text)
+    if len(boundaries) >= 2:
+        chunks = _make_chunks(text, boundaries)
+        if all(c.size_chars >= _MIN_CHUNK_SIZE for c in chunks[:-1]):
+            return chunks
+
+    # Try timestamp-gap splitting
+    boundaries = _find_timestamp_gap_boundaries(text)
+    if len(boundaries) >= 2:
+        chunks = _make_chunks(text, boundaries)
+        if all(c.size_chars >= _MIN_CHUNK_SIZE for c in chunks[:-1]):
+            return chunks
+
+    # Fallback: fixed-size splits with overlap
+    return _fixed_size_chunk(text)
+
+
+def _find_chapter_boundaries(text: str) -> List[int]:
+    """Return start indices of sections preceded by chapter markers."""
+    boundaries = [0]
+    lines = text.splitlines()
+    current_pos = 0
+    for i, line in enumerate(lines):
+        if _CHAPTER_MARKER_RE.match(line.strip()):
+            boundaries.append(current_pos)
+        current_pos += len(line) + 1
+    # Deduplicate and sort
+    boundaries = sorted(set(boundaries))
+    # Ensure last boundary is not too close to end
+    if boundaries[-1] > len(text) - _MIN_CHUNK_SIZE:
+        boundaries = boundaries[:-1]
+    return boundaries
+
+
+def _find_timestamp_gap_boundaries(text: str) -> List[int]:
+    """Return start indices where a large timestamp gap (>10s) occurs."""
+    timestamps = [
+        m.start() for m in _TIMESTAMP_PATTERN_RE.finditer(text)
+    ]
+    boundaries = [0]
+    for i in range(1, len(timestamps)):
+        gap = timestamps[i] - timestamps[i - 1]
+        if gap > 10_000:  # 10 seconds of transcript gap → topic shift
+            boundaries.append(timestamps[i])
+    return sorted(set(boundaries))
+
+
+def _make_chunks(text: str, boundaries: List[int]) -> List[Chunk]:
+    """Build Chunk list from a sorted list of start indices."""
+    chunks = []
+    for i, start in enumerate(boundaries):
+        if i < len(boundaries) - 1:
+            end = boundaries[i + 1]
+        else:
+            end = len(text)
+        chunk_text = text[start:end]
+        chunks.append(
+            Chunk(
+                text=chunk_text,
+                start_index=start,
+                end_index=end,
+                chunk_number=i + 1,
+                size_chars=len(chunk_text),
+            )
+        )
+    return chunks
+
+
+def _fixed_size_chunk(text: str) -> List[Chunk]:
+    """Fallback: split into ~60k char chunks at natural boundaries."""
+    chunks = []
+    pos = 0
+    chunk_num = 1
+    while pos < len(text):
+        end = min(pos + _MIN_CHUNK_SIZE, len(text))
+        is_last = pos + _MIN_CHUNK_SIZE >= len(text)
+        if is_last:
+            # Last chunk — take all remaining (even if < 60k)
+            chunk_text = text[pos:]
+        else:
+            # Try to split at a paragraph break to avoid cutting mid-sentence
+            chunk_text = text[pos:end]
+            last_break = chunk_text.rfind("\n\n")
+            if last_break > _MIN_CHUNK_SIZE // 2:
+                end = pos + last_break + 2
+                chunk_text = text[pos:end]
+            else:
+                # No good break found — use fixed boundary
+                chunk_text = text[pos:end]
+        chunks.append(
+            Chunk(
+                text=chunk_text,
+                start_index=pos,
+                end_index=end,
+                chunk_number=chunk_num,
+                size_chars=len(chunk_text),
+            )
+        )
+        chunk_num += 1
+        pos = end
+    return chunks
 
 _SYSTEM_PROMPT = """You are a knowledge curator. Given raw text from a source, extract and structure it into a research note.
 Always respond with valid JSON only — no markdown fences, no explanation."""
