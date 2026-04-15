@@ -50,7 +50,9 @@ git commit -m "feat: enable fit_markdown in Crawl4AI extraction"
 
 ---
 
-## Task 2: MiniMax function-calling search
+## Task 2: MiniMax search with Crawl4AI content fetching
+
+> **Approach changed:** Instead of tool-calling, we improve the existing HEAD-validate approach. MiniMax LLM provides URLs via prompt → HEAD-validate each → Crawl4AI fetches actual content → extract clean snippets. This is more reliable than tool-calling since MiniMax's tool support is uncertain, and Crawl4AI ensures we get real content not LLM-hallucinated snippets.
 
 **Files:**
 - Modify: `core/discovery_scheduler.py:234-272`
