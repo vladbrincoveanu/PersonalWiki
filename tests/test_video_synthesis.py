@@ -185,3 +185,58 @@ def test_pipeline_video_routes_to_synthesis(monkeypatch):
     assert result.get("chunk") is True
     assert result.get("enrich_count") == 2
     assert result.get("synthesis") is True
+
+
+def test_video_under_60k_no_synthesis_needed(monkeypatch):
+    """Short video transcript skips synthesis and goes direct to enrich."""
+    calls = {}
+
+    def mock_enrich(raw, similar, source):
+        calls["enrich"] = raw[:100]
+        return {"title": "Short Video", "type": "video", "summary": "Short",
+                "chapters": [], "key_quotes": [], "entities": [], "key_facts": [],
+                "topics_covered": [], "tags": [], "cross_links": [], "why_saved_hint": ""}
+
+    class MockDoc:
+        raw_text = "short transcript " * 200  # ~3.4k chars
+        content_type = "video"
+        images = []
+
+    class MockStore:
+        def exists(self, url):
+            return False
+
+        def search(self, vector, top_k=5):
+            return []
+
+        def upsert(self, path, text, vector, links, metadata):
+            pass
+
+    import pipeline as pipeline_module
+    original_extract = pipeline_module.extract
+    async def mock_extract(url):
+        return MockDoc()
+    pipeline_module.extract = mock_extract
+
+    original_get_store = pipeline_module.get_store
+    pipeline_module.get_store = lambda: MockStore()
+
+    # Patch at pipeline module level since enrich was imported there
+    original_enrich = pipeline_module.enrich
+    pipeline_module.enrich = mock_enrich
+
+    try:
+        import asyncio
+        async def run():
+            async for _ in pipeline_module.run_pipeline(url="https://youtube.com/watch?v=short"):
+                pass
+            return calls
+
+        result = asyncio.run(run())
+    finally:
+        pipeline_module.extract = original_extract
+        pipeline_module.get_store = original_get_store
+        pipeline_module.enrich = original_enrich
+
+    assert "enrich" in result
+    assert "synthesis" not in result  # synthesis should NOT be called for short video

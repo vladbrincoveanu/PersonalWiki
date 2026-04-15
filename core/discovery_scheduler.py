@@ -8,6 +8,7 @@ import json
 import logging
 import os
 import re
+import requests
 import threading
 import time
 import urllib.request
@@ -284,52 +285,108 @@ class DiscoveryScheduler:
 
     def _search_minimax(self, keyword: str, limit: int = 3) -> list[dict]:
         """
-        Web search via MiniMax chat API using a prompt-based approach.
-        URLs are HEAD-validated before returning to filter out hallucinated/dead links.
+        Web search via MiniMax chat API using function-calling hybrid.
+
+        Round 1: Sends the request with a 'web_search' tool definition. If MiniMax
+        returns tool_calls, the arguments contain real URLs from an actual web search.
+
+        Round 2 (fallback): If no tool_calls came back (tool unavailable or error),
+        falls back to regex-extracting https:// URLs from the text response and
+        HEAD-validating each one before returning.
+
         Returns list of {url, title, snippet, source}.
         """
-        import requests
-        import json
         from config import MINIMAX_API_KEY, MINIMAX_MODEL, MINIMAX_API_URL
 
         if not MINIMAX_API_KEY:
             return []
 
-        prompt = (
-            f'Search the web for: {keyword}\n'
-            'Return exactly 5 results as a JSON array with fields: url, title, snippet (max 150 chars).\n'
-            'Return ONLY the JSON array, no explanation. Example: '
-            '[{"url": "https://...", "title": "...", "snippet": "..."}]'
-        )
+        # Define the web_search tool for function-calling
+        tools = [
+            {
+                "type": "function",
+                "function": {
+                    "name": "web_search",
+                    "description": "Search the web for current information. Returns real URLs.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "query": {"type": "string", "description": "The search query"},
+                        },
+                        "required": ["query"],
+                    },
+                },
+            }
+        ]
+
+        prompt = f"Search the web for: {keyword}"
         headers = {"Authorization": f"Bearer {MINIMAX_API_KEY}", "Content-Type": "application/json"}
         payload = {
             "model": MINIMAX_MODEL,
             "messages": [
-                {"role": "system", "content": "You are a web search assistant. Return only valid JSON."},
+                {"role": "system", "content": "You are a web search assistant. Use the web_search tool to find real, current URLs for the given query."},
                 {"role": "user", "content": prompt},
             ],
+            "tools": tools,
+            "tool_choice": {"type": "function", "function": {"name": "web_search"}},
         }
         resp = requests.post(MINIMAX_API_URL, headers=headers, json=payload, timeout=30)
         resp.raise_for_status()
         data = resp.json()
-        content = (data.get("choices", [{}])[0].get("message", {}).get("content") or "").strip()
-        if not content:
-            _logger.warning("Discovery: MiniMax returned empty content for %s", keyword)
-            return []
-        # Strip markdown code fences if present
-        content = content.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
-        try:
-            decoder = json.JSONDecoder()
-            raw_results, _ = decoder.raw_decode(content)
-        except json.JSONDecodeError as e:
-            _logger.warning("Discovery: MiniMax returned unparseable JSON for %s: %s", keyword, e)
+
+        # Extract tool_calls if present (Round 1: real URLs from web search tool)
+        raw_urls = []
+        message = data.get("choices", [{}])[0].get("message", {})
+        tool_calls = message.get("tool_calls", [])
+        if tool_calls:
+            for tc in tool_calls:
+                func = tc.get("function", {})
+                args = func.get("arguments", "{}")
+                try:
+                    arguments = json.loads(args)
+                    results_list = arguments.get("results", arguments.get("urls", []))
+                    if isinstance(results_list, list):
+                        for item in results_list:
+                            if isinstance(item, dict):
+                                raw_urls.append({
+                                    "url": item.get("url", ""),
+                                    "title": item.get("title", keyword),
+                                    "snippet": item.get("snippet", ""),
+                                })
+                            elif isinstance(item, str) and item.startswith("http"):
+                                raw_urls.append({"url": item, "title": keyword, "snippet": ""})
+                except (json.JSONDecodeError, TypeError) as e:
+                    _logger.debug("Discovery: failed to parse tool_call arguments: %s", e)
+        else:
+            # Round 2 fallback: extract https:// URLs from text content via regex
+            # This handles cases where MiniMax doesn't invoke the tool but still
+            # returns URLs in its text response (hallucinated but we HEAD-validate them)
+            content = (message.get("content") or "").strip()
+            if not content:
+                _logger.warning("Discovery: MiniMax returned empty content for %s", keyword)
+                return []
+            content = content.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+
+            # Try to parse as JSON first
+            try:
+                decoder = json.JSONDecoder()
+                parsed, _ = decoder.raw_decode(content)
+                if isinstance(parsed, list):
+                    raw_urls = parsed
+            except (json.JSONDecodeError, TypeError):
+                # Fall back to regex URL extraction from any text format
+                url_pattern = re.compile(r"https://[^\s\)\]'\"<>]+")
+                for match in url_pattern.finditer(content):
+                    url = match.group(0).rstrip(".,;:)")
+                    raw_urls.append({"url": url, "title": keyword, "snippet": ""})
+
+        if not raw_urls:
+            _logger.warning("Discovery: MiniMax returned no URLs for %s", keyword)
             return []
 
-        # HEAD-validate each URL — MiniMax has no internet access so URLs come from
-        # training data and may be stale or fabricated. We request 5 to have headroom
-        # after filtering, then return the first `limit` that pass.
+        # HEAD-validate each URL and fetch real snippets via Crawl4AI
         validated = []
-        for r in raw_results:
+        for r in raw_urls:
             url = r.get("url", "")
             if not url or not url.startswith("http"):
                 continue
@@ -337,7 +394,6 @@ class DiscoveryScheduler:
                 req = urllib.request.Request(url, method="HEAD", headers={"User-Agent": "Mozilla/5.0"})
                 with urllib.request.urlopen(req, timeout=5) as hresp:
                     if hresp.status < 400:
-                        # Fetch real snippet via Crawl4AI (replaces LLM-hallucinated snippet)
                         real_snippet = ""
                         try:
                             loop = asyncio.new_event_loop()
@@ -355,7 +411,7 @@ class DiscoveryScheduler:
 
                         validated.append({
                             "url": url,
-                            "title": r.get("title", ""),
+                            "title": r.get("title", keyword),
                             "snippet": real_snippet[:200] if real_snippet else r.get("snippet", "")[:200],
                             "source": "minimax",
                         })

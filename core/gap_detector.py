@@ -32,14 +32,17 @@ def detect_gaps(note_entities: list[dict], vault_path: str | Path | None = None)
     Returns list of entity names that are referenced in the enriched note
     but don't have corresponding notes in the vault.
     """
+    # Check raw string BEFORE wrapping in Path — Path("") becomes PosixPath(".") whose str() is "." not ""
     if vault_path is None:
-        vault_path = Path(os.environ.get("VAULT_PATH", ""))
+        vault_path_raw = os.environ.get("VAULT_PATH", "")
     else:
-        vault_path = Path(vault_path)
+        vault_path_raw = str(vault_path)
 
-    if not vault_path.exists():
-        _logger.warning("Vault path does not exist: %s", vault_path)
-        return [e["name"] for e in note_entities if e.get("name")]
+    if not vault_path_raw or not Path(vault_path_raw).exists():
+        _logger.warning("Vault path does not exist or is empty: %s — skipping gap detection", vault_path_raw)
+        return []
+
+    vault_path = Path(vault_path_raw)
 
     # Build index once
     slug_index, title_index = _build_vault_index(vault_path)

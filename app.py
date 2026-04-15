@@ -10,7 +10,8 @@ from fastapi.templating import Jinja2Templates
 from sse_starlette.sse import EventSourceResponse
 from pipeline import run_pipeline
 from vault.scanner import scan_vault
-from core.discovery_scheduler import DiscoveryScheduler
+from core.discovery_scheduler import DiscoveryScheduler, KEYWORDS_FILE
+from core.keywords_manager import load_manual_keywords
 
 _job_queues: dict[str, asyncio.Queue] = {}
 _scheduler: DiscoveryScheduler | None = None
@@ -97,12 +98,15 @@ async def stream(job_id: str):
 
 @app.get("/keywords")
 async def get_keywords():
-    """Return the scheduler's pre-loaded merged keyword list."""
+    """Return the scheduler's keyword list split into manual vs graph-derived."""
     scheduler = _get_scheduler()
+    manual = await asyncio.to_thread(load_manual_keywords, KEYWORDS_FILE)
+    manual_set = set(manual)
+    graph = [kw for kw in scheduler._keywords if kw not in manual_set]
     return {
         "keywords": scheduler._keywords,
-        "manual": [],  # not needed for display
-        "graph": [],   # not needed for display
+        "manual": manual,
+        "graph": graph,
         "total": len(scheduler._keywords),
     }
 

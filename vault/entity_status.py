@@ -16,27 +16,33 @@ def _is_library_entity(entity: dict) -> bool:
 
 def _search_library_status(name: str, slug: str) -> Optional[dict]:
     """
-    Perform web search for library/tool/framework version and status.
-    Uses GitHub API for GitHub-hosted projects, PyPI API otherwise.
+    Fetch version and status for a library/tool/framework.
+    Uses GitHub Search API (to resolve owner/repo from a single name) then PyPI.
     Returns None if nothing found.
     """
-    github_api = f"https://api.github.com/repos/{slug}"
+    # GitHub Search API — resolves "lancedb" → "lancedb/lancedb" etc.
     try:
+        search_url = f"https://api.github.com/search/repositories?q={slug}+in:name&per_page=1&sort=stars"
         resp = requests.get(
-            github_api, timeout=5, headers={"Accept": "application/vnd.github.v3+json"}
+            search_url, timeout=5,
+            headers={"Accept": "application/vnd.github.v3+json", "User-Agent": "personalWiki/1.0"},
         )
         if resp.status_code == 200:
-            data = resp.json()
-            return {
-                "version": data.get("tag_name", data.get("name", "")),
-                "status": "actively maintained"
-                if data.get("pushed_at")
-                else "archived",
-                "source": f"GitHub ({data.get('full_name', '')})",
-            }
+            items = resp.json().get("items", [])
+            if items:
+                repo = items[0]
+                pushed = repo.get("pushed_at")
+                archived = repo.get("archived", False)
+                status = "archived" if archived else ("actively maintained" if pushed else "unknown")
+                return {
+                    "version": repo.get("default_branch", ""),
+                    "status": status,
+                    "source": f"GitHub ({repo.get('full_name', '')})",
+                }
     except Exception as e:
         _logger.debug("GitHub search failed for %s: %s", slug, e)
 
+    # PyPI fallback
     pypi_url = f"https://pypi.org/pypi/{slug}/json"
     try:
         resp = requests.get(pypi_url, timeout=5)
