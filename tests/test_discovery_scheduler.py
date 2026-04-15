@@ -191,3 +191,24 @@ def test_remove_keyword_removes_and_purges():
         # File with real content keeps wikilink stripped but file itself preserved
         assert (Path(tmp_vault) / "notes" / "note.md").exists()
         assert "[[to-remove]]" not in (Path(tmp_vault) / "notes" / "note.md").read_text()
+
+
+@pytest.mark.integration
+def test_search_minimax_returns_real_urls_with_real_content():
+    """
+    Verify MiniMax search returns real, crawlable URLs with actual content.
+    This is an integration test — it hits real APIs (MiniMax + live web).
+    Marked integration so it's skipped by default: pytest -m "not integration"
+    """
+    from core.discovery_scheduler import DiscoveryScheduler
+    ds = DiscoveryScheduler()
+
+    results = ds._search_minimax("reinforcement learning")
+
+    assert len(results) >= 1, "Should return at least 1 result"
+    for r in results:
+        assert r["source"] == "minimax", f"Expected source='minimax', got {r['source']}"
+        assert r["url"].startswith("https://"), f"URL should be real https: {r['url']}"
+        # Snippets should be real content from actual pages (Crawl4AI fetched)
+        assert len(r["snippet"]) > 20, f"Snippet should be real content, got: {r['snippet'][:50]}"
+        assert r["snippet"] != "Content from fake url", "Snippet should not be from test mock"
