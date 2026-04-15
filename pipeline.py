@@ -72,7 +72,11 @@ async def run_pipeline(
 
     # Duplicate check
     if url and store.exists(url):
-        yield "Warning: Note for this URL already exists. Skipping."
+        title = store.get_title_by_url(url)
+        if title:
+            yield f"Warning: Note already exists: '{title}'. Skipping."
+        else:
+            yield "Warning: Note for this URL already exists. Skipping."
         return
 
     # Step 1: Extract

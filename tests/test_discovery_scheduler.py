@@ -254,6 +254,77 @@ def test_search_minimax_includes_tools_parameter_for_function_calling():
         f"Payload must include 'tools' for web_search function-calling. Got payload keys: {list(payload.keys())}"
 
 
+def test_measure_prose():
+    """Prose measurer returns char count and ratio."""
+    from core.discovery_scheduler import _measure_prose
+
+    # Real article: mixed paragraphs
+    text = "This is a paragraph.\n\nAnother paragraph here."
+    chars, ratio = _measure_prose(text)
+    assert chars > 0
+    assert 0 < ratio <= 1.0
+
+    # Thin: nav-heavy with short blocks
+    thin = "HOME | ABOUT | CONTACT\n\n" * 10
+    chars, ratio = _measure_prose(thin)
+    assert ratio < 0.3  # mostly symbols/caps
+
+    # All-caps headings
+    text2 = "IMPORTANT NEWS\n\nA real sentence here. With more content."
+    chars, ratio = _measure_prose(text2)
+    assert chars > 0
+
+    # Empty
+    chars, ratio = _measure_prose("")
+    assert chars == 0
+    assert ratio == 0.0
+
+
+def test_extract_article_links():
+    """Link extractor filters nav/media and returns article candidates."""
+    from core.discovery_scheduler import _extract_article_links
+
+    html = """
+    <a href="/nav/menu">Skip</a>
+    <a href="/footer/about">Also skip</a>
+    <a href="/article/how-to-code">Best match</a>
+    <a href="/blog/2024/post">Good article</a>
+    <a href="/news/industry-update">Also good</a>
+    <a href="/category/tech">Not article</a>
+    <a href="https://other.com/page">Cross-domain</a>
+    <a href="/tag/python">Tag link</a>
+    <a href="/article">Bare article path</a>
+    <a href="/2025/report">Year pattern</a>
+    """
+    parent = "https://example.com/category/tech"
+    links = _extract_article_links(html, parent, "python")
+    # Should include: /article/how-to-code, /blog/2024/post, /news/industry-update, /2025/report
+    assert any("/article/how-to-code" in l for l in links)
+    assert any("/blog/2024/post" in l for l in links)
+    assert any("/news/industry-update" in l for l in links)
+    assert any("/2025/report" in l for l in links)
+    # Should exclude: nav, footer, cross-domain, tag, category, bare /article
+    assert not any("nav" in l or "footer" in l or "other.com" in l or "tag" in l for l in links)
+
+
+def test_pick_best_link():
+    """Link picker scores by keyword match + slug length."""
+    from core.discovery_scheduler import _pick_best_link
+
+    candidates = [
+        "https://example.com/article/python-tips",
+        "https://example.com/blog/2024/a-very-long-article-title-about-python-programming",
+        "https://example.com/news/general-update",
+    ]
+    # Keyword "python" should rank the long slug highest due to keyword+length
+    best = _pick_best_link(candidates, "python")
+    assert "python" in best.lower()
+
+    # No keyword match — picks longest slug
+    best2 = _pick_best_link(candidates, "javascript")
+    assert "very-long-article" in best2  # longest slug
+
+
 @pytest.mark.skip(reason="MiniMax API not accessible from test environment — run manually")
 @pytest.mark.integration
 def test_search_minimax_returns_real_urls_with_real_content():

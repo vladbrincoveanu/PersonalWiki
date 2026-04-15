@@ -26,21 +26,11 @@ _CHAPTER_MARKER_RE = re.compile(
 _PARAGRAPH_BREAK_RE = re.compile(r"\n\n+")
 
 _MIN_CHUNK_SIZE = 60_000
-_OVERLAP_SIZE = 5_000  # 10% overlap for 60k target
+_OVERLAP_SIZE = 5_000
 
 
 def semantic_chunk(text: str) -> List[Chunk]:
-    """
-    Split transcript into semantic chunks with 60k char minimum.
-
-    Split priority:
-      1. Explicit chapter / section markers (e.g., [Chapter:], ## Title, ---)
-      2. Large timestamp gaps (> 10s between consecutive cues)
-      3. Paragraph breaks (\n\n) in regions large enough to form a chunk
-      4. Fixed-size fallback with 5k char overlap
-
-    Returns list of Chunk objects sorted by position in transcript.
-    """
+    """Split transcript at natural boundaries with 60k char minimum per chunk (except final chunk)."""
     if len(text) <= _MIN_CHUNK_SIZE:
         return [
             Chunk(
@@ -52,62 +42,90 @@ def semantic_chunk(text: str) -> List[Chunk]:
             )
         ]
 
-    # Try to split at chapter markers first
-    boundaries = _find_chapter_boundaries(text)
-    if len(boundaries) >= 2:
-        chunks = _make_chunks(text, boundaries)
-        if all(c.size_chars >= _MIN_CHUNK_SIZE for c in chunks[:-1]):
+    # Try to split at chapter/section markers first
+    splits = _find_chapter_splits(text)
+    if len(splits) > 1:
+        chunks = _build_chunks(text, splits)
+        if all(c.size_chars >= _MIN_CHUNK_SIZE or c is chunks[-1] for c in chunks):
             return chunks
 
-    # Try timestamp-gap splitting
-    boundaries = _find_timestamp_gap_boundaries(text)
-    if len(boundaries) >= 2:
-        chunks = _make_chunks(text, boundaries)
-        if all(c.size_chars >= _MIN_CHUNK_SIZE for c in chunks[:-1]):
+    # Try to split at large timestamp gaps (>10s)
+    splits = _find_timestamp_gap_splits(text)
+    if len(splits) > 1:
+        chunks = _build_chunks(text, splits)
+        if all(c.size_chars >= _MIN_CHUNK_SIZE or c is chunks[-1] for c in chunks):
             return chunks
 
-    # Fallback: fixed-size splits with overlap
-    return _fixed_size_chunk(text)
+    # Try paragraph breaks
+    splits = _find_paragraph_splits(text)
+    if len(splits) > 1:
+        chunks = _build_chunks(text, splits)
+        if all(c.size_chars >= _MIN_CHUNK_SIZE or c is chunks[-1] for c in chunks):
+            return chunks
+
+    # Fallback: fixed-size with overlap
+    return _fixed_chunk(text)
 
 
-def _find_chapter_boundaries(text: str) -> List[int]:
-    """Return start indices of sections preceded by chapter markers."""
-    boundaries = [0]
-    lines = text.splitlines()
-    current_pos = 0
-    for i, line in enumerate(lines):
-        if _CHAPTER_MARKER_RE.match(line.strip()):
-            boundaries.append(current_pos)
-        current_pos += len(line) + 1
-    # Deduplicate and sort
-    boundaries = sorted(set(boundaries))
-    # Ensure last boundary is not too close to end
-    if boundaries[-1] > len(text) - _MIN_CHUNK_SIZE:
-        boundaries = boundaries[:-1]
-    return boundaries
+def _find_chapter_splits(text: str) -> List[int]:
+    """Find split points at chapter/section markers."""
+    matches = list(_CHAPTER_MARKER_RE.finditer(text))
+    return [m.start() for m in matches]
 
 
-def _find_timestamp_gap_boundaries(text: str) -> List[int]:
-    """Return start indices where a large timestamp gap (>10s) occurs."""
-    timestamps = [
-        m.start() for m in _TIMESTAMP_PATTERN_RE.finditer(text)
-    ]
-    boundaries = [0]
+def _find_timestamp_gap_splits(text: str) -> List[int]:
+    """Find split points at large timestamp gaps (>10s)."""
+    timestamps = list(_TIMESTAMP_PATTERN_RE.finditer(text))
+    splits = []
     for i in range(1, len(timestamps)):
-        gap = timestamps[i] - timestamps[i - 1]
-        if gap > 10_000:  # 10 seconds of transcript gap → topic shift
-            boundaries.append(timestamps[i])
-    return sorted(set(boundaries))
+        prev_end = timestamps[i - 1].end()
+        next_start = timestamps[i].start()
+        prev_ts = timestamps[i - 1].group()
+        next_ts = timestamps[i].group()
+        gap = _timestamp_gap(prev_ts, next_ts)
+        if gap is not None and gap > 10.0:
+            splits.append(next_start)
+    return splits
 
 
-def _make_chunks(text: str, boundaries: List[int]) -> List[Chunk]:
-    """Build Chunk list from a sorted list of start indices."""
+def _timestamp_gap(ts1: str, ts2: str) -> float | None:
+    """Parse timestamps and return gap in seconds. Returns None on parse failure."""
+    try:
+        t1 = _parse_timestamp(ts1)
+        t2 = _parse_timestamp(ts2)
+        return t2 - t1
+    except Exception:
+        return None
+
+
+def _parse_timestamp(ts: str) -> float:
+    """Parse HH:MM:SS,mmm or HH:MM:SS.mmm to seconds."""
+    ts = ts.strip().split()[0]
+    parts = ts.replace(",", ".").split(":")
+    h, m, s = int(parts[0]), int(parts[1]), float(parts[2])
+    return h * 3600 + m * 60 + s
+
+
+def _find_paragraph_splits(text: str) -> List[int]:
+    """Find split points at paragraph breaks (\\n\\n)."""
+    splits = []
+    pos = 0
+    while pos < len(text):
+        idx = text.find("\n\n", pos)
+        if idx == -1:
+            break
+        splits.append(idx + 2)
+        pos = idx + 2
+    return splits
+
+
+def _build_chunks(text: str, splits: List[int]) -> List[Chunk]:
+    """Build chunks from a list of split indices."""
+    boundaries = [0] + sorted(set(splits)) + [len(text)]
     chunks = []
-    for i, start in enumerate(boundaries):
-        if i < len(boundaries) - 1:
-            end = boundaries[i + 1]
-        else:
-            end = len(text)
+    for i in range(len(boundaries) - 1):
+        start = boundaries[i]
+        end = boundaries[i + 1]
         chunk_text = text[start:end]
         chunks.append(
             Chunk(
@@ -121,39 +139,34 @@ def _make_chunks(text: str, boundaries: List[int]) -> List[Chunk]:
     return chunks
 
 
-def _fixed_size_chunk(text: str) -> List[Chunk]:
-    """Fallback: split into ~60k char chunks at natural boundaries."""
+def _fixed_chunk(text: str) -> List[Chunk]:
+    """Fixed-size fallback with overlap."""
     chunks = []
     pos = 0
-    chunk_num = 1
+    n = 1
     while pos < len(text):
         end = min(pos + _MIN_CHUNK_SIZE, len(text))
-        is_last = pos + _MIN_CHUNK_SIZE >= len(text)
-        if is_last:
-            # Last chunk — take all remaining (even if < 60k)
-            chunk_text = text[pos:]
-        else:
-            # Try to split at a paragraph break to avoid cutting mid-sentence
-            chunk_text = text[pos:end]
-            last_break = chunk_text.rfind("\n\n")
-            if last_break > _MIN_CHUNK_SIZE // 2:
-                end = pos + last_break + 2
-                chunk_text = text[pos:end]
-            else:
-                # No good break found — use fixed boundary
-                chunk_text = text[pos:end]
+        if pos + _MIN_CHUNK_SIZE < len(text):
+            # back up to last newline to avoid cutting mid-word
+            nl = text.rfind("\n", pos, end)
+            if nl > pos:
+                end = nl
+        chunk_text = text[pos:end]
         chunks.append(
             Chunk(
                 text=chunk_text,
                 start_index=pos,
                 end_index=end,
-                chunk_number=chunk_num,
+                chunk_number=n,
                 size_chars=len(chunk_text),
             )
         )
-        chunk_num += 1
-        pos = end
+        pos = end - _OVERLAP_SIZE
+        if pos >= len(text):
+            break
+        n += 1
     return chunks
+
 
 _SYSTEM_PROMPT = """You are a knowledge curator. Given raw text from a source, extract and structure it into a research note.
 Always respond with valid JSON only — no markdown fences, no explanation."""
@@ -240,7 +253,7 @@ def enrich(raw_text: str, similar_titles: list[str], source: str) -> dict:
         data = resp.json()
         base_resp = data.get("base_resp", {})
         if base_resp.get("status_code") and base_resp["status_code"] != 0:
-            raise ValueError(f"Minimax API error {base_resp['status_code']}: {base_resp.get('status_msg')}")
+            raise ValueError(f"MiniMax API error {base_resp['status_code']}: {base_resp.get('status_msg')}")
         if "choices" not in data:
             _logger.error("Minimax unexpected response for source=%s: %s", source, data)
             raise ValueError(f"No 'choices' in Minimax response: {data}")

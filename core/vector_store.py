@@ -98,6 +98,19 @@ class VectorStore:
         rows = self._table.search().where(f"path = '{path}'").limit(1).to_list()
         return len(rows) > 0
 
+    def get_title_by_url(self, url: str) -> str | None:
+        """Return the stored note title for a URL, or None if not found."""
+        try:
+            rows = self._table.search().where(f"path = '{url}'").limit(1).to_list()
+            if not rows:
+                return None
+            metadata = rows[0].get("metadata", "{}")
+            if isinstance(metadata, str):
+                metadata = json.loads(metadata)
+            return metadata.get("title")
+        except Exception:
+            return None
+
     def get_all_paths(self) -> list[str]:
         """Return all indexed URLs/paths."""
         try:
