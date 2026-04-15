@@ -267,8 +267,12 @@ class DiscoveryScheduler:
             return []
         # Strip markdown code fences if present
         content = content.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
-        decoder = json.JSONDecoder()
-        raw_results, _ = decoder.raw_decode(content)
+        try:
+            decoder = json.JSONDecoder()
+            raw_results, _ = decoder.raw_decode(content)
+        except json.JSONDecodeError as e:
+            _logger.warning("Discovery: MiniMax returned unparseable JSON for %s: %s", keyword, e)
+            return []
 
         # HEAD-validate each URL — MiniMax has no internet access so URLs come from
         # training data and may be stale or fabricated. We request 5 to have headroom
