@@ -161,9 +161,9 @@ def _fixed_chunk(text: str) -> List[Chunk]:
                 size_chars=len(chunk_text),
             )
         )
-        pos = end - _OVERLAP_SIZE
-        if pos >= len(text):
+        if end >= len(text):
             break
+        pos = end - _OVERLAP_SIZE
         n += 1
     return chunks
 

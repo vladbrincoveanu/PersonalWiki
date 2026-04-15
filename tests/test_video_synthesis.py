@@ -61,7 +61,8 @@ def test_semantic_chunk_metadata():
     assert chunks[2].chunk_number == 3
     assert chunks[0].start_index == 0
     assert chunks[0].end_index == len(chunks[0].text)
-    assert chunks[1].start_index == chunks[0].end_index
+    # Chunks use 5k overlap (OVERLAP_SIZE), so chunk 2 starts at end-5000
+    assert chunks[1].start_index == chunks[0].end_index - 5000
     assert chunks[2].end_index == len(text)
 
 
