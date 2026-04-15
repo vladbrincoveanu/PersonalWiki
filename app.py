@@ -24,14 +24,10 @@ def _get_scheduler() -> DiscoveryScheduler:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _scheduler
     count = await asyncio.to_thread(scan_vault)
     if count:
         print(f"Startup: indexed {count} notes.")
-    _scheduler = DiscoveryScheduler()
-    _scheduler.start(pipeline_func=run_pipeline)
     yield
-    _scheduler.stop()
 
 app = FastAPI(lifespan=lifespan)
 templates = Jinja2Templates(directory="templates")
