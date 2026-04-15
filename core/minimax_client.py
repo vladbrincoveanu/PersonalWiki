@@ -274,3 +274,126 @@ def enrich(raw_text: str, similar_titles: list[str], source: str) -> dict:
             "raw_text": raw_text,
             "error": True,
         }
+
+
+_SYNTHESIS_SYSTEM = """You are a knowledge synthesizer. Given analyses of multiple sections of one video, produce one unified research note.
+Always respond with valid JSON only — no markdown fences, no explanation."""
+
+_SYNTHESIS_TEMPLATE = """Multiple sections of one video have been analyzed separately.
+Your task is to produce ONE unified research note — not a list of section summaries.
+
+The final note must:
+- Read as a coherent narrative essay about the video's core ideas
+- Weave insights together across sections; don't repeat identical facts verbatim
+- Preserve key quotes with speaker attribution
+- Structure as: opening thesis → key concepts (with examples) → conclusion / "so what"
+- Include chapters extracted across all sections, ordered by timestamp
+- Preserve entities, key_facts, and tags from all chunks; deduplicate where overlapping
+- summary: 2-3 sentence unified synthesis — NOT a list of chunk summaries
+
+Respond with JSON matching this exact structure:
+{{
+  "title": "concise descriptive title",
+  "type": "video",
+  "tags": ["tag1", "tag2"],
+  "summary": "2-3 sentence unified synthesis",
+  "key_facts": ["fact 1", "fact 2"],
+  "cross_links": ["existing-note-slug"],
+  "entities": [
+    {{"name": "Entity Name", "slug": "entity-name", "type": "concept|person|institution|dataset|method"}}
+  ],
+  "chapters": [{{"time": "MM:SS", "title": "Chapter title"}}, ...],
+  "key_quotes": [{{"text": "quoted text", "speaker": "Speaker name"}}, ...],
+  "topics_covered": ["topic1", "topic2"],
+  "why_saved_hint": "one sentence about why this is worth keeping"
+}}
+
+Section analyses to synthesize:
+{section_summaries}
+
+Source: {source}
+Existing related notes: {related}
+"""
+
+
+def enrich_video_synthesis(chunk_results: List[dict], source: str, similar_titles: List[str]) -> dict:
+    """
+    Run synthesis pass: take per-chunk enrichment results, produce one unified narrative note.
+    Used for video content where the transcript was split into semantic chunks.
+    """
+    if not chunk_results:
+        return {
+            "title": "Untitled", "type": "video", "tags": [], "summary": "",
+            "key_facts": [], "cross_links": [], "entities": [], "chapters": [],
+            "key_quotes": [], "topics_covered": [], "why_saved_hint": "", "error": True,
+        }
+
+    if len(chunk_results) == 1:
+        # Single chunk — no synthesis needed, just enrich normally
+        r = chunk_results[0]
+        r.setdefault("type", "video")
+        r.setdefault("error", False)
+        return r
+
+    # Build section summaries text
+    section_summaries = []
+    for i, cr in enumerate(chunk_results, 1):
+        summary_text = cr.get("summary", "")
+        chapters = cr.get("chapters", [])
+        key_quotes = cr.get("key_quotes", [])
+        section_summaries.append(
+            f"--- Section {i} ---\n"
+            f"Title: {cr.get('title', 'Untitled')}\n"
+            f"Summary: {summary_text}\n"
+            f"Chapters: {chapters}\n"
+            f"Key Quotes: {key_quotes}\n"
+            f"Entities: {cr.get('entities', [])}\n"
+            f"Topics: {cr.get('topics_covered', [])}\n"
+        )
+    sections_text = "\n".join(section_summaries)
+    similar_str = "\n".join(f"- {t}" for t in similar_titles) if similar_titles else "(none yet)"
+    prompt = _SYNTHESIS_TEMPLATE.format(
+        section_summaries=sections_text,
+        source=source,
+        related=similar_str,
+    )
+
+    if not MINIMAX_API_KEY:
+        return {**chunk_results[0], "error": True}
+
+    headers = {
+        "Authorization": f"Bearer {MINIMAX_API_KEY}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "model": MINIMAX_MODEL,
+        "messages": [
+            {"role": "system", "content": _SYNTHESIS_SYSTEM},
+            {"role": "user", "content": prompt},
+        ],
+    }
+    try:
+        resp = requests.post(MINIMAX_API_URL, headers=headers, json=payload, timeout=120)
+        resp.raise_for_status()
+        data = resp.json()
+        base_resp = data.get("base_resp", {})
+        if base_resp.get("status_code") and base_resp["status_code"] != 0:
+            raise ValueError(f"MiniMax API error {base_resp['status_code']}: {base_resp.get('status_msg')}")
+        content = data["choices"][0]["message"]["content"]
+        content = content.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+        result = json.loads(content)
+        result.setdefault("entities", [])
+        result.setdefault("chapters", [])
+        result.setdefault("key_quotes", [])
+        result.setdefault("topics_covered", [])
+        result.setdefault("key_facts", [])
+        result.setdefault("cross_links", [])
+        result.setdefault("why_saved_hint", "")
+        result.setdefault("error", False)
+        return result
+    except Exception as e:
+        _logger.warning("Synthesis pass failed for source=%s: %s", source, e)
+        # Fallback: return first chunk result, don't lose data
+        fallback = chunk_results[0].copy()
+        fallback["error"] = True
+        return fallback
