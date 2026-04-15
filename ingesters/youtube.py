@@ -204,3 +204,26 @@ def extract_youtube(url: str) -> Document:
             return Document(raw_text=whisper_transcript, content_type="video")
 
     return Document(raw_text=f"[NO_TRANSCRIPT] {url}", content_type="video")
+
+
+def score_video_priority(video: dict, user_keywords: list[str]) -> dict:
+    """
+    Score a video by topic match, recency, and engagement.
+    Returns the video dict with an added "priority_score" key.
+
+    Weights: topic_match=0.6, recency=0.25, engagement=0.15
+    """
+    topic_score = video.get("topic_match", 0.0)
+    days_old = video.get("days_old", 999)
+    recency_score = max(0.0, 1.0 - (days_old / 365))
+    views = video.get("views", 0)
+    engagement_score = min(1.0, (views ** 0.5) / 10000)
+
+    priority_score = (
+        0.60 * topic_score +
+        0.25 * recency_score +
+        0.15 * engagement_score
+    )
+
+    video["priority_score"] = priority_score
+    return video
