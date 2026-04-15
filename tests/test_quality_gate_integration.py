@@ -14,7 +14,7 @@ async def test_pipeline_runs_quality_gate_before_enrichment():
         patch("pipeline.get_store", return_value=mock_store),
         patch("pipeline._is_pdf_url", return_value=False),
         patch("ingesters.news.extract_news", AsyncMock(return_value=MagicMock(
-            raw_text="Short",
+            raw_text="x",
             images=[],
             content_type="article"
         ))),

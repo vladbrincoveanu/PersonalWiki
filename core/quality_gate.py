@@ -6,7 +6,7 @@ import logging
 _logger = logging.getLogger(__name__)
 
 _ERROR_SIGNALS = ["[PAYWALLED]", "[PAYWALL]", "404", "Page not found", "[BLOCKED]"]
-_MIN_ARTICLE_CHARS = 100  # Backward-compat with existing pipeline tests (~130 char content)
+_MIN_ARTICLE_CHARS = 500
 _MIN_VIDEO_WORDS = 200
 
 
