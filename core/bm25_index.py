@@ -48,7 +48,7 @@ def _build_index() -> tuple[BM25Okapi, list[str], list[str]]:
     if NOTES_DIR.exists():
         for md_file in sorted(NOTES_DIR.glob("*.md")):
             try:
-                post = frontmatter.parse(str(md_file))
+                post = frontmatter.load(md_file)
                 body = _strip_markdown(post.content)
             except Exception:
                 _logger.warning("Could not parse frontmatter for %s, using raw text", md_file)

@@ -54,8 +54,10 @@ def save_manual_keywords(keywords: list[str], path: Path) -> None:
 def add_keyword(keyword: str, path: Path) -> None:
     """Append keyword to _keywords file.
 
-    Raises ValueError if keyword already exists.
+    Raises ValueError if keyword already exists or is a URL.
     """
+    if keyword.startswith("http://") or keyword.startswith("https://"):
+        raise ValueError(f"Keyword cannot be a URL: {keyword!r}. Use a topic word or phrase instead.")
     existing = load_manual_keywords(path)
     if keyword in existing:
         raise ValueError(f"Keyword '{keyword}' already exists in {path}")
