@@ -256,27 +256,36 @@ def enrich(raw_text: str, similar_titles: list[str], source: str) -> dict:
         resp = requests.post(MINIMAX_API_URL, headers=headers, json=payload, timeout=60)
         resp.raise_for_status()
         data = resp.json()
+        # Check for API-level errors
         base_resp = data.get("base_resp", {})
         if base_resp.get("status_code") and base_resp["status_code"] != 0:
-            raise ValueError(f"MiniMax API error {base_resp['status_code']}: {base_resp.get('status_msg')}")
-        if "choices" not in data:
-            _logger.error("Minimax unexpected response for source=%s: %s", source, data)
-            raise ValueError(f"No 'choices' in Minimax response: {data}")
+            _logger.warning("MiniMax API error %s: %s", base_resp["status_code"], base_resp.get("status_msg"))
+            return _make_fallback_note(raw_text)
+        if "choices" not in data or not data["choices"]:
+            _logger.error("Minimax response missing choices for source=%s", source)
+            return _make_fallback_note(raw_text)
         content = data["choices"][0]["message"]["content"]
-        content = content.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
-        data = json.loads(content)
-        data.setdefault("entities", [])
-        data.setdefault("figure_captions", [])
-        data.setdefault("why_saved_hint", "")
-        data.setdefault("chapters", [])
-        data.setdefault("key_quotes", [])
-        data.setdefault("topics_covered", [])
-        data.setdefault("raw_text", raw_text)
-        data.setdefault("error", False)
-        return data
     except Exception as e:
         _logger.warning("Minimax enrich failed for source=%s: %s", source, e)
         return _make_fallback_note(raw_text)
+
+    try:
+        content = content.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+        data = json.loads(content)
+    except (json.JSONDecodeError, AttributeError) as e:
+        _logger.warning("Minimax returned invalid JSON for source=%s: %s", source, e)
+        return _make_fallback_note(raw_text)
+
+    # Add defaults
+    data.setdefault("entities", [])
+    data.setdefault("figure_captions", [])
+    data.setdefault("why_saved_hint", "")
+    data.setdefault("chapters", [])
+    data.setdefault("key_quotes", [])
+    data.setdefault("topics_covered", [])
+    data.setdefault("raw_text", raw_text)
+    data.setdefault("error", False)
+    return data
 
 
 _SYNTHESIS_SYSTEM = """You are a knowledge synthesizer. Given analyses of multiple sections of one video, produce one unified research note.
@@ -333,9 +342,11 @@ def enrich_video_synthesis(chunk_results: List[dict], source: str, similar_title
 
     if len(chunk_results) == 1:
         # Single chunk — no synthesis needed, just enrich normally
-        r = chunk_results[0]
+        r = chunk_results[0].copy()
         r.setdefault("type", "video")
         r.setdefault("error", False)
+        # Preserve raw_text from the chunk
+        r.setdefault("raw_text", chunk_results[0].get("raw_text", ""))
         return r
 
     # Build section summaries text
@@ -393,6 +404,8 @@ def enrich_video_synthesis(chunk_results: List[dict], source: str, similar_title
         result.setdefault("cross_links", [])
         result.setdefault("why_saved_hint", "")
         result.setdefault("error", False)
+        # Preserve raw_text from first chunk
+        result.setdefault("raw_text", chunk_results[0].get("raw_text", ""))
         return result
     except Exception as e:
         _logger.warning("Synthesis pass failed for source=%s: %s", source, e)

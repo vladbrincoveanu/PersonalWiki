@@ -122,3 +122,100 @@ def test_enrich_no_api_key_fallback_includes_new_field_defaults():
     assert result["entities"] == []
     assert result["figure_captions"] == []
     assert result["why_saved_hint"] == ""
+
+
+def test_enrich_handles_unexpected_response_shape(monkeypatch):
+    """Malformed or unexpected MiniMax response shapes must not silently pass."""
+    from core.minimax_client import enrich
+
+    def mock_post(url, headers, json, timeout):
+        class FakeResp:
+            status_code = 200
+            def raise_for_status(self): pass
+            def json(self):
+                return {
+                    "choices": [{
+                        "message": {
+                            "content": '{"title": "Test", "type": "article", "tags": [], "summary": "ok", "key_facts": [], "cross_links": [], "entities": [], "figure_captions": [], "why_saved_hint": "", "chapters": [], "key_quotes": [], "topics_covered": []}'
+                        }
+                    }]
+                }
+        return FakeResp()
+
+    monkeypatch.setattr("requests.post", mock_post)
+    result = enrich("raw text", [], "http://example.com")
+    assert result.get("title") == "Test"
+    assert result.get("error") is False
+
+
+def test_enrich_api_error_returns_fallback(monkeypatch):
+    """MiniMax API error (non-zero status) must return fallback note with error=True."""
+    from core.minimax_client import enrich
+
+    def mock_post(url, headers, json, timeout):
+        class FakeResp:
+            status_code = 200
+            def raise_for_status(self): pass
+            def json(self):
+                return {
+                    "base_resp": {"status_code": 10001, "status_msg": "rate limited"},
+                    "choices": []
+                }
+        return FakeResp()
+
+    monkeypatch.setattr("requests.post", mock_post)
+    result = enrich("raw text", [], "http://example.com")
+    assert result.get("title") == "Untitled"
+    assert result.get("error") is True
+
+
+def test_enrich_json_decode_error_returns_fallback(monkeypatch):
+    """Invalid JSON in MiniMax response must return fallback note, not crash."""
+    from core.minimax_client import enrich
+
+    def mock_post(url, headers, json, timeout):
+        class FakeResp:
+            status_code = 200
+            def raise_for_status(self): pass
+            def json(self):
+                return {
+                    "base_resp": {"status_code": 0},
+                    "choices": [{"message": {"content": "NOT VALID JSON"}}]
+                }
+        return FakeResp()
+
+    monkeypatch.setattr("requests.post", mock_post)
+    result = enrich("raw text", [], "http://example.com")
+    assert result.get("title") == "Untitled"
+    assert result.get("error") is True
+
+
+def test_video_synthesis_preserves_raw_text(monkeypatch):
+    """Single-chunk video synthesis must preserve raw_text in returned note."""
+    from core.minimax_client import enrich_video_synthesis
+
+    def mock_post(url, headers, json, timeout):
+        class FakeResp:
+            def raise_for_status(self): pass
+            def json(self):
+                return {
+                    "base_resp": {"status_code": 0},
+                    "choices": [{"message": {"content": '{"title":"T","type":"video","tags":[],"summary":"S","key_facts":[],"cross_links":[],"entities":[],"chapters":[],"key_quotes":[],"topics_covered":[],"why_saved_hint":""}'}}]
+                }
+        return FakeResp()
+
+    monkeypatch.setattr("requests.post", mock_post)
+
+    # Single chunk with raw_text
+    chunk_results = [{
+        "title": "Chunk 1",
+        "summary": "S1",
+        "raw_text": "This is the original transcript text that must be preserved",
+        "chapters": [], "key_quotes": [], "entities": [],
+        "key_facts": [], "topics_covered": [], "tags": [],
+        "cross_links": [], "why_saved_hint": "",
+    }]
+    result = enrich_video_synthesis(chunk_results, "https://youtube.com/watch?v=xxx", [])
+
+    assert "raw_text" in result, "raw_text missing from single-chunk synthesis result"
+    assert "original transcript" in result["raw_text"]
