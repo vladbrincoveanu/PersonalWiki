@@ -193,6 +193,57 @@ def test_remove_keyword_removes_and_purges():
         assert "[[to-remove]]" not in (Path(tmp_vault) / "notes" / "note.md").read_text()
 
 
+@pytest.mark.asyncio
+async def test_search_minimax_no_nested_event_loop():
+    """_search_minimax must not create a new event loop when already running.
+
+    Bug: _search_minimax used asyncio.new_event_loop() inside an already-running
+    loop (called from _search_keyword -> _run_discovery_cycle), raising
+    RuntimeError: loop already running.
+    """
+    from core.discovery_scheduler import DiscoveryScheduler, requests as ds_requests
+    import json, asyncio
+
+    ds = DiscoveryScheduler()
+
+    plain_response = {
+        "base_resp": {"status_code": 0},
+        "choices": [{"message": {"content": json.dumps([{"url": "https://example.com/article", "title": "Example", "snippet": "Example article"}])}}]
+    }
+
+    def fake_post(url, headers=None, json=None, timeout=None):
+        m = MagicMock()
+        m.raise_for_status = MagicMock()
+        m.json = MagicMock(return_value=plain_response)
+        return m
+
+    class FakeHTTPResponse:
+        def __init__(self, status=200):
+            self.status = status
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            pass
+
+    def fake_urlopen(req, timeout=None):
+        return FakeHTTPResponse(status=200)
+
+    with patch.object(ds_requests, "post", side_effect=fake_post):
+        with patch("core.discovery_scheduler.urllib.request.urlopen", side_effect=fake_urlopen):
+            async def fake_fetch(url):
+                return "Real article content."
+            with patch.object(ds, "_fetch_article_snippet", fake_fetch):
+                # This is called from within an async context (already running loop)
+                # Must not raise RuntimeError: loop already running
+                try:
+                    results = await ds._search_minimax("test query")
+                    assert isinstance(results, list)
+                except RuntimeError as e:
+                    if "loop" in str(e).lower() or "event" in str(e).lower():
+                        pytest.fail(f"nested event loop bug: {e}")
+                    raise
+
+
 def test_search_minimax_includes_tools_parameter_for_function_calling():
     """
     Bug: _search_minimax() sends a plain prompt asking LLM to invent URLs.
@@ -241,7 +292,7 @@ def test_search_minimax_includes_tools_parameter_for_function_calling():
             async def fake_fetch(url):
                 return "Real article content."
             with patch.object(ds, "_fetch_article_snippet", fake_fetch):
-                results = ds._search_minimax("reinforcement learning")
+                results = asyncio.run(ds._search_minimax("reinforcement learning"))
 
     assert len(results) >= 1, f"Expected at least 1 result, got {len(results)}"
     assert all(r["source"] == "minimax" for r in results)

@@ -55,12 +55,29 @@ class DiscoveryScheduler:
 
     def _blocking_refresh(self):
         """Run _refresh_keywords synchronously in a thread (for __init__)."""
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
         try:
-            loop.run_until_complete(self._refresh_keywords())
-        finally:
-            loop.close()
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+
+        if loop and loop.is_running():
+            # Already in an event loop — use a new one for the thread
+            new_loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(new_loop)
+            try:
+                new_loop.run_until_complete(self._refresh_keywords())
+            finally:
+                new_loop.close()
+        else:
+            # No running loop — always create a new event loop for this thread
+            # (get_event_loop() raises RuntimeError in Python 3.14+ for threads
+            # without an event loop, which is always the case for our daemon thread)
+            new_loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(new_loop)
+            try:
+                new_loop.run_until_complete(self._refresh_keywords())
+            finally:
+                new_loop.close()
 
     def _warm_seen_urls(self):
         """Populate _seen_urls from disk cache and vector store."""
@@ -277,7 +294,7 @@ class DiscoveryScheduler:
             })
         return results
 
-    def _search_minimax(self, keyword: str, limit: int = 3) -> list[dict]:
+    async def _search_minimax(self, keyword: str, limit: int = 3) -> list[dict]:
         """
         Web search via MiniMax chat API using function-calling hybrid.
 
@@ -390,16 +407,7 @@ class DiscoveryScheduler:
                     if hresp.status < 400:
                         real_snippet = ""
                         try:
-                            loop = asyncio.new_event_loop()
-                            asyncio.set_event_loop(loop)
-                            try:
-                                fetch_result = self._fetch_article_snippet(url)
-                                if asyncio.iscoroutine(fetch_result):
-                                    real_snippet = loop.run_until_complete(fetch_result)
-                                else:
-                                    real_snippet = fetch_result
-                            finally:
-                                loop.close()
+                            real_snippet = await self._fetch_article_snippet(url)
                         except Exception:
                             pass
 
