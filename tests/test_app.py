@@ -32,27 +32,43 @@ def test_ingest_url_returns_job_json():
     assert "job_id" in body, f"Expected job_id in JSON response, got: {body}"
     assert len(body["job_id"]) == 36  # UUID format
 
-def test_stream_yields_events():
+@pytest.mark.asyncio
+async def test_stream_yields_events():
     import asyncio
+    import app as app_module
     from app import _job_queues
     import uuid
+
+    # Save and reset ALL scheduler state to prevent pollution
+    prior_scheduler = app_module._scheduler
+    prior_lock = app_module._scheduler_lock
+    if prior_scheduler is not None:
+        prior_scheduler.stop()
+    app_module._scheduler = None
+    app_module._scheduler_lock = None
+    # Also clear job queues to be safe
+    _job_queues.clear()
 
     job_id = str(uuid.uuid4())
     q = asyncio.Queue()
     done_event = asyncio.Event()
-
-    async def fill():
-        await q.put("<p>Step 1</p>")
-        await q.put(None)
-
-    asyncio.run(fill())
     _job_queues[job_id] = (q, done_event)
 
     client = make_client()
-    with client.stream("GET", f"/stream/{job_id}") as resp:
-        content = b"".join(resp.iter_bytes())
+    try:
+        await q.put("<p>Step 1</p>")
+        await q.put(None)
+        done_event.set()
+        with client.stream("GET", f"/stream/{job_id}") as resp:
+            content = b"".join(resp.iter_bytes())
 
-    assert b"Step 1" in content
+        assert b"Step 1" in content
+    finally:
+        _job_queues.clear()
+        if app_module._scheduler is not None:
+            app_module._scheduler.stop()
+        app_module._scheduler = prior_scheduler
+        app_module._scheduler_lock = prior_lock
 
 @pytest.mark.asyncio
 async def test_get_scheduler_singleton_not_racy():
@@ -60,9 +76,12 @@ async def test_get_scheduler_singleton_not_racy():
     import asyncio
     from unittest.mock import patch, MagicMock
 
-    # Reset global state
+    # Reset global state fully (including stopping any running scheduler)
     import app
-    app._scheduler = None
+    if app._scheduler is not None:
+        app._scheduler.stop()
+        app._scheduler = None
+    app._scheduler_lock = asyncio.Lock()
 
     call_count = 0
     original_scheduler_class = app.DiscoveryScheduler

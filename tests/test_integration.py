@@ -118,13 +118,18 @@ async def test_pipeline_pdf_with_image_creates_note_and_saves_figures():
         pdf_path.write_bytes(pdf_bytes)
 
         # -- Wire up patches --------------------------------------------------
+        # Bypass QualityGate which rejects thin PDFs (this test is about image saving, not content quality)
+        mock_gate_result = MagicMock(pass_=True, reason="")
+
         with (
             patch("pipeline.get_store", return_value=mock_store),
             patch("pipeline.embed", return_value=[0.0] * 384),
             patch("pipeline.enrich", side_effect=fake_enrich),
+            patch("core.quality_gate.QualityGate") as mock_gate_cls,
             patch("vault.writer.VAULT_PATH", tmp_path),
             patch("vault.writer.NOTES_DIR", notes_dir),
         ):
+            mock_gate_cls.return_value.check.return_value = mock_gate_result
             messages = []
             async for msg in run_pipeline(pdf_path=str(pdf_path)):
                 messages.append(msg)
