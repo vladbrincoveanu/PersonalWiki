@@ -49,6 +49,35 @@ def test_stream_yields_events():
     assert b"Step 1" in content
 
 @pytest.mark.asyncio
+async def test_get_scheduler_singleton_not_racy():
+    """Concurrent calls to _get_scheduler() must not create two schedulers."""
+    import asyncio
+    from unittest.mock import patch, MagicMock
+
+    # Reset global state
+    import app
+    app._scheduler = None
+
+    call_count = 0
+    original_scheduler_class = app.DiscoveryScheduler
+
+    def counting_scheduler():
+        nonlocal call_count
+        call_count += 1
+        return original_scheduler_class()
+
+    with patch.object(app, 'DiscoveryScheduler', counting_scheduler):
+        async def get_scheduler_twice():
+            s1 = await app._get_scheduler()
+            s2 = await app._get_scheduler()
+            return s1, s2
+
+        s1, s2 = await get_scheduler_twice()
+        assert call_count == 1, f"Scheduler created {call_count} times instead of once"
+        assert s1 is s2
+
+
+@pytest.mark.asyncio
 async def test_job_queue_cleanup_not_racy():
     """stream() must not pop queue while _run() is still writing."""
     import asyncio

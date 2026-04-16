@@ -15,12 +15,16 @@ from core.keywords_manager import load_manual_keywords
 
 _job_queues: dict[str, asyncio.Queue] = {}
 _scheduler: DiscoveryScheduler | None = None
+_scheduler_lock = asyncio.Lock()
 
-def _get_scheduler() -> DiscoveryScheduler:
+async def _get_scheduler() -> DiscoveryScheduler:
     global _scheduler
     if _scheduler is None:
-        _scheduler = DiscoveryScheduler()
-        _scheduler.start(pipeline_func=run_pipeline)
+        async with _scheduler_lock:
+            # Double-check after acquiring lock
+            if _scheduler is None:
+                _scheduler = DiscoveryScheduler()
+                _scheduler.start(pipeline_func=run_pipeline)
     return _scheduler
 
 @asynccontextmanager
@@ -104,7 +108,7 @@ async def stream(job_id: str):
 @app.get("/keywords")
 async def get_keywords():
     """Return the scheduler's keyword list split into manual vs graph-derived."""
-    scheduler = _get_scheduler()
+    scheduler = await _get_scheduler()
     manual = await asyncio.to_thread(load_manual_keywords, KEYWORDS_FILE)
     manual_set = set(manual)
     graph = [kw for kw in scheduler._keywords if kw not in manual_set]
@@ -119,7 +123,7 @@ async def get_keywords():
 @app.post("/keywords/add")
 async def add_keyword(keyword: str = Form(...)):
     """Add a manual keyword to .interests."""
-    scheduler = _get_scheduler()
+    scheduler = await _get_scheduler()
     try:
         scheduler.add_keyword(keyword)
     except ValueError:
@@ -130,7 +134,7 @@ async def add_keyword(keyword: str = Form(...)):
 @app.post("/keywords/remove")
 async def remove_keyword(keyword: str = Form(...)):
     """Remove a manual keyword from _keywords and purge related files."""
-    scheduler = _get_scheduler()
+    scheduler = await _get_scheduler()
     try:
         purged = scheduler.remove_keyword(keyword)
     except (KeyError, ValueError):
@@ -141,7 +145,7 @@ async def remove_keyword(keyword: str = Form(...)):
 @app.post("/keywords/suppress")
 async def suppress_keyword(keyword: str = Form(...)):
     """Suppress a graph keyword: block it from discovery and purge related files."""
-    scheduler = _get_scheduler()
+    scheduler = await _get_scheduler()
     purged = scheduler.suppress_keyword(keyword)
     return {"suppressed": keyword, "purged": purged, "purged_count": len(purged)}
 
