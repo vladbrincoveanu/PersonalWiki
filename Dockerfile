@@ -3,9 +3,13 @@ FROM python:3.13-slim AS builder
 
 WORKDIR /app
 
-# Install build deps for yt-dlp, fastembed, docling
+# Install build deps for yt-dlp, fastembed, docling, and native extensions (mmh3)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
+    gcc \
+    g++ \
+    python3-dev \
+    make \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python deps
