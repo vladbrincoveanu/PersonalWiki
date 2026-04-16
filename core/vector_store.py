@@ -80,10 +80,7 @@ class VectorStore:
             self._table = self._db.open_table(TABLE_NAME)
 
     def upsert(self, path: str, text: str, vector: list[float], links: list[str], metadata: dict):
-        try:
-            self._table.delete(f"path = '{_escape_path(path)}'")
-        except Exception:
-            pass
+        self._table.delete(f"path = '{_escape_path(path)}'")
         self._table.add([{
             "path": path,
             "text": text,
@@ -91,6 +88,14 @@ class VectorStore:
             "links": links,
             "metadata": json.dumps(metadata),
         }])
+
+    def delete(self, path: str) -> bool:
+        """Delete a path from the vector store. Returns True if a row was deleted."""
+        try:
+            self._table.delete(f"path = '{_escape_path(path)}'")
+            return True
+        except Exception:
+            return False
 
     def search(self, vector: list[float], top_k: int = 3) -> list[dict]:
         rows = self._table.search([float(v) for v in vector]).limit(top_k).to_list()

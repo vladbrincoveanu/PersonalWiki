@@ -41,10 +41,7 @@ def cleanup_junk() -> list[str]:
             _logger.info("Junk cleanup: removing %s", md_path.name)
             md_path.unlink()
             # Remove from vector store
-            try:
-                store.upsert(path=str(md_path), text="", vector=[], links=[], metadata={})
-            except Exception:
-                pass
+            store.delete(str(md_path))
             deleted.append(str(md_path))
         except Exception as e:
             _logger.warning("Junk cleanup: failed to process %s: %s", md_path.name, e)
