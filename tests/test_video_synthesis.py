@@ -21,19 +21,20 @@ def test_semantic_chunk_exact_60k():
 
 
 def test_semantic_chunk_oversize_splits():
-    """Over-60k transcript falls back to fixed chunking when chapter split produces an empty first chunk."""
-    # The chapter regex matches at position 0 (start of string), producing an empty
-    # first chunk which fails the 60k minimum check. Falls through to fixed chunking
-    # which splits at newlines, yielding 3 chunks: header-only, content, remainder.
+    """Over-60k transcript with chapter markers splits correctly without empty chunks."""
+    # The chapter regex matches at position 0 (start of string). Deduplication
+    # ensures no empty first chunk. First chunk meets 60k minimum.
     section1 = "[Chapter: Thinking in First Principles]\n" + ("word " * 12000)   # ~60k
     section2 = "\n[Chapter: Mental Models in Practice]\n" + ("idea " * 3000)     # ~15k
     text = section1 + section2
     assert len(text) > 60_000
     chunks = semantic_chunk(text)
-    assert len(chunks) == 3
-    # Chunk 1 is just the first chapter header (no preceding text)
-    assert "[Chapter: Thinking in First Principles]" in chunks[0].text
-    assert chunks[1].text.startswith("\nword word")  # content section
+    assert len(chunks) == 2
+    # First chunk starts with chapter marker and has substantial content
+    assert chunks[0].text.startswith("[Chapter: Thinking in First Principles]")
+    assert len(chunks[0].text) >= 60_000
+    # Second chunk contains the second chapter marker
+    assert "[Chapter: Mental Models in Practice]" in chunks[1].text
 
 
 def test_semantic_chunk_respects_60k_minimum():
@@ -240,3 +241,18 @@ def test_video_under_60k_no_synthesis_needed(monkeypatch):
 
     assert "enrich" in result
     assert "synthesis" not in result  # synthesis should NOT be called for short video
+
+
+def test_semantic_chunk_chapter_at_start_no_empty_chunk():
+    """Text starting with chapter marker must not produce empty first chunk."""
+    section1 = "[Chapter: Introduction]\n" + ("word " * 12000)  # ~60k
+    section2 = "\n[Chapter: Main Content]\n" + ("idea " * 3000)   # ~15k
+    text = section1 + section2
+    chunks = semantic_chunk(text)
+    # Must not have any empty chunks
+    assert all(len(c.text) > 0 for c in chunks), "Empty chunk detected"
+    # Must have exactly 2 chunks
+    assert len(chunks) == 2
+    # First chunk must start with chapter marker and have substantial content
+    assert chunks[0].text.startswith("[Chapter: Introduction]")
+    assert len(chunks[0].text) >= 60000

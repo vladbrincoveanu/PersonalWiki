@@ -138,11 +138,16 @@ def _find_paragraph_splits(text: str) -> List[int]:
 
 def _build_chunks(text: str, splits: List[int]) -> List[Chunk]:
     """Build chunks from a list of split indices."""
+    # Deduplicate consecutive boundaries (fixes empty chunk when split==0)
     boundaries = [0] + sorted(set(splits)) + [len(text)]
+    deduped: list[int] = []
+    for b in boundaries:
+        if not deduped or b != deduped[-1]:
+            deduped.append(b)
     chunks = []
-    for i in range(len(boundaries) - 1):
-        start = boundaries[i]
-        end = boundaries[i + 1]
+    for i in range(len(deduped) - 1):
+        start = deduped[i]
+        end = deduped[i + 1]
         chunk_text = text[start:end]
         chunks.append(
             Chunk(
