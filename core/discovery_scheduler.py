@@ -39,6 +39,118 @@ KEYWORDS_FILE = Path(VAULT_PATH) / "_keywords"
 _SEEN_URLS_FILE = Path.home() / ".personalWiki" / "discovery_seen_urls.json"
 
 
+# ---------------------------------------------------------------------------
+# Helper functions (used by DiscoveryScheduler and tests)
+# ---------------------------------------------------------------------------
+
+def _measure_prose(text: str) -> tuple[int, float]:
+    """Return (prose_char_count, prose_ratio) for text.
+
+    Prose blocks: split by double newlines, filter blocks with <3 words,
+    all-caps blocks, and blocks with <30% alphabetic chars.
+    """
+    total_chars = len(text.strip())
+    if total_chars == 0:
+        return 0, 0.0
+
+    blocks = re.split(r"\n\s*\n", text.strip())
+    prose_chars = 0
+
+    for block in blocks:
+        block = block.strip()
+        words = block.split()
+        if len(words) < 3:
+            continue
+        # Skip all-caps blocks (headings, nav)
+        if block.isupper():
+            continue
+        # Skip blocks with mostly symbols (tables, data)
+        alpha = sum(1 for c in block if c.isalpha())
+        if alpha / len(block) < 0.3:
+            continue
+        prose_chars += len(block)
+
+    ratio = prose_chars / total_chars if total_chars > 0 else 0.0
+    return prose_chars, ratio
+
+
+def _extract_article_links(html: str, parent_url: str, keyword: str) -> list[str]:
+    """Extract candidate article links from HTML of a thin page.
+
+    Filters: same domain only, skips nav/footer/pagination/media links,
+    requires article indicators (/article/, /post/, /news/, /blog/, year pattern).
+    Returns deduped ordered list (DOM order preserved).
+    """
+    from urllib.parse import urljoin, urlparse
+
+    SKIP_PATTERNS = ["/nav/", "/menu/", "/footer/", "/header/",
+                     "/sidebar/", "/pagination/", "/tag/", "/category/"]
+    MEDIA_EXTS = [".jpg", ".png", ".gif", ".pdf", ".mp4", ".zip"]
+    ARTICLE_INDICATORS = ["/article/", "/post/", "/news/", "/blog/",
+                         "/2024/", "/2025/", "/2026/"]
+
+    parsed_parent = urlparse(parent_url)
+    domain = parsed_parent.netloc
+
+    link_re = re.compile(r'href="([^"#]+)"')
+    candidates = []
+
+    for match in link_re.finditer(html):
+        href = match.group(1)
+        full_url = urljoin(parent_url, href)
+        parsed = urlparse(full_url)
+
+        # Same domain only
+        if parsed.netloc != domain:
+            continue
+
+        url_lower = full_url.lower()
+
+        # Skip nav/footer patterns
+        if any(p in url_lower for p in SKIP_PATTERNS):
+            continue
+
+        # Skip media
+        if any(url_lower.endswith(ext) for ext in MEDIA_EXTS):
+            continue
+
+        # Must look like an article
+        if not any(ind in url_lower for ind in ARTICLE_INDICATORS):
+            continue
+
+        candidates.append(full_url)
+
+    return list(dict.fromkeys(candidates))  # dedupe, preserve order
+
+
+def _pick_best_link(urls: list[str], keyword: str) -> str:
+    """Pick best article link from candidates by keyword relevance + slug length.
+
+    Scoring: +10 for keyword in URL, +len(slug)/100 for specificity.
+    Returns highest-scoring URL or empty string.
+    """
+    if not urls:
+        return ""
+
+    keyword_lower = keyword.lower()
+
+    # Score each URL
+    scored = []
+    for url in urls:
+        score = 0
+        url_lower = url.lower()
+        # Keyword match
+        if keyword_lower in url_lower:
+            score += 10
+        # Slug length (longer = more specific article)
+        slug = url_lower.split("/")[-1]
+        score += len(slug) / 100
+        scored.append((score, url))
+
+    scored.sort(reverse=True)
+    return scored[0][1]
+
+
 class DiscoveryScheduler:
     def __init__(self):
         self._running = False
