@@ -526,3 +526,27 @@ def sample_notes():
         },
     ]
 
+
+def test_path_with_single_quote_no_injection():
+    """Paths with single quotes must be safely escaped in where() clauses."""
+    import tempfile
+    from core.vector_store import VectorStore
+
+    tmp = tempfile.mkdtemp()
+    store = VectorStore(index_path=tmp)
+
+    # Path with single quote — would break SQL without escaping
+    path = "notes/O'Reilly's Notes.md"
+
+    # This must not raise a SQL error
+    store.upsert(
+        path=path,
+        text="Test content",
+        vector=[0.0] * 384,
+        links=[],
+        metadata={"title": "O'Reilly's Notes", "_mtime": 999.0},
+    )
+    assert store.exists(path) is True
+    assert store.get_title_by_url(path) == "O'Reilly's Notes"
+    assert store.get_mtime(path) == 999.0
+

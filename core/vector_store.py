@@ -81,7 +81,7 @@ class VectorStore:
 
     def upsert(self, path: str, text: str, vector: list[float], links: list[str], metadata: dict):
         try:
-            self._table.delete(f"path = '{path}'")
+            self._table.delete(f"path = '{_escape_path(path)}'")
         except Exception:
             pass
         self._table.add([{
@@ -101,13 +101,13 @@ class VectorStore:
         return results
 
     def exists(self, path: str) -> bool:
-        rows = self._table.search().where(f"path = '{path}'").limit(1).to_list()
+        rows = self._table.search().where(f"path = '{_escape_path(path)}'").limit(1).to_list()
         return len(rows) > 0
 
     def get_title_by_url(self, url: str) -> str | None:
         """Return the stored note title for a URL, or None if not found."""
         try:
-            rows = self._table.search().where(f"path = '{url}'").limit(1).to_list()
+            rows = self._table.search().where(f"path = '{_escape_path(url)}'").limit(1).to_list()
             if not rows:
                 return None
             metadata = _parse_metadata(rows[0].get("metadata", "{}"))
@@ -124,7 +124,7 @@ class VectorStore:
 
     def get_mtime(self, path: str) -> float:
         """Return stored mtime for a path, or 0.0 if not found."""
-        rows = self._table.search().where(f"path = '{path}'").limit(1).to_list()
+        rows = self._table.search().where(f"path = '{_escape_path(path)}'").limit(1).to_list()
         if not rows:
             return 0.0
         meta = _parse_metadata(rows[0].get("metadata", "{}"))
