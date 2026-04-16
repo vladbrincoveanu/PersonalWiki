@@ -8,6 +8,6 @@ services:
     env_file:
       - .env
     environment:
-      - VAULT_PATH=/vault/notes
+      - VAULT_PATH=/vault
       - INDEX_PATH=/app/.vke_index
     restart: unless-stopped

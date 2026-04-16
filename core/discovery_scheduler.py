@@ -696,7 +696,7 @@ class DiscoveryScheduler:
             except Exception as e:
                 _logger.error("Discovery: cycle failed: %s", e)
 
-    def start(self, pipeline_func=None):
+    async def start(self, pipeline_func=None):
         """Start the scheduler. pipeline_func is the pipeline coroutine to call."""
         if not DISCOVERY_ENABLED:
             _logger.info("Discovery: disabled via DISCOVERY_ENABLED")
@@ -706,6 +706,8 @@ class DiscoveryScheduler:
             return
         self._running = True
         self._pipeline_func = pipeline_func
+        # Initial keyword refresh inline so keywords are available immediately
+        await self._refresh_keywords()
         self._scheduler_task = asyncio.create_task(self._scheduler_loop())
         _logger.info("Discovery scheduler started")
 

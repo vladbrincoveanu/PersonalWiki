@@ -24,7 +24,7 @@ async def _get_scheduler() -> DiscoveryScheduler:
             # Double-check after acquiring lock
             if _scheduler is None:
                 _scheduler = DiscoveryScheduler()
-                _scheduler.start(pipeline_func=run_pipeline)
+                await _scheduler.start(pipeline_func=run_pipeline)
     return _scheduler
 
 @asynccontextmanager

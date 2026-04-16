@@ -121,3 +121,33 @@ async def test_job_queue_cleanup_not_racy():
 
     assert len(results) == 5
     assert job_id not in _job_queues  # queue must be cleaned up
+
+
+@pytest.mark.asyncio
+async def test_keywords_returns_graph_and_manual():
+    """Keywords endpoint returns graph keywords (from vault) and manual keywords (from _keywords file)."""
+    import asyncio
+    import app as app_module
+
+    # Mock the scheduler with known keywords
+    mock_scheduler = MagicMock()
+    mock_scheduler._keywords = ["quantum physics", "machine learning", "high energy physics"]
+
+    async def mock_get_scheduler():
+        return mock_scheduler
+
+    with patch.object(app_module, '_get_scheduler', mock_get_scheduler):
+        with patch('app.load_manual_keywords', return_value=["physics"]):
+            client = make_client()
+            resp = client.get("/keywords")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert "keywords" in body
+    assert "manual" in body
+    assert "graph" in body
+    assert "total" in body
+    # Manual should contain "physics", graph should have the rest
+    assert "physics" in body["manual"], f"Expected 'physics' in manual, got: {body['manual']}"
+    assert "quantum physics" in body["graph"], f"Expected 'quantum physics' in graph, got: {body['graph']}"
+    assert body["total"] == 3
