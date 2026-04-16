@@ -399,7 +399,7 @@ class DiscoveryScheduler:
         validated = []
         for r in raw_urls:
             url = r.get("url", "")
-            if not url or not url.startswith("http"):
+            if not url or not url.startswith("https"):
                 continue
             try:
                 req = urllib.request.Request(url, method="HEAD", headers={"User-Agent": "Mozilla/5.0"})

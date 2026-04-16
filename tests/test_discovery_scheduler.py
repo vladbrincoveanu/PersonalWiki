@@ -376,6 +376,54 @@ def test_pick_best_link():
     assert "very-long-article" in best2  # longest slug
 
 
+def test_minimax_search_rejects_http_urls():
+    """MiniMax search must only accept https:// URLs."""
+    from core.discovery_scheduler import DiscoveryScheduler
+    import json
+
+    ds = DiscoveryScheduler()
+
+    # Mock HEAD to succeed for both http and https
+    class FakeHTTPResponse:
+        def __init__(self, status=200):
+            self.status = status
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            pass
+
+    def fake_urlopen(req, timeout=None):
+        return FakeHTTPResponse(status=200)
+
+    # Mock minimax to return mixed http/https URLs
+    def fake_post(url, headers=None, json_data=None, timeout=None, **kwargs):
+        m = MagicMock()
+        m.raise_for_status = MagicMock()
+        m.json = MagicMock(return_value={
+            "base_resp": {"status_code": 0},
+            "choices": [{
+                "message": {
+                    "content": json.dumps([
+                        {"url": "http://insecure.example.com/page", "title": "Insecure", "snippet": ""},
+                        {"url": "https://secure.example.com/page", "title": "Secure", "snippet": ""},
+                    ])
+                }
+            }]
+        })
+        return m
+
+    with patch("core.discovery_scheduler.urllib.request.urlopen", side_effect=fake_urlopen):
+        with patch("core.discovery_scheduler.requests.post", side_effect=fake_post):
+            async def fake_fetch(url):
+                return "Real article content."
+            with patch.object(ds, "_fetch_article_snippet", fake_fetch):
+                results = asyncio.run(ds._search_minimax("test"))
+
+    urls = [r["url"] for r in results]
+    assert "http://insecure.example.com/page" not in urls, "http:// URL was not rejected"
+    assert "https://secure.example.com/page" in urls
+
+
 @pytest.mark.skip(reason="MiniMax API not accessible from test environment — run manually")
 @pytest.mark.integration
 def test_search_minimax_returns_real_urls_with_real_content():
