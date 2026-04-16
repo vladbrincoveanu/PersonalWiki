@@ -29,3 +29,16 @@ def test_invalidate_then_rebuild():
     assert index1 is not None
     assert index2 is not None
     assert index1 is not index2
+
+def test_bm25_search_handles_index_exception(monkeypatch):
+    """bm25_search must return [] on ensure_index exception, not crash."""
+    from core.bm25_index import bm25_search
+
+    def raise_index(*args):
+        raise RuntimeError("Disk error simulating corruption")
+
+    monkeypatch.setattr("core.bm25_index.ensure_index", raise_index)
+
+    # Must return [] not raise
+    result = bm25_search("test query")
+    assert result == []

@@ -75,7 +75,11 @@ def bm25_search(query: str, top_k: int = 5) -> list[dict]:
     Search the BM25 index.
     Returns list of {path, score, rank} sorted by BM25 descending.
     """
-    index, paths, corpus = ensure_index()
+    try:
+        index, paths, corpus = ensure_index()
+    except Exception as e:
+        _logger.warning("BM25 search failed to build index: %s", e)
+        return []
     if not paths:
         return []
     query_tokens = _simple_tokenizer(query)
