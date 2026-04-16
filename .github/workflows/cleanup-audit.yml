@@ -1,0 +1,21 @@
+name: Hallucination Audit
+on: [push, pull_request]
+
+jobs:
+  hallucination:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Run hallucination remover
+        run: python scripts/hallucination_remover.py --path . --fix
+      - name: Show diff
+        run: git diff --stat
+      - name: Commit auto-fixes
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "fix: auto-remove hallucinations"
+          auto_push: true
