@@ -31,6 +31,7 @@ from core.keywords_manager import (
 )
 from ingesters.web import extract_url
 from pathlib import Path
+from vault.junk_cleaner import cleanup_junk
 
 _logger = logging.getLogger(__name__)
 
@@ -547,6 +548,14 @@ class DiscoveryScheduler:
                 if kw not in self._keywords:
                     self._keywords.append(kw)
                     _logger.info("Amplification: explore keyword added %r", kw)
+
+        # Junk cleanup — remove video notes with no transcript
+        try:
+            deleted = cleanup_junk()
+            if deleted:
+                _logger.info("Junk cleanup: removed %d notes", len(deleted))
+        except Exception as e:
+            _logger.warning("Junk cleanup failed: %s", e)
 
     async def _run_pipeline(self, url: str):
         """Run ingestion pipeline for a single URL."""

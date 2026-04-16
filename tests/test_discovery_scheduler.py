@@ -445,3 +445,28 @@ def test_search_minimax_returns_real_urls_with_real_content():
         # Snippets should be real content from actual pages (Crawl4AI fetched)
         assert len(r["snippet"]) > 20, f"Snippet should be real content, got: {r['snippet'][:50]}"
         assert r["snippet"] != "Content from fake url", "Snippet should not be from test mock"
+
+
+@pytest.mark.asyncio
+async def test_run_discovery_cycle_calls_cleanup_junk():
+    """
+    TDD: Verify cleanup_junk() is called at the end of _run_discovery_cycle().
+    The junk cleaner removes video notes with no transcript content.
+    """
+    from core.discovery_scheduler import DiscoveryScheduler
+
+    ds = DiscoveryScheduler()
+    ds._keywords = []  # No keywords so cycle completes quickly
+
+    # Mock store to avoid real vector store interactions
+    mock_store = MagicMock()
+    mock_store.exists.return_value = False
+
+    with (
+        patch("core.vector_store.get_store", return_value=mock_store),
+        # Patch cleanup_junk in the discovery_scheduler module namespace where it's imported
+        patch("core.discovery_scheduler.cleanup_junk", return_value=["/path/to/deleted.md"]) as mock_cleanup,
+        patch.object(ds, "_search_keyword", new_callable=AsyncMock, return_value=[]),
+    ):
+        await ds._run_discovery_cycle()
+        mock_cleanup.assert_called_once()
