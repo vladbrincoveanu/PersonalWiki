@@ -119,8 +119,8 @@ async def test_scheduler_double_start_guard():
     """Calling start() twice is a no-op, not a double scheduler."""
     from core.discovery_scheduler import DiscoveryScheduler
     s = DiscoveryScheduler()
-    s.start()
-    s.start()  # should be no-op
+    await s.start()
+    await s.start()  # should be no-op
 
     assert s._running is True
     # Only one task should exist
