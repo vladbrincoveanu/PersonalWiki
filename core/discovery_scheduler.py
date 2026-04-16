@@ -7,6 +7,7 @@ import asyncio
 import json
 import logging
 import os
+import random
 import re
 import requests
 import threading
@@ -188,7 +189,6 @@ class DiscoveryScheduler:
             "operating systems",
             "network protocols",
         ]
-        import random
         available = [k for k in explore_pool if k not in self._keywords]
         return random.sample(available, min(2, len(available)))
 

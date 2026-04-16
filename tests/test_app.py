@@ -34,13 +34,14 @@ def test_stream_yields_events():
 
     job_id = str(uuid.uuid4())
     q = asyncio.Queue()
+    done_event = asyncio.Event()
 
     async def fill():
         await q.put("<p>Step 1</p>")
         await q.put(None)
 
     asyncio.run(fill())
-    _job_queues[job_id] = q
+    _job_queues[job_id] = (q, done_event)
 
     client = make_client()
     with client.stream("GET", f"/stream/{job_id}") as resp:
@@ -85,14 +86,16 @@ async def test_job_queue_cleanup_not_racy():
 
     job_id = "test-race-123"
     queue = asyncio.Queue()
-    _job_queues[job_id] = queue
+    done_event = asyncio.Event()
+    _job_queues[job_id] = (queue, done_event)
 
     async def writer():
         for i in range(5):
             await queue.put(f"<p>msg {i}</p>")
         await queue.put(None)
-        # _run() cleanup: give stream() time to drain before removing from dict
-        await asyncio.sleep(0.05)
+        done_event.set()  # Signal stream() done; _run() will pop
+        # Simulate _run() cleanup after done_event is set
+        await asyncio.sleep(0)
         _job_queues.pop(job_id, None)
 
     async def reader():
@@ -102,6 +105,7 @@ async def test_job_queue_cleanup_not_racy():
             if msg is None:
                 break
             results.append(msg)
+        await done_event.wait()  # Wait for writer to clean up
         return results
 
     # Run concurrently — without fix, this may miss messages or KeyError

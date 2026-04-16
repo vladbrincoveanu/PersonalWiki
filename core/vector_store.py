@@ -118,7 +118,7 @@ class VectorStore:
     def get_all_paths(self) -> list[str]:
         """Return all indexed URLs/paths."""
         try:
-            return [row["path"] for row in self._table.to_list() if row.get("path")]
+            return [_escape_path(row["path"]) for row in self._table.to_list() if row.get("path")]
         except Exception:
             return []
 

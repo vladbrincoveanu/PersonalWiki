@@ -67,6 +67,8 @@ async def run_pipeline(
     url: str | None = None,
     pdf_path: str | None = None,
 ) -> AsyncGenerator[str, None]:
+    import logging
+    _logger = logging.getLogger(__name__)
     store = get_store()
     source = url or pdf_path
 

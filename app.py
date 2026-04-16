@@ -13,7 +13,7 @@ from vault.scanner import scan_vault
 from core.discovery_scheduler import DiscoveryScheduler, KEYWORDS_FILE
 from core.keywords_manager import load_manual_keywords
 
-_job_queues: dict[str, asyncio.Queue] = {}
+_job_queues: dict[str, tuple[asyncio.Queue, asyncio.Event]] = {}
 _scheduler: DiscoveryScheduler | None = None
 _scheduler_lock = asyncio.Lock()
 
@@ -51,7 +51,9 @@ async def ingest(
     file: UploadFile = None,
 ):
     job_id = str(uuid.uuid4())
-    _job_queues[job_id] = asyncio.Queue()
+    queue: asyncio.Queue[str | None] = asyncio.Queue()
+    done_event = asyncio.Event()
+    _job_queues[job_id] = (queue, done_event)
 
     async def _run():
         kwargs = {}
@@ -67,13 +69,12 @@ async def ingest(
 
         try:
             async for msg in run_pipeline(**kwargs):
-                await _job_queues[job_id].put(f"<p>{msg}</p>")
+                await queue.put(f"<p>{msg}</p>")
         except Exception as e:
-            await _job_queues[job_id].put(f"<p>❌ Unexpected error: {e}</p>")
+            await queue.put(f"<p>❌ Unexpected error: {e}</p>")
         finally:
-            await _job_queues[job_id].put(None)  # Sentinel BEFORE cleanup
-            # Give stream() a moment to drain the queue before removing from dict
-            await asyncio.sleep(0.05)
+            await queue.put(None)  # Sentinel
+            done_event.set()  # Signal stream() to exit and allow cleanup
             _job_queues.pop(job_id, None)
             if tmp_path:
                 os.unlink(tmp_path)
@@ -94,13 +95,14 @@ async def ingest(
 @app.get("/stream/{job_id}")
 async def stream(job_id: str):
     async def generate():
-        q = _job_queues.get(job_id)
-        if not q:
+        entry = _job_queues.get(job_id)
+        if not entry:
             return
+        queue, done_event = entry
         while True:
-            msg = await q.get()
+            msg = await queue.get()
             if msg is None:
-                break  # DON'T pop — _run() owns cleanup
+                break
             yield {"event": "message", "data": msg}
     return EventSourceResponse(generate())
 
