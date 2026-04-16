@@ -1,18 +1,13 @@
-version: '3.8'
-
 services:
-  vke:
+  personalwiki:
     build: .
-    image: aijurnalv2/vke:latest
     ports:
-      - "8080:8080"
+      - "8000:8000"
     volumes:
-      - /Users/vladbrincoveanu/Documents/ObsidianVault/openclaw:/app/vault
-    environment:
-      - ANTHROPIC_BASE_URL=${ANTHROPIC_BASE_URL:-https://api.minimax.io/anthropic}
-      - ANTHROPIC_MODEL=${ANTHROPIC_MODEL:-MiniMax-M2.7-highspeed}
+      - ${VAULT_PATH:-/Users/vladbrincoveanu/Library/Mobile Documents/iCloud~md~obsidian/Documents/PersonalWiki}:/vault
     env_file:
       - .env
-    mem_limit: 512m
-    cpus: '1.0'
+    environment:
+      - VAULT_PATH=/vault/notes
+      - INDEX_PATH=/app/.vke_index
     restart: unless-stopped
