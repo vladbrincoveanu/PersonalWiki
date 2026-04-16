@@ -380,6 +380,11 @@ def test_whisper_transcription(monkeypatch, tmp_path):
     # context so it captures the patched whisper.load_model
     import whisper as whisper_module
     from unittest.mock import patch
+
+    # Reset the module-level cache before the test
+    import ingesters.youtube as yt_module
+    yt_module._whisper_model = None
+
     with patch.object(whisper_module, "load_model", mock_load_model):
         monkeypatch.setattr("subprocess.run", mock_run)
         monkeypatch.setattr("tempfile.TemporaryDirectory", MockTemporaryDirectory)
@@ -391,6 +396,38 @@ def test_whisper_transcription(monkeypatch, tmp_path):
     assert result is not None
     assert "Whisper transcribed text" in result
     assert "abc123DEF12" in subprocess_calls[0][-1]
+
+
+def test_whisper_model_cached_not_reloaded(monkeypatch):
+    """Whisper model must be loaded once and cached, not reloaded on every call."""
+    import whisper as whisper_module
+
+    # Reset the module-level cache before the test
+    import ingesters.youtube as yt
+    yt._whisper_model = None
+
+    load_count = 0
+    mock_model = MagicMock()
+    mock_model.transcribe.return_value = {"text": "transcribed text"}
+
+    def counting_load_model(name):
+        nonlocal load_count
+        load_count += 1
+        return mock_model
+
+    # Patch at the module level that ingesters.youtube uses
+    monkeypatch.setattr(whisper_module, "load_model", counting_load_model)
+    # Also mock subprocess.run to avoid actually downloading
+    monkeypatch.setattr("subprocess.run", lambda *a, **kw: MagicMock(returncode=0))
+
+    # Import after patches are active to get the patched reference
+    from ingesters.youtube import _try_whisper_transcription
+
+    # Call twice — model should only be loaded once
+    _try_whisper_transcription("https://youtube.com/watch?v=dummy")
+    _try_whisper_transcription("https://youtube.com/watch?v=dummy2")
+
+    assert load_count == 1, f"Whisper model loaded {load_count} times instead of 1 (should be cached)"
 
 
 def test_extract_youtube_full_pipeline_all_fail(monkeypatch):

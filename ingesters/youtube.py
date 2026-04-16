@@ -2,6 +2,7 @@ import os
 import re
 import subprocess
 import tempfile
+import whisper
 from ingesters import Document
 from youtube_transcript_api import (
     YouTubeTranscriptApi,
@@ -13,6 +14,15 @@ from youtube_transcript_api import (
 _TIMESTAMP_RE = re.compile(r"^\d{2}:\d{2}:\d{2}[.,]\d{3}\s*-->.*$", re.MULTILINE)
 _TAG_RE = re.compile(r"<[^>]+>")
 _CUE_SETTING_RE = re.compile(r"^(?:align|line|position|size|vertical):.*$", re.MULTILINE)
+
+_whisper_model = None  # Module-level cache
+
+def _get_whisper_model():
+    """Load and cache Whisper model."""
+    global _whisper_model
+    if _whisper_model is None:
+        _whisper_model = whisper.load_model("base")
+    return _whisper_model
 
 _SUBTITLE_TIERS = [
     {"args": ["--write-subs", "--write-auto-subs", "--sub-langs", "en",      "--sub-format", "vtt", "--skip-download"], "name": "en"},
@@ -114,8 +124,6 @@ def _try_whisper_transcription(url: str) -> str | None:
     Uses whisper 'base' model for speed (CPU, ~2x realtime).
     """
     try:
-        import whisper
-        import subprocess
         import tempfile
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -133,8 +141,8 @@ def _try_whisper_transcription(url: str) -> str | None:
             if result.returncode != 0:
                 return None
 
-            # Transcribe with Whisper base model
-            model = whisper.load_model("base")
+            # Transcribe with Whisper base model (cached at module level)
+            model = _get_whisper_model()
             transcription = model.transcribe(audio_path, fp16=False)
             text = transcription["text"].strip()
             return text if text else None
