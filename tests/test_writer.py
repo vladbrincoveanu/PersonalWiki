@@ -417,3 +417,47 @@ def test_write_note_no_recent_developments_when_empty_statuses():
 
         post = frontmatter.load(path)
         assert "## Recent Developments" not in post.content
+
+
+def test_build_video_body_uses_correct_field_names():
+    """_build_video_body must use 'key_quotes' and 'topics_covered', not 'quotes' and 'topics'."""
+    from vault.writer import _build_video_body
+
+    note = {
+        "summary": "Test summary",
+        "type": "video",
+        # These are the actual field names from MiniMax API
+        "key_quotes": [{"text": "Something important", "speaker": "Dr. Smith"}],
+        "topics_covered": ["machine learning", "AI safety"],
+        "chapters": [{"time": "00:00", "title": "Intro"}],
+    }
+    body = _build_video_body(note)
+
+    # key_quotes content must appear
+    assert "Something important" in body
+    assert "Dr. Smith" in body
+    # topics_covered content must appear
+    assert "machine learning" in body
+    assert "AI safety" in body
+    # Old wrong field names must NOT create spurious sections
+    assert "## Key Quotes\n\n_" not in body  # would appear if quotes==[] and key_quotes ignored
+
+
+def test_build_video_body_missing_quote_keys_no_crash():
+    """Missing 'text' or 'speaker' in key_quotes must not raise KeyError."""
+    from vault.writer import _build_video_body
+
+    note = {
+        "summary": "Test",
+        "type": "video",
+        "key_quotes": [
+            {"text": "Valid quote"},          # missing 'speaker'
+            {"speaker": "Someone"},            # missing 'text'
+            {"text": "Valid", "speaker": "Person"},  # valid
+            {},                                 # empty dict
+        ],
+    }
+    # Must not raise KeyError
+    body = _build_video_body(note)
+    assert "Valid quote" in body
+    assert "Valid" in body

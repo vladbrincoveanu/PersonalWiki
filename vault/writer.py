@@ -63,19 +63,22 @@ def _build_video_body(note: dict) -> str:
     else:
         chapters_section = ""
 
-    # Key quotes
-    quotes = note.get("quotes", [])
-    if quotes:
+    # Key quotes — use 'key_quotes' (MiniMax field name), not 'quotes'
+    key_quotes = note.get("key_quotes", [])
+    if key_quotes:
         quotes_lines = "\n".join(
-            f"> \"{q['text']}\" — {q['speaker']}"
-            for q in quotes if q.get("text")
+            f"> \"{q.get('text', '')}\" — {q.get('speaker', 'Unknown')}"
+            for q in key_quotes if q.get("text")
         )
-        quotes_section = f"\n## Key Quotes\n{quotes_lines}\n"
+        if quotes_lines:
+            quotes_section = f"\n## Key Quotes\n{quotes_lines}\n"
+        else:
+            quotes_section = ""
     else:
         quotes_section = ""
 
-    # Topics covered
-    topics = note.get("topics", [])
+    # Topics covered — use 'topics_covered' (MiniMax field name), not 'topics'
+    topics = note.get("topics_covered", [])
     if topics:
         topics_lines = "\n".join(f"- {t}" for t in topics)
         topics_section = f"\n## Topics Covered\n{topics_lines}\n"
