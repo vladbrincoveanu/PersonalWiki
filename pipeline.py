@@ -149,7 +149,12 @@ async def run_pipeline(
     # Step 3.5b: Gap detection
     note["gap_entities"] = await asyncio.to_thread(detect_gaps, note.get("entities", []))
     if note["gap_entities"]:
-        asyncio.create_task(_run_gap_searches(note["gap_entities"]))
+        gap_task = asyncio.create_task(_run_gap_searches(note["gap_entities"]))
+        gap_task.add_done_callback(
+            lambda t: _logger.debug("Gap search completed: %s", t.result())
+            if not t.cancelled() and t.exception() is None
+            else _logger.warning("Gap search failed: %s", t.exception())
+        )
 
     # Step 4: Write
     yield "Saving note..."
