@@ -25,9 +25,12 @@ def _get_scheduler() -> DiscoveryScheduler:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    count = await asyncio.to_thread(scan_vault)
-    if count:
-        print(f"Startup: indexed {count} notes.")
+    try:
+        count = await asyncio.to_thread(scan_vault)
+        if count:
+            print(f"Startup: indexed {count} notes.")
+    except Exception as e:
+        print(f"Startup: scan_vault failed ({e}), starting without vault index.")
     yield
 
 app = FastAPI(lifespan=lifespan)
@@ -64,9 +67,12 @@ async def ingest(
         except Exception as e:
             await _job_queues[job_id].put(f"<p>❌ Unexpected error: {e}</p>")
         finally:
+            await _job_queues[job_id].put(None)  # Sentinel BEFORE cleanup
+            # Give stream() a moment to drain the queue before removing from dict
+            await asyncio.sleep(0.05)
+            _job_queues.pop(job_id, None)
             if tmp_path:
                 os.unlink(tmp_path)
-            await _job_queues[job_id].put(None)
 
     asyncio.create_task(_run())
 
@@ -90,8 +96,7 @@ async def stream(job_id: str):
         while True:
             msg = await q.get()
             if msg is None:
-                _job_queues.pop(job_id, None)
-                break
+                break  # DON'T pop — _run() owns cleanup
             yield {"event": "message", "data": msg}
     return EventSourceResponse(generate())
 

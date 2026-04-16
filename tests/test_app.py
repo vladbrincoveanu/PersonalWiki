@@ -47,3 +47,39 @@ def test_stream_yields_events():
         content = b"".join(resp.iter_bytes())
 
     assert b"Step 1" in content
+
+@pytest.mark.asyncio
+async def test_job_queue_cleanup_not_racy():
+    """stream() must not pop queue while _run() is still writing."""
+    import asyncio
+    from app import _job_queues
+
+    job_id = "test-race-123"
+    queue = asyncio.Queue()
+    _job_queues[job_id] = queue
+
+    async def writer():
+        for i in range(5):
+            await queue.put(f"<p>msg {i}</p>")
+        await queue.put(None)
+        # _run() cleanup: give stream() time to drain before removing from dict
+        await asyncio.sleep(0.05)
+        _job_queues.pop(job_id, None)
+
+    async def reader():
+        results = []
+        while True:
+            msg = await queue.get()
+            if msg is None:
+                break
+            results.append(msg)
+        return results
+
+    # Run concurrently — without fix, this may miss messages or KeyError
+    writer_task = asyncio.create_task(writer())
+    reader_task = asyncio.create_task(reader())
+    results = await reader_task
+    await writer_task
+
+    assert len(results) == 5
+    assert job_id not in _job_queues  # queue must be cleaned up
