@@ -26,51 +26,45 @@ def scan_file(path: Path, fix: bool = False) -> list[tuple[int, str]]:
         return issues
 
     original = content
+    lines = content.splitlines(keepends=True)
 
-    # Check for print() in non-test files
-    if not is_test_file(path):
-        for i, line in enumerate(content.splitlines(), 1):
-            if PRINT_RE.search(line):
-                issues.append((i, "print() statement found (auto-removed)"))
-                if fix:
-                    content = content.replace(line + "\n", "").replace(line, "")
-            if BREAKPOINT_RE.search(line):
-                issues.append((i, "breakpoint() found (auto-removed)"))
-                if fix:
-                    content = content.replace(line + "\n", "").replace(line, "")
-
-    # AST-based checks
+    # Phase 1: AST analysis on ORIGINAL content
+    lines_to_remove: set[int] = set()  # 0-indexed
     try:
         tree = ast.parse(content, filename=str(path))
     except SyntaxError:
         return issues
-
-    # Track line ranges to remove for if False:/if True: branches
-    lines_to_remove = set()
 
     for node in ast.walk(tree):
         if isinstance(node, ast.If):
             if isinstance(node.test, ast.Constant) and node.test.value is False:
                 issues.append((node.lineno, "unreachable if False: branch"))
                 if fix:
-                    # Collect lines from lineno to end_lineno (1-indexed)
-                    for ln in range(node.lineno, node.end_lineno + 1):
+                    for ln in range(node.lineno - 1, node.end_lineno):
                         lines_to_remove.add(ln)
             elif isinstance(node.test, ast.Constant) and node.test.value is True:
                 issues.append((node.lineno, "redundant if True: branch"))
                 if fix:
-                    for ln in range(node.lineno, node.end_lineno + 1):
+                    for ln in range(node.lineno - 1, node.end_lineno):
                         lines_to_remove.add(ln)
 
-    if fix and (content != original or lines_to_remove):
-        # Rebuild content without removed lines
-        all_lines = content.splitlines(keepends=True)
-        # Convert to 0-indexed for filtering
-        removed_0indexed = {ln - 1 for ln in lines_to_remove}
-        new_lines = [l for i, l in enumerate(all_lines) if i not in removed_0indexed]
-        content = "".join(new_lines)
+    # Phase 2: String-based replacements (print/breakpoint) on original
+    for i, line in enumerate(lines):
+        if is_test_file(path):
+            continue
+        if PRINT_RE.search(line):
+            issues.append((i + 1, "print() statement found (auto-removed)"))
+            if fix:
+                lines_to_remove.add(i)
+        elif BREAKPOINT_RE.search(line):
+            issues.append((i + 1, "breakpoint() found (auto-removed)"))
+            if fix:
+                lines_to_remove.add(i)
 
-    if fix and content != original:
+    # Phase 3: Rebuild
+    if fix and lines_to_remove:
+        new_lines = [l for i, l in enumerate(lines) if i not in lines_to_remove]
+        content = "".join(new_lines)
         path.write_text(content, encoding="utf-8")
 
     return issues
