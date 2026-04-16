@@ -46,7 +46,6 @@ class DiscoveryScheduler:
         self._in_flight: set[str] = set()
         self._pipeline_func = None
         # Amplification loop state
-        self._url_keyword_lineage: dict[str, str] = {}  # url -> keyword that discovered it
         self._keyword_scores: dict[str, int] = {}       # keyword -> quality score
         self._discovery_cycle_count = 0                  # count for echo chamber guard
         self._warm_seen_urls()
@@ -133,11 +132,6 @@ class DiscoveryScheduler:
         deleted = _km_purge(keyword, Path(VAULT_PATH))
         _logger.info("Discovery: suppressed graph keyword %r, purged %d files", keyword, len(deleted))
         return deleted
-
-    def record_discovery(self, url: str, keyword: str):
-        """Record that a URL was discovered via a keyword. Used for cycle detection."""
-        if url not in self._url_keyword_lineage:
-            self._url_keyword_lineage[url] = keyword
 
     async def _amplify_from_note(self, note: dict):
         """Extract new keywords from a recently written note and add to pool."""
@@ -521,7 +515,6 @@ class DiscoveryScheduler:
 
                 _logger.info("Discovery: ingesting %s — %s", url, result["title"])
                 self._in_flight.add(url)
-                self.record_discovery(url, keyword)  # Track lineage for cycle detection
                 try:
                     if self._pipeline_func:
                         asyncio.create_task(self._run_pipeline(url))

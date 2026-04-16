@@ -10,6 +10,12 @@ def _escape_path(p: str) -> str:
     """Escape single quotes in path values for safe SQL interpolation."""
     return p.replace("'", "''")
 
+
+def _parse_metadata(meta: str | dict) -> dict:
+    """Parse metadata from JSON string or return as-is if already a dict."""
+    return json.loads(meta) if isinstance(meta, str) else meta
+
+
 SCHEMA = pa.schema([
     pa.field("path", pa.string()),
     pa.field("text", pa.string()),
@@ -90,7 +96,7 @@ class VectorStore:
         rows = self._table.search([float(v) for v in vector]).limit(top_k).to_list()
         results = []
         for row in rows:
-            row["metadata"] = json.loads(row["metadata"]) if isinstance(row["metadata"], str) else row["metadata"]
+            row["metadata"] = _parse_metadata(row["metadata"])
             results.append(row)
         return results
 
@@ -104,9 +110,7 @@ class VectorStore:
             rows = self._table.search().where(f"path = '{url}'").limit(1).to_list()
             if not rows:
                 return None
-            metadata = rows[0].get("metadata", "{}")
-            if isinstance(metadata, str):
-                metadata = json.loads(metadata)
+            metadata = _parse_metadata(rows[0].get("metadata", "{}"))
             return metadata.get("title")
         except Exception:
             return None
@@ -123,9 +127,7 @@ class VectorStore:
         rows = self._table.search().where(f"path = '{path}'").limit(1).to_list()
         if not rows:
             return 0.0
-        meta = rows[0].get("metadata", "{}")
-        if isinstance(meta, str):
-            meta = json.loads(meta)
+        meta = _parse_metadata(rows[0].get("metadata", "{}"))
         return float(meta.get("_mtime", 0.0))
 
     def hybrid_search(self, query: str, top_k: int = 5, min_score: float = 0.001) -> list[dict]:

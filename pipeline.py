@@ -7,7 +7,7 @@ from typing import AsyncGenerator
 from config import TOP_K_SIMILAR, MAX_EMBED_CHARS
 from core.embeddings import embed
 from core.vector_store import get_store
-from core.minimax_client import enrich
+from core.minimax_client import enrich, _MIN_CHUNK_SIZE
 from core.gap_detector import detect_gaps
 from ingesters.router import extract, extract_pdf
 from vault.writer import write_note
@@ -81,26 +81,22 @@ async def run_pipeline(
 
     # Step 1: Extract
     yield "Extracting content..."
-    tmp_pdf_path = None
     images: list[bytes] = []
     try:
         if url:
             doc = await extract(url)
             raw_text = doc.raw_text
-            images = doc.images if hasattr(doc, "images") and doc.images else []
+            images = getattr(doc, 'images', None) or []
         elif pdf_path:
             doc = extract_pdf(pdf_path)
             raw_text = doc.raw_text
-            images = doc.images if hasattr(doc, "images") and doc.images else []
+            images = getattr(doc, 'images', None) or []
         else:
             yield "Error: No url or pdf_path provided."
             return
     except Exception as e:
         yield f"Error during extraction: {e}"
         return
-    finally:
-        if tmp_pdf_path and os.path.exists(tmp_pdf_path):
-            os.unlink(tmp_pdf_path)
 
     # Step 1.5: Content quality gate — skip bad extractions (Track A)
     from core.quality_gate import QualityGate
@@ -128,15 +124,15 @@ async def run_pipeline(
 
     # Step 3: Enrich
     yield "Enriching with Minimax..."
-    if doc.content_type == "video" and len(raw_text) > 60_000:
+    if doc.content_type == "video" and len(raw_text) > _MIN_CHUNK_SIZE:
         # Video + long transcript: use semantic chunking + synthesis
         from core.minimax_client import semantic_chunk, enrich_video_synthesis
-        chunks = semantic_chunk(raw_text)
-        chunk_results = []
-        for chunk in chunks:
-            result = await asyncio.to_thread(enrich, chunk.text, similar_titles, source)
-            chunk_results.append(result)
-        note = await asyncio.to_thread(enrich_video_synthesis, chunk_results, source, similar_titles)
+        chunks = await asyncio.to_thread(semantic_chunk, raw_text)
+        chunk_results = await asyncio.gather(*[
+            asyncio.to_thread(enrich, chunk.text, similar_titles, source)
+            for chunk in chunks
+        ])
+        note = await asyncio.to_thread(enrich_video_synthesis, list(chunk_results), source, similar_titles)
     elif doc.content_type == "video":
         # Video + short transcript: direct enrich (no truncation needed)
         note = await asyncio.to_thread(enrich, raw_text, similar_titles, source)

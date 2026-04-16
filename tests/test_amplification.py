@@ -2,13 +2,6 @@ import pytest, asyncio
 from unittest.mock import patch, MagicMock
 
 
-def test_record_discovery():
-    from core.discovery_scheduler import DiscoveryScheduler
-    scheduler = DiscoveryScheduler()
-    scheduler.record_discovery("https://example.com/1", "transformers")
-    assert scheduler._url_keyword_lineage == {"https://example.com/1": "transformers"}
-
-
 def test_update_keyword_score_positive():
     from core.discovery_scheduler import DiscoveryScheduler
     scheduler = DiscoveryScheduler()

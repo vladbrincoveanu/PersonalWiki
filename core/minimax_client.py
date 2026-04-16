@@ -15,7 +15,6 @@ class Chunk:
     start_index: int
     end_index: int
     chunk_number: int
-    size_chars: int
 
 
 _TIMESTAMP_PATTERN_RE = re.compile(r"^\d{2}:\d{2}:\d{2}[.,]\d{3}\s*-->.+$", re.MULTILINE)
@@ -26,7 +25,26 @@ _CHAPTER_MARKER_RE = re.compile(
 _PARAGRAPH_BREAK_RE = re.compile(r"\n\n+")
 
 _MIN_CHUNK_SIZE = 60_000
-_OVERLAP_SIZE = 5_000
+
+
+def _make_fallback_note(raw_text: str, error: bool = True) -> dict:
+    """Return a fallback note dict used when API calls fail or are skipped."""
+    return {
+        "title": "Untitled",
+        "type": "article",
+        "tags": [],
+        "summary": "",
+        "key_facts": [],
+        "cross_links": [],
+        "entities": [],
+        "figure_captions": [],
+        "why_saved_hint": "",
+        "chapters": [],
+        "key_quotes": [],
+        "topics_covered": [],
+        "raw_text": raw_text,
+        "error": error,
+    }
 
 
 def semantic_chunk(text: str) -> List[Chunk]:
@@ -38,7 +56,6 @@ def semantic_chunk(text: str) -> List[Chunk]:
                 start_index=0,
                 end_index=len(text),
                 chunk_number=1,
-                size_chars=len(text),
             )
         ]
 
@@ -46,21 +63,21 @@ def semantic_chunk(text: str) -> List[Chunk]:
     splits = _find_chapter_splits(text)
     if len(splits) > 1:
         chunks = _build_chunks(text, splits)
-        if all(c.size_chars >= _MIN_CHUNK_SIZE or c is chunks[-1] for c in chunks):
+        if all(len(c.text) >= _MIN_CHUNK_SIZE or c is chunks[-1] for c in chunks):
             return chunks
 
     # Try to split at large timestamp gaps (>10s)
     splits = _find_timestamp_gap_splits(text)
     if len(splits) > 1:
         chunks = _build_chunks(text, splits)
-        if all(c.size_chars >= _MIN_CHUNK_SIZE or c is chunks[-1] for c in chunks):
+        if all(len(c.text) >= _MIN_CHUNK_SIZE or c is chunks[-1] for c in chunks):
             return chunks
 
     # Try paragraph breaks
     splits = _find_paragraph_splits(text)
     if len(splits) > 1:
         chunks = _build_chunks(text, splits)
-        if all(c.size_chars >= _MIN_CHUNK_SIZE or c is chunks[-1] for c in chunks):
+        if all(len(c.text) >= _MIN_CHUNK_SIZE or c is chunks[-1] for c in chunks):
             return chunks
 
     # Fallback: fixed-size with overlap
@@ -94,7 +111,7 @@ def _timestamp_gap(ts1: str, ts2: str) -> float | None:
         t1 = _parse_timestamp(ts1)
         t2 = _parse_timestamp(ts2)
         return t2 - t1
-    except Exception:
+    except (ValueError, IndexError):
         return None
 
 
@@ -133,14 +150,13 @@ def _build_chunks(text: str, splits: List[int]) -> List[Chunk]:
                 start_index=start,
                 end_index=end,
                 chunk_number=i + 1,
-                size_chars=len(chunk_text),
             )
         )
     return chunks
 
 
 def _fixed_chunk(text: str) -> List[Chunk]:
-    """Fixed-size fallback with overlap."""
+    """Fixed-size fallback — sequential 60k chunks, no overlap."""
     chunks = []
     pos = 0
     n = 1
@@ -158,12 +174,11 @@ def _fixed_chunk(text: str) -> List[Chunk]:
                 start_index=pos,
                 end_index=end,
                 chunk_number=n,
-                size_chars=len(chunk_text),
             )
         )
         if end >= len(text):
             break
-        pos = end - _OVERLAP_SIZE
+        pos = end
         n += 1
     return chunks
 
@@ -219,22 +234,7 @@ def _build_prompt(raw_text: str, similar_titles: list[str], source: str) -> str:
 def enrich(raw_text: str, similar_titles: list[str], source: str) -> dict:
     if not MINIMAX_API_KEY:
         _logger.warning("MINIMAX_API_KEY is not set — returning fallback for source=%s", source)
-        return {
-            "title": "Untitled",
-            "type": "article",
-            "tags": [],
-            "summary": "",
-            "key_facts": [],
-            "cross_links": [],
-            "entities": [],
-            "figure_captions": [],
-            "why_saved_hint": "",
-            "chapters": [],
-            "key_quotes": [],
-            "topics_covered": [],
-            "raw_text": raw_text,
-            "error": True,
-        }
+        return _make_fallback_note(raw_text)
     prompt = _build_prompt(raw_text, similar_titles, source)
     headers = {
         "Authorization": f"Bearer {MINIMAX_API_KEY}",
@@ -271,22 +271,7 @@ def enrich(raw_text: str, similar_titles: list[str], source: str) -> dict:
         return data
     except Exception as e:
         _logger.warning("Minimax enrich failed for source=%s: %s", source, e)
-        return {
-            "title": "Untitled",
-            "type": "article",
-            "tags": [],
-            "summary": "",
-            "key_facts": [],
-            "cross_links": [],
-            "entities": [],
-            "figure_captions": [],
-            "why_saved_hint": "",
-            "chapters": [],
-            "key_quotes": [],
-            "topics_covered": [],
-            "raw_text": raw_text,
-            "error": True,
-        }
+        return _make_fallback_note(raw_text)
 
 
 _SYNTHESIS_SYSTEM = """You are a knowledge synthesizer. Given analyses of multiple sections of one video, produce one unified research note.
