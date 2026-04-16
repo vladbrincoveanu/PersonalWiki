@@ -1,0 +1,100 @@
+<h2>Section 3 — Article Link Extraction for Drill-Down</h2>
+<p class="subtitle">When drilling, extract article links from the thin page. How to pick the best one?</p>
+
+<div class="mockup">
+  <div class="mockup-header">Link Extraction Strategy</div>
+  <div class="mockup-body" style="font-size:12px">
+
+    <div class="section" style="margin-bottom:12px">
+      <div class="label" style="margin-bottom:8px">Link Filter Rules</div>
+      <ul style="color:#cbd5e1;margin:0;padding-left:20px;font-size:11px">
+        <li>✅ Same domain as parent URL</li>
+        <li>✅ Not a nav/header/footer link (heuristic: URL doesn't contain /nav/, /menu/, /footer/, /header/, /sidebar/)</li>
+        <li>✅ Not already in <code>_seen_urls</code> or currently in-flight</li>
+        <li>✅ URL looks like an article (has date, title slug, or /article/ /post/ /news/ / in path)</li>
+        <li>❌ Skip pagination links (?page=2, /page/2/)</li>
+        <li>❌ Skip media files (images, PDFs)</li>
+      </ul>
+    </div>
+
+    <div class="section" style="margin-bottom:12px">
+      <div class="label" style="margin-bottom:8px">How to Pick the Best Link (Priority Order)</div>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <div style="display:flex;align-items:center;gap:8px">
+          <div class="mock-button" style="background:#1e40af;font-size:11px">1st</div>
+          <div style="color:#e2e8f0">Keyword in URL text or path — e.g., URL contains the search keyword</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <div class="mock-button" style="background:#1e40af;font-size:11px">2nd</div>
+          <div style="color:#e2e8f0">Longest URL slug — suggests a specific article title, not a category</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <div class="mock-button" style="background:#1e40af;font-size:11px">3rd</div>
+          <div style="color:#e2e8f0">First valid article link found in DOM order</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="label" style="margin-bottom:8px">Implementation: Extract links from Crawl4AI result</div>
+      <pre style="background:#0f172a;color:#86efac;padding:12px;border-radius:8px;font-size:11px;overflow-x:auto"># After Crawl4AI returns markdown text:
+def extract_article_links(html: str, parent_url: str, keyword: str) -> list[str]:
+    from urllib.parse import urljoin, urlparse
+
+    # Parse parent to get domain
+    parsed = urlparse(parent_url)
+    domain = parsed.netloc
+
+    # Find all href links in HTML
+    link_pattern = re.compile(r'href="([^"#]+)"')
+    candidates = []
+    for match in link_pattern.finditer(html):
+        href = match.group(1)
+        full_url = urljoin(parent_url, href)
+
+        # Same domain?
+        if urlparse(full_url).netloc != domain:
+            continue
+        # Skip nav/footer/pagination
+        if any(x in full_url.lower() for x in SKIP_PATHS):
+            continue
+        # Skip media
+        if any(full_url.lower().endswith(ext) for ext in MEDIA_EXTS):
+            continue
+        # Article-like?
+        if any(indicator in full_url.lower() for indicator in ARTICLE_INDICATORS):
+            candidates.append(full_url)
+
+    return candidates[:5]  # top 5 candidates for scoring</pre>
+    </div>
+
+  </div>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px;font-size:12px">
+  <div>
+    <h3 style="color:#ca8a04;margin-bottom:8px">Constants</h3>
+    <pre style="background:#1e293b;color:#fef08a;padding:8px;border-radius:6px;font-size:11px">SKIP_PATHS = [
+    "/nav/", "/menu/", "/footer/",
+    "/sidebar/", "/header/", "/pagination/",
+    "/page/", "?page=", "/tag/"
+]
+MEDIA_EXTS = [".jpg", ".png", ".gif",
+               ".pdf", ".mp4", ".zip"]
+ARTICLE_INDICATORS = [
+    "/article/", "/post/", "/news/",
+    "/blog/", "/2024/", "/2025/",
+    "/2026/"
+]</pre>
+  </div>
+  <div>
+    <h3 style="color:#22c55e;margin-bottom:8px">Why this works</h3>
+    <ul style="color:#cbd5e1;margin:0;padding-left:20px">
+      <li>Same domain prevents linking to ads/trackers</li>
+      <li>Skip nav patterns removes listing/nav links</li>
+      <li>Article indicators catch most CMS article URLs</li>
+      <li>Keyword priority ensures we follow relevant content first</li>
+      <li>Max 5 candidates keeps scoring fast</li>
+    </ul>
+  </div>
+</div>

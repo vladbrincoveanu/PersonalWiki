@@ -1,0 +1,173 @@
+<h2>Track C — YouTube Pipeline</h2>
+<p class="subtitle">Video-specific quality gate, priority scoring, and typed video storage. Runs parallel to Track A+B core.</p>
+
+<div class="mockup">
+  <div class="mockup-header">Track C: YouTube Ingester Pipeline</div>
+  <div class="mockup-body" style="font-size:12px">
+    <div style="display:flex;align-items:flex-start;justify-content:center;gap:8px;padding:12px">
+      <div style="text-align:center;width:80px">
+        <div class="label">Source</div>
+        <div style="margin-top:6px">
+          <div class="mock-button" style="background:#ff0000;font-size:11px">▶️ YouTube</div>
+          <div style="font-size:10px;color:#888;margin-top:4px">URL or Channel/Playlist ID</div>
+        </div>
+      </div>
+      <div style="font-size:20px;color:#888;padding-top:16px">→</div>
+      <div style="text-align:center;width:100px">
+        <div class="label">Track A Gate</div>
+        <div class="placeholder" style="width:90px;height:50px;background:#dc2626;font-size:10px;color:white;border-radius:8px">
+          <div style="padding:6px">⚡ Video<br>Quality Gate</div>
+        </div>
+        <div style="font-size:10px;color:#888;margin-top:4px">Transcript &gt;200 words?</div>
+      </div>
+      <div style="font-size:20px;color:#888;padding-top:16px">→</div>
+      <div style="text-align:center;width:100px">
+        <div class="label">Priority</div>
+        <div class="placeholder" style="width:90px;height:50px;background:#ca8a04;font-size:10px;color:white;border-radius:8px">
+          <div style="padding:6px">📊 Video<br>Scoring</div>
+        </div>
+        <div style="font-size:10px;color:#888;margin-top:4px">Views, recency, topic</div>
+      </div>
+      <div style="font-size:20px;color:#888;padding-top:16px">→</div>
+      <div style="text-align:center;width:100px">
+        <div class="label">Extract</div>
+        <div class="placeholder" style="width:90px;height:50px;background:#2563eb;font-size:10px;color:white;border-radius:8px">
+          <div style="padding:6px">📝 Transcript<br>+ Chapters</div>
+        </div>
+        <div style="font-size:10px;color:#888;margin-top:4px">yt-dlp + fallback</div>
+      </div>
+      <div style="font-size:20px;color:#888;padding-top:16px">→</div>
+      <div style="text-align:center;width:100px">
+        <div class="label">Enrich</div>
+        <div class="placeholder" style="width:90px;height:50px;background:#7c3aed;font-size:10px;color:white;border-radius:8px">
+          <div style="padding:6px">MiniMax<br>Enrich</div>
+        </div>
+        <div style="font-size:10px;color:#888;margin-top:4px">Title, tags, key quotes</div>
+      </div>
+      <div style="font-size:20px;color:#888;padding-top:16px">→</div>
+      <div style="text-align:center;width:100px">
+        <div class="label">Write</div>
+        <div class="placeholder" style="width:90px;height:50px;background:#059669;font-size:10px;color:white;border-radius:8px">
+          <div style="padding:6px">📦 Video<br>Template</div>
+        </div>
+        <div style="font-size:10px;color:#888;margin-top:4px">Chapters, transcript</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:12px;font-size:12px">
+  <div>
+    <h3 style="color:#ef4444;margin-bottom:8px">⚡ Video Quality Gate</h3>
+    <ul style="color:#cbd5e1;margin:0;padding-left:20px">
+      <li>Transcript &lt;200 words → reject (auto-captions too thin)</li>
+      <li>Channel blacklisted → reject</li>
+      <li>No transcript available after all 4 fallback tiers → store as stub note with video metadata only (no retry)</li>
+    </ul>
+  </div>
+  <div>
+    <h3 style="color:#ca8a04;margin-bottom:8px">📊 Video Priority Scoring</h3>
+    <ul style="color:#cbd5e1;margin:0;padding-left:20px">
+      <li><strong>Topic match:</strong> keyword overlap with user interests</li>
+      <li><strong>Recency:</strong> newer videos weighted higher</li>
+      <li><strong>Engagement:</strong> views/likes as secondary signal</li>
+      <li>Priority score = weighted sum; high-priority queued first</li>
+    </ul>
+  </div>
+</div>
+
+<div class="section" style="margin-top:16px">
+  <h2>Track D — Typed Retrieval Layer</h2>
+  <p class="subtitle">Type-specific note templates + reranking + graph-aware retrieval. Shared across all sources.</p>
+</div>
+
+<div class="mockup">
+  <div class="mockup-header">Track D: Retrieval Stack (shared by all content types)</div>
+  <div class="mockup-body" style="font-size:12px">
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <!-- Retrieval flow -->
+      <div style="display:flex;align-items:center;justify-content:center;gap:8px;padding:8px">
+        <div style="text-align:center">
+          <div class="label">Query</div>
+          <div class="placeholder" style="width:80px;height:40px;background:#374151;color:white;border-radius:6px;padding:6px;font-size:10px">User question</div>
+        </div>
+        <div style="font-size:18px;color:#888">→</div>
+        <div style="text-align:center">
+          <div class="label">Vector Search</div>
+          <div class="placeholder" style="width:80px;height:40px;background:#0891b2;color:white;border-radius:6px;padding:6px;font-size:10px">LanceDB top-K</div>
+        </div>
+        <div style="font-size:18px;color:#888">→</div>
+        <div style="text-align:center">
+          <div class="label">Rerank</div>
+          <div class="placeholder" style="width:70px;height:40px;background:#7c3aed;color:white;border-radius:6px;padding:6px;font-size:10px">Cross-encoder</div>
+        </div>
+        <div style="font-size:18px;color:#888">→</div>
+        <div style="text-align:center">
+          <div class="label">Graph Hops</div>
+          <div class="placeholder" style="width:80px;height:40px;background:#ca8a04;color:white;border-radius:6px;padding:6px;font-size:10px">Transitive closure</div>
+        </div>
+        <div style="font-size:18px;color:#888">→</div>
+        <div style="text-align:center">
+          <div class="label">Final</div>
+          <div class="placeholder" style="width:80px;height:40px;background:#166534;color:white;border-radius:6px;padding:6px;font-size:10px">Ranked results</div>
+        </div>
+      </div>
+
+      <!-- Typed templates -->
+      <div style="border-top:1px solid #334155;padding-top:12px">
+        <div class="label" style="margin-bottom:8px">Type-Specific Note Templates</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+          <div style="background:#1e3a5f;border-radius:6px;padding:8px">
+            <div style="color:#60a5fa;font-weight:bold;margin-bottom:4px">📄 Article</div>
+            <ul style="color:#93c5fd;font-size:10px;margin:0;padding-left:16px">
+              <li>Summary (3 sentences)</li>
+              <li>Key Facts (bullet list)</li>
+              <li>Entities with slugs</li>
+              <li>Why I Saved This</li>
+              <li>Raw Extract (collapsible)</li>
+            </ul>
+          </div>
+          <div style="background:#3a1e5f;border-radius:6px;padding:8px">
+            <div style="color:#c4b5fd;font-weight:bold;margin-bottom:4px">📄 Paper</div>
+            <ul style="color:#ddd6fe;font-size:10px;margin:0;padding-left:16px">
+              <li>TL;DR</li>
+              <li>Method / Architecture</li>
+              <li>Key Findings</li>
+              <li>Benchmarks table</li>
+              <li>Related Work links</li>
+            </ul>
+          </div>
+          <div style="background:#5f3a1e;border-radius:6px;padding:8px">
+            <div style="color:#fcd34d;font-weight:bold;margin-bottom:4px">▶️ Video</div>
+            <ul style="color:#fef08a;font-size:10px;margin:0;padding-left:16px">
+              <li>Timestamped chapters</li>
+              <li>Key quotes (quoted)</li>
+              <li>Speaker / Channel</li>
+              <li>Transcript (collapsible)</li>
+              <li>Topics covered</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="pros-cons" style="margin-top:16px">
+  <div class="pros">
+    <h4>Track D benefits</h4>
+    <ul>
+      <li>Rerank fixes retrieval drift — vector match ≠ best answer match</li>
+      <li>Graph hops: if A mentions B and B mentions C, query on A returns A+B+C</li>
+      <li>Typed templates → LLM always knows where to find facts, summary, key quotes</li>
+    </ul>
+  </div>
+  <div class="cons">
+    <h4>Tradeoffs</h4>
+    <ul>
+      <li>Cross-encoder rerank adds latency (butordable for personal scale)</li>
+      <li>Typed templates require migration of existing notes</li>
+      <li>Graph hop retrieval needs graph data (wikilinks) — existing notes may lack them</li>
+    </ul>
+  </div>
+</div>

@@ -88,7 +88,7 @@ COPY templates/ ./templates/
 
 EXPOSE 8000
 
-# Mount vault at runtime (read-only for safety)
+# Vault is mounted read-write at container runtime via docker-compose
 ENV VAULT_PATH=/vault/notes
 ENV INDEX_PATH=/app/.vke_index
 
@@ -112,20 +112,20 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ${VAULT_PATH:-/Users/vladbrincoveanu/Library/Mobile Documents/iCloud~md~obsidian/Documents/PersonalWiki}:/vault:ro
+      - ${VAULT_PATH:-/Users/vladbrincoveanu/Library/Mobile Documents/iCloud~md~obsidian/Documents/PersonalWiki}:/vault
     env_file:
       - .env
     environment:
       - VAULT_PATH=/vault/notes
       - INDEX_PATH=/app/.vke_index
     restart: unless-stopped
-    # Note: vault is mounted read-only (:ro) for safety; INDEX_PATH is ephemeral
+    # Vault is read-write — app writes notes here, Obsidian reads from same vault
 ```
 
 Changes from current:
 - Removed `version: "3.8"` (obsolete)
 - Changed `image: aijurnalv2/vke:latest` → `build: .`
-- Mount vault as **read-only** (`ro`) to prevent accidental writes
+- Mount vault as **read-write** (app writes notes, Obsidian reads)
 - Dropped `mem_limit` and `cpus` (can be re-added if needed)
 
 ---
