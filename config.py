@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-VAULT_PATH = Path(os.getenv("VAULT_PATH", "/Users/vladbrincoveanu/Documents/ObsidianVault"))
+VAULT_PATH = Path(os.getenv("VAULT_PATH", "/Users/vladbrincoveanu/Library/Mobile Documents/iCloud~md~obsidian/Documents/PersonalWiki"))
 NOTES_DIR = VAULT_PATH / "notes"
 INDEX_PATH = Path(os.getenv("INDEX_PATH", "./.vke_index"))
 
