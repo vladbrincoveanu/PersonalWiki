@@ -44,7 +44,7 @@ templates = Jinja2Templates(directory="templates")
 async def index(request: Request):
     return templates.TemplateResponse(request, "index.html")
 
-@app.post("/ingest", response_class=HTMLResponse)
+@app.post("/ingest")
 async def ingest(
     request: Request,
     url: str = Form(None),
@@ -58,16 +58,21 @@ async def ingest(
     async def _run():
         kwargs = {}
         tmp_path = None
-        if file and file.filename:
-            content = await file.read()
-            with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
-                tmp.write(content)
-                tmp_path = tmp.name
-            kwargs["pdf_path"] = tmp_path
-        elif url:
-            kwargs["url"] = url
-
         try:
+            if file and file.filename:
+                content = await file.read()
+                with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+                    tmp.write(content)
+                    tmp_path = tmp.name
+                kwargs["pdf_path"] = tmp_path
+            elif url:
+                kwargs["url"] = url
+            else:
+                await queue.put("<p>Error: No url or file.</p>")
+                await queue.put(None)
+                done_event.set()
+                return
+
             async for msg in run_pipeline(**kwargs):
                 await queue.put(f"<p>{msg}</p>")
         except Exception as e:
@@ -81,16 +86,7 @@ async def ingest(
 
     asyncio.create_task(_run())
 
-    return HTMLResponse(f"""
-        <div id="progress"
-             hx-ext="sse"
-             sse-connect="/stream/{job_id}"
-             sse-swap="message"
-             hx-target="#progress"
-             hx-swap="beforeend">
-            <p>Starting...</p>
-        </div>
-    """)
+    return {"job_id": job_id}
 
 @app.get("/stream/{job_id}")
 async def stream(job_id: str):
@@ -102,6 +98,7 @@ async def stream(job_id: str):
         while True:
             msg = await queue.get()
             if msg is None:
+                yield {"event": "message", "data": "[FINAL]"}
                 break
             yield {"event": "message", "data": msg}
     return EventSourceResponse(generate())

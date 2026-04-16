@@ -12,10 +12,11 @@ def test_index_returns_html():
     client = make_client()
     resp = client.get("/")
     assert resp.status_code == 200
-    assert "VKE Local" in resp.text
-    assert "hx-post" in resp.text
+    assert "personalWiki" in resp.text
+    assert 'action="/ingest"' in resp.text  # form posts to /ingest
 
-def test_ingest_url_returns_sse_div():
+def test_ingest_url_returns_job_json():
+    """Ingest endpoint returns JSON with job_id field, not HTML."""
     async def fake_pipeline(**kwargs):
         yield "Extracting..."
         yield "Saved → notes/test.md"
@@ -25,7 +26,11 @@ def test_ingest_url_returns_sse_div():
         resp = client.post("/ingest", data={"url": "https://example.com"})
 
     assert resp.status_code == 200
-    assert "sse-connect" in resp.text or "job_id" in resp.text
+    assert resp.headers["content-type"] == "application/json", \
+        f"Expected JSON but got {resp.headers.get('content-type')}"
+    body = resp.json()
+    assert "job_id" in body, f"Expected job_id in JSON response, got: {body}"
+    assert len(body["job_id"]) == 36  # UUID format
 
 def test_stream_yields_events():
     import asyncio

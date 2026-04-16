@@ -15,6 +15,8 @@ pytest==8.2.0
 pytest-asyncio==0.23.6
 newspaper3k==0.2.8
 yt-dlp==2024.11.18
+youtube-transcript-api==0.6.2
 lxml_html_clean==0.4.4
 rank-bm25==0.2.2
 sentence-transformers
+openai-whisper
