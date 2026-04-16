@@ -40,7 +40,7 @@ def render_draft(pattern_key: str, count: int, last_seen: str, files: list[str])
     why = f"This pattern appeared {count} times in MEMORY.md, last seen {last_seen}"
     return f"""---
 name: {slug}
-description: TODO: write one-line description
+description: "TODO: write one-line description"
 paths:
   - {paths[0]}
 last_triggered: null
