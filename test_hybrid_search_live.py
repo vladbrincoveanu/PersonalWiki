@@ -66,12 +66,11 @@ def ingest_one(url: str) -> tuple[bool, str]:
         if not raw_text or len(raw_text) < 50:
             return False, f"Extracted text too short ({len(raw_text)} chars)"
 
-        # Step 2: Enrich
+        # Step 2: Enrich (content_type routing is handled inside pipeline.py, not enrich())
         enriched = enrich(
             raw_text=raw_text,
             similar_titles=[],
             source=url,
-            content_type=content_type,
         )
         print(f"  Enriched: title='{enriched.get('title', 'N/A')}'")
         if enriched.get("error"):
