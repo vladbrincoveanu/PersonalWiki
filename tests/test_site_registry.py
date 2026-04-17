@@ -1,9 +1,5 @@
-import json
-import os
-from pathlib import Path
-from datetime import date
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 from core.site_registry import SiteRegistry
 
 
