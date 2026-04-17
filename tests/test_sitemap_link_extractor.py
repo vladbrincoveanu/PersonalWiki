@@ -5,7 +5,7 @@ from core.sitemap_link_extractor import extract_links
 def test_extract_links_filters_by_known_domain():
     with patch("core.sitemap_link_extractor._get_registry") as mock_get_reg:
         mock_reg = MagicMock()
-        mock_reg.is_known.side_effect = lambda d: d == "known.com"
+        mock_reg.is_known.side_effect = lambda d: d in ("known.com", "also-known.com")
         mock_get_reg.return_value = mock_reg
 
         html = '''
