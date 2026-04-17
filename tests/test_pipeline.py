@@ -297,7 +297,11 @@ def test_gate_enriched_content_rejects_thin_prose():
 
 
 def test_gate_enriched_content_rejects_low_prose_ratio():
-    """Content where prose ratio < 20%% is rejected (mostly noise/timestamps)."""
+    """Content where prose ratio < 20%% was previously rejected but ratio check is now disabled.
+
+    The ratio check was disabled because it was rejecting valid YouTube transcripts
+    with high timestamp density. The hard minimum (>=300 prose chars) still applies.
+    """
     from pipeline import _gate_enriched_content
 
     # Enriched content has >= 300 prose chars, but raw_text is huge (mostly noise)
@@ -318,9 +322,10 @@ def test_gate_enriched_content_rejects_low_prose_ratio():
     raw_text = "00:00:00 --> 00:00:01\n[music playing]\n00:00:01 --> 00:00:02\n[silence]\n" * 100
 
     passed, prose_chars, prose_ratio = _gate_enriched_content(note, raw_text)
-    assert passed is False
+    # Ratio check is disabled — content passes on prose chars alone
+    assert passed is True
     assert prose_chars >= 300  # passes hard minimum
-    assert prose_ratio < 0.20  # fails ratio check
+    assert prose_ratio < 0.20  # ratio is low but gate is disabled
 
 
 def test_gate_enriched_content_accepts_valid_content():
@@ -355,7 +360,7 @@ def test_gate_enriched_content_rejects_video_with_timestamp_heavy_transcript():
     note = {
         "summary": "Interesting content.",
         "key_facts": ["A fact."],
-        "content_type": "video",
+        "type": "video",
     }
     # Transcript that's just timestamps and symbols — no real words
     raw_text = (
@@ -379,7 +384,7 @@ def test_gate_enriched_content_video_with_real_words_passes():
             "Neural networks are important for deep learning and pattern recognition.",
             "These technologies are transforming many industries worldwide.",
         ],
-        "content_type": "video",
+        "type": "video",
     }
     raw_text = (
         "00:00:00 Today we discuss machine learning and artificial intelligence. "
