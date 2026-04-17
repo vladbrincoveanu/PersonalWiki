@@ -143,6 +143,7 @@ def test_pipeline_video_routes_to_synthesis(monkeypatch):
 
     monkeypatch.setattr("core.minimax_client.semantic_chunk", mock_chunk)
     monkeypatch.setattr("core.minimax_client.enrich", mock_enrich)
+    monkeypatch.setattr("pipeline.enrich", mock_enrich)
     monkeypatch.setattr("core.minimax_client.enrich_video_synthesis", mock_synthesis)
 
     class MockDoc:

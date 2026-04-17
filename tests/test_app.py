@@ -8,12 +8,21 @@ def make_client():
         from app import app
         return TestClient(app)
 
+def _cleanup_scheduler():
+    """Stop and reset the global scheduler — call after tests that use make_client()."""
+    import app as app_module
+    if app_module._scheduler is not None:
+        app_module._scheduler.stop()
+    app_module._scheduler = None
+    app_module._scheduler_lock = None
+
 def test_index_returns_html():
     client = make_client()
     resp = client.get("/")
     assert resp.status_code == 200
     assert "personalWiki" in resp.text
     assert 'action="/ingest"' in resp.text  # form posts to /ingest
+    _cleanup_scheduler()
 
 def test_ingest_url_returns_job_json():
     """Ingest endpoint returns JSON with job_id field, not HTML."""
@@ -31,6 +40,7 @@ def test_ingest_url_returns_job_json():
     body = resp.json()
     assert "job_id" in body, f"Expected job_id in JSON response, got: {body}"
     assert len(body["job_id"]) == 36  # UUID format
+    _cleanup_scheduler()
 
 @pytest.mark.asyncio
 async def test_stream_yields_events():
@@ -142,10 +152,8 @@ async def test_job_queue_cleanup_not_racy():
     assert job_id not in _job_queues  # queue must be cleaned up
 
 
-@pytest.mark.asyncio
-async def test_keywords_returns_graph_and_manual():
+def test_keywords_returns_graph_and_manual():
     """Keywords endpoint returns graph keywords (from vault) and manual keywords (from _keywords file)."""
-    import asyncio
     import app as app_module
 
     # Mock the scheduler with known keywords
@@ -170,3 +178,4 @@ async def test_keywords_returns_graph_and_manual():
     assert "physics" in body["manual"], f"Expected 'physics' in manual, got: {body['manual']}"
     assert "quantum physics" in body["graph"], f"Expected 'quantum physics' in graph, got: {body['graph']}"
     assert body["total"] == 3
+    _cleanup_scheduler()
