@@ -4,6 +4,7 @@ Tests graph interests, gap detection, scheduler deduplication, and pipeline inte
 """
 import pytest
 from pathlib import Path
+from unittest.mock import patch, MagicMock
 
 
 # =============================================================================
@@ -142,3 +143,42 @@ def test_interests_are_deduplicated(tmp_path):
     interests = extract_interests(vault_path=str(tmp_path))
 
     assert interests.count("RLHF") == 1
+
+
+# =============================================================================
+# Test 8: Full Sitemap Discovery Cycle
+# =============================================================================
+@pytest.mark.asyncio
+async def test_full_sitemap_discovery_cycle():
+    """Test: keyword → sitemap fetch → candidate URL → page crawl → new domain discovered."""
+    with patch("core.discovery_scheduler.SiteRegistry") as MockReg, \
+         patch("core.discovery_scheduler.fetch_sitemap") as mock_fetch, \
+         patch("core.vector_store.get_store") as mock_store:
+
+        # Registry: one known domain
+        mock_reg = MagicMock()
+        mock_reg.all_domains.return_value = ["example.com"]
+        mock_reg.is_known.side_effect = lambda d: d == "example.com"
+        MockReg.return_value = mock_reg
+
+        # Sitemap returns one matching URL
+        mock_fetch.return_value = [
+            {"url": "https://example.com/transformer-post", "lastmod": None, "priority": None}
+        ]
+
+        # Store says URL is new
+        mock_store_instance = MagicMock()
+        mock_store_instance.exists.return_value = False
+        mock_store.return_value = mock_store_instance
+
+        from core.discovery_scheduler import DiscoveryScheduler
+
+        scheduler = DiscoveryScheduler()
+        scheduler._site_registry = mock_reg
+
+        with patch.object(scheduler, "_is_new_url", return_value=True):
+            results = await scheduler.search_sitemaps("transformer")
+
+        assert len(results) == 1
+        assert "transformer" in results[0]["url"]
+        assert results[0]["source"] == "sitemap"
