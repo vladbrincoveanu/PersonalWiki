@@ -33,6 +33,8 @@ from ingesters.web import extract_url
 from pathlib import Path
 from vault.junk_cleaner import cleanup_junk
 from core.prose import measure_prose
+from core.discovery_link_extractor import DiscoveryLinkExtractor
+from core.interest_domain_matcher import InterestDomainMatcher
 
 _logger = logging.getLogger(__name__)
 
@@ -137,6 +139,8 @@ class DiscoveryScheduler:
         # Amplification loop state
         self._keyword_scores: dict[str, int] = {}       # keyword -> quality score
         self._discovery_cycle_count = 0                  # count for echo chamber guard
+        # Recursive link discovery state
+        self._interest_domains: set[str] = set()         # domains discovered via link extraction
         self._warm_seen_urls()
         # Eagerly load keywords in background so /keywords is ready before first poll
         t = threading.Thread(target=self._blocking_refresh, daemon=True)
@@ -279,6 +283,63 @@ class DiscoveryScheduler:
         ]
         available = [k for k in explore_pool if k not in self._keywords]
         return random.sample(available, min(2, len(available)))
+
+    def _enqueue_interest_domain(self, domain: str) -> None:
+        """
+        Enqueue an interest domain for sitemap-based discovery.
+
+        Fetches the domain's sitemap, extracts article URLs, and adds them
+        to the discovery pipeline for ingestion.
+        """
+        if domain in self._interest_domains:
+            return
+        self._interest_domains.add(domain)
+        _logger.info("Discovery: enqueued interest domain %s", domain)
+
+        # Try to fetch sitemap and extract candidate URLs
+        sitemap_urls = self._try_sitemap(domain)
+        for url in sitemap_urls:
+            if self._is_new_url(url):
+                _logger.info("Discovery: discovered via %s: %s", domain, url)
+                self._seen_urls.add(url)
+
+    def _try_sitemap(self, domain: str) -> list[str]:
+        """Try to fetch sitemap for a domain and return article URLs."""
+        common_paths = [
+            f"https://{domain}/sitemap.xml",
+            f"https://{domain}/sitemap-index.xml",
+            f"https://www.{domain}/sitemap.xml",
+        ]
+        for sitemap_url in common_paths:
+            try:
+                req = urllib.request.Request(
+                    sitemap_url,
+                    headers={"User-Agent": "Mozilla/5.0"}
+                )
+                with urllib.request.urlopen(req, timeout=10) as resp:
+                    data = resp.read().decode("utf-8")
+                root = ET.fromstring(data)
+                ns = {"sm": "http://www.sitemaps.org/schemas/sitemap/0.9"}
+                urls = []
+                for url_elem in root.findall("sm:url/sm:loc", ns):
+                    loc = url_elem.text.strip() if url_elem.text else ""
+                    if loc:
+                        urls.append(loc)
+                if urls:
+                    _logger.info("Discovery: found %d URLs in sitemap for %s", len(urls), domain)
+                    return urls
+            except Exception:
+                continue
+        return []
+
+    async def _fetch_html(self, url: str) -> str:
+        """Fetch raw HTML for a URL (used for link extraction)."""
+        try:
+            resp = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=15)
+            resp.raise_for_status()
+            return resp.text
+        except Exception:
+            return ""
 
     async def _search_keyword(self, keyword: str) -> list[dict]:
         """
@@ -516,8 +577,12 @@ class DiscoveryScheduler:
         """
         Search DespreBursa.ro via sitemap and category pages.
         Returns list of {url, title, snippet, source} dicts with real content.
+        Also extracts outbound links from article pages and enqueues interest domains.
         """
         results = []
+
+        # Initialize link extractor for recursive discovery
+        link_extractor = DiscoveryLinkExtractor(matcher=InterestDomainMatcher())
 
         # Tier 1: Sitemap — stop early if we hit limit
         try:
@@ -549,6 +614,8 @@ class DiscoveryScheduler:
             for r, snippet in zip(results, snippets):
                 if snippet:
                     r["snippet"] = snippet
+            # Extract links from article pages and enqueue interest domains
+            await self._extract_and_enqueue_links(urls, link_extractor)
             return results
 
         # Tier 2: Category page crawl — only if we need more results
@@ -587,13 +654,30 @@ class DiscoveryScheduler:
             for r, snippet in zip(results, snippets):
                 if snippet:
                     r["snippet"] = snippet
+            # Extract links from article pages and enqueue interest domains
+            await self._extract_and_enqueue_links(urls, link_extractor)
 
         return results
 
+    async def _extract_and_enqueue_links(self, urls: list[str], link_extractor: DiscoveryLinkExtractor) -> None:
+        """Fetch HTML for URLs and process links via link extractor."""
+        if not urls:
+            return
+        html_results = await asyncio.gather(*[self._fetch_html(u) for u in urls])
+        for url, html in zip(urls, html_results):
+            if html:
+                try:
+                    link_extractor.process_page_links(url, html, self)
+                except Exception as e:
+                    _logger.debug("Discovery: link extraction failed for %s: %s", url, e)
+
     async def _run_discovery_cycle(self):
-        """One discovery pass: search all keywords, ingest new URLs."""
+        """One discovery pass: search all keywords, ingest new URLs, extract links."""
         from core.vector_store import get_store
         store = get_store()
+
+        # Initialize link extractor for recursive discovery
+        link_extractor = DiscoveryLinkExtractor(matcher=InterestDomainMatcher())
 
         ingested = 0
         for keyword in self._keywords:
@@ -613,11 +697,20 @@ class DiscoveryScheduler:
                 self._in_flight.add(url)
                 try:
                     if self._pipeline_func:
-                        asyncio.create_task(self._run_pipeline(url))
+                        await self._run_pipeline(url)
                     ingested += 1
                     self._update_keyword_score(keyword, +1)  # Successful ingest
                     self._seen_urls.add(url)
                     self._persist_seen_urls()
+
+                    # Recursive link discovery: extract links from the crawled page
+                    # and enqueue any new interest domains found
+                    try:
+                        html = await self._fetch_html(url)
+                        if html:
+                            link_extractor.process_page_links(url, html, self)
+                    except Exception as e:
+                        _logger.debug("Discovery: link extraction failed for %s: %s", url, e)
                 except Exception as e:
                     self._update_keyword_score(keyword, -2)  # Failed/rejected
                     _logger.error("Discovery: failed to queue %s: %s", url, e)
