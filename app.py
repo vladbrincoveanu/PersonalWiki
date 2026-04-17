@@ -3,6 +3,7 @@ import asyncio
 import uuid
 import tempfile
 import os
+from pathlib import Path
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Form, UploadFile, Request, HTTPException
 from fastapi.responses import HTMLResponse
@@ -55,16 +56,31 @@ async def ingest(
     done_event = asyncio.Event()
     _job_queues[job_id] = (queue, done_event)
 
+    tmp_path = None
+    if file and file.filename:
+        content = await file.read()
+        ext = Path(file.filename.lower()).suffix
+        with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
+            tmp.write(content)
+            tmp_path = tmp.name
+
     async def _run():
         kwargs = {}
-        tmp_path = None
         try:
-            if file and file.filename:
-                content = await file.read()
-                with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
-                    tmp.write(content)
-                    tmp_path = tmp.name
-                kwargs["pdf_path"] = tmp_path
+            if tmp_path:
+                if ext == ".pdf":
+                    kwargs["pdf_path"] = tmp_path
+                elif ext == ".docx":
+                    kwargs["docx_path"] = tmp_path
+                elif ext == ".md":
+                    kwargs["md_path"] = tmp_path
+                elif ext == ".txt":
+                    kwargs["txt_path"] = tmp_path
+                else:
+                    await queue.put(f"<p>Error: Unsupported file type {ext}</p>")
+                    await queue.put(None)
+                    done_event.set()
+                    return
             elif url:
                 kwargs["url"] = url
             else:
@@ -115,7 +131,7 @@ async def get_keywords():
         "keywords": scheduler._keywords,
         "manual": manual,
         "graph": graph,
-        "total": len(scheduler._keywords),
+        "total": len(manual) + len(graph),
     }
 
 

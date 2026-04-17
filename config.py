@@ -4,6 +4,11 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# Proxy for YouTube extraction (when server IP is blocked by YouTube)
+# SOCKS5:   socks5://user:pass@us5012.socks.nordhold.net:1080
+# HTTPS:    https://user:pass@us5012.https.nordhold.net:89
+YOUTUBE_PROXY = os.getenv("YOUTUBE_PROXY", "")
+
 VAULT_PATH = Path(os.getenv("VAULT_PATH", "/Users/vladbrincoveanu/Library/Mobile Documents/iCloud~md~obsidian/Documents/PersonalWiki"))
 NOTES_DIR = VAULT_PATH / "notes"
 INDEX_PATH = Path(os.getenv("INDEX_PATH", "./.vke_index"))

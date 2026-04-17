@@ -45,7 +45,7 @@ _SEEN_URLS_FILE = Path.home() / ".personalWiki" / "discovery_seen_urls.json"
 # ---------------------------------------------------------------------------
 
 def _measure_prose(text: str) -> tuple[int, float]:
-    """Wrapper for core.prose.measures_prose."""
+    """Wrapper for core.prose.measure_prose."""
     return measure_prose(text)
 
 
@@ -681,6 +681,8 @@ class DiscoveryScheduler:
             return
         self._running = True
         self._pipeline_func = pipeline_func
+        # Eagerly refresh keywords so /keywords is never empty on first request
+        await self._refresh_keywords()
         self._scheduler_task = asyncio.create_task(self._scheduler_loop())
         _logger.info("Discovery scheduler started")
 

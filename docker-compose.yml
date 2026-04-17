@@ -10,4 +10,11 @@ services:
     environment:
       - VAULT_PATH=/vault
       - INDEX_PATH=/app/.vke_index
+      - YOUTUBE_PROXY=  # intentionally empty — NordVPN HTTP Proxy requires paid add-on
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+        reservations:
+          memory: 2G

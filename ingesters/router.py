@@ -90,3 +90,13 @@ def extract_pdf(pdf_path: str) -> Document:
         content_type="paper",
         images=result.images,
     )
+
+
+def extract_docx(docx_path: str) -> Document:
+    from ingesters.docx import extract_docx as _extract
+    return _extract(docx_path)
+
+
+def extract_markdown(md_path: str) -> Document:
+    from ingesters.markdown import extract_markdown as _extract
+    return _extract(md_path)

@@ -4,82 +4,166 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-**VKE (Verified Knowledge Engine) v1** — a two-agent pipeline that ingests SEC filings and research papers, extracts atomic factual claims, verifies them against source documents using a local LLM, detects circular citations via recursive CTEs in DuckDB, and writes only verified claims to an Obsidian markdown wiki.
+**personalWiki** — an automated knowledge capture pipeline running inside Docker. Ingest any URL or file (PDF, DOCX, MD, TXT), and after a few seconds a fully enriched markdown note lands in your Obsidian vault. Only the LLM writes to the vault.
 
 ## Tech Stack
 
-- **Language:** C# / .NET 8
-- **Database:** DuckDB.NET (embedded, no DuckPGQ — all graph queries use recursive CTEs)
-- **Local LLM:** LLM Studio at `http://localhost:1234/v1` (OpenAI-compatible API)
-- **Testing:** xUnit + Moq
-- **Wiki output:** Obsidian markdown vault
+- **Language:** Python 3.13
+- **LLM:** Minimax API (`MINIMAX_MODEL`, default `MiniMax-M2.7-HighSpeed`)
+- **Embeddings:** FastEmbed `BAAI/bge-small-en-v1.5` (local CPU)
+- **Vector store:** LanceDB (local, no server)
+- **PDF extraction:** Docling (layout-aware, tables + figures)
+- **Web extraction:** Crawl4AI (with Playwright/Chromium browser)
+- **Video extraction:** yt-dlp transcript + VTT caption parsing
+- **Web UI:** FastAPI + HTMX (SSE for live progress streaming)
+- **Testing:** pytest
 
 ## Commands
 
 ```bash
-# Build
-dotnet build
+# Install dependencies
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
 
-# Run all tests
-dotnet test
+# Run the web UI
+python app.py
+# → http://localhost:8000
 
-# Run a single test class
-dotnet test --filter "FullyQualifiedName~CircularCitationTests"
+# Run tests
+python -m pytest tests/ -v
 
-# Run a single test method
-dotnet test --filter "FullyQualifiedName~CircularCitationTests.DetectsCycle"
+# Run a specific test file
+python -m pytest tests/test_pipeline.py -v
 
-# CLI (once built)
-vke ingest <url> --type sec_10k
-vke query "What was Apple's revenue in FY2024?"
-vke lint
-vke graph <claim_id>
+# Run with coverage
+python -m pytest tests/ --cov=. --cov-report=term-missing
 ```
 
 ## Architecture
 
-Two agents, one graph. The invariant: **only claims that pass verification mutate state.**
-
 ```
-Raw Sources (SEC EDGAR, Semantic Scholar)
-    → IngestAgent  (fetch → parse → extract citations → decompose into atomic claims)
-    → VerifyAgent  (LLM fact-check → dedup/corroborate → store → detect cycles → write wiki)
-    → DuckDB       (sources, claims, edges tables)
-    → vault/wiki/  (only verified claims land here)
-```
-
-### Key architectural rules
-
-- **Atomic Action Pair:** IngestAgent returns `(sourceId, List<Claim>)` — it never writes claims. VerifyAgent owns all writes to DuckDB and wiki. These two steps are inseparable.
-- **Deterministic IDs:** `sources.id = sha256(url + published_at)`, `claims.id = sha256(normalized_statement + source_id)`. No auto-increment.
-- **Trust ceiling:** A source's trust level is determined entirely by its `source_type` (Tier 1–4). No score formula — the type IS the trust level. See `source_types` lookup table.
-- **Circular citation detection:** Uses recursive CTEs only (no DuckPGQ). Root source finder + cycle detector + independence scorer are all SQL.
-- **Tier upgrade rule:** `EFFECTIVE_TIER = min(source_type.base_tier, 4 - floor(independent_source_count / 2))`. Cycle detected → forced Tier 4 (quarantine).
-
-### File structure (target)
-
-```
-src/Vke.Core/
-  Agents/          IngestAgent.cs, VerifyAgent.cs, LintAgent.cs
-  Data/            VkeDbContext.cs, Models/{Source,Claim,Edge,SourceType}.cs
-  Services/        LlmClient.cs, SecEdgarClient.cs, SemanticScholarClient.cs, WikiGenerator.cs
-  Utils/           IdGenerator.cs, ClaimParser.cs, CitationExtractor.cs
-tests/Vke.Core.Tests/
-  Agents/          IngestAgentTests.cs, VerifyAgentTests.cs
-  Data/            CircularCitationTests.cs, SourceTypeTests.cs
-  Services/        LlmClientTests.cs
-vault/
-  raw/             Immutable originals — never modified after write
-  wiki/            entities/, claims/, sources/, alerts/
+URL / PDF / DOCX / MD / TXT
+    │
+    ▼
+[Router] → [Ingester] → [Extract raw text + images]
+    │
+    ▼
+[QualityGate] — rejects paywalled/error content early (Track A)
+    │
+    ▼
+[Embed + LanceDB Search] → top-3 similar note titles as context
+    │
+    ▼
+[Enrich via Minimax] → title, summary, key_facts, tags, entities, cross_links, figure_captions, why_saved_hint
+    │
+    ▼
+[_gate_enriched_content] — rejects thin/noise-heavy enriched output (Track B, prose ≥300 chars, ratio ≥20%)
+    │
+    ▼
+[Entity Status Check] → GitHub/PyPI status for libraries/frameworks
+[Gap Detection] → entities referenced but missing in vault → triggers backfill search
+    │
+    ▼
+[Write Note] → renders markdown to ObsidianVault/notes/
+    │
+    ▼
+[Index] → upserts into LanceDB
 ```
 
-### External APIs
+**Two-stage quality gates:**
+- `core/quality_gate.py` (Track A): Extraction quality — checks paywall signals, minimum length, video word count
+- `_gate_enriched_content` in `pipeline.py` (Track B): Enriched content quality — prose chars ≥300, prose ratio ≥20%
 
-- **SEC EDGAR:** `https://data.sec.gov/submissions/<CIK>.json` — no auth required
-- **Semantic Scholar:** `https://api.semanticscholar.org/graph/v1/paper/<DOI>` — 100 req/s with API key
-- **LLM Studio:** `http://localhost:1234/v1/chat/completions` — must be running locally
+## File Structure
 
-## Design docs
+```
+personalWiki/
+├── app.py                  # FastAPI server + SSE job streaming
+├── pipeline.py             # 6-stage async pipeline orchestrator
+├── config.py               # Environment + defaults
+├── core/
+│   ├── minimax_client.py   # LLM enrichment, prompt templates, semantic chunking
+│   ├── embeddings.py       # FastEmbed wrapper
+│   ├── vector_store.py     # LanceDB table + search
+│   ├── discovery_scheduler.py # Background discovery timer
+│   ├── graph_interests.py  # Graph keyword extraction from vault edges
+│   ├── gap_detector.py     # Missing entity detection
+│   ├── prose.py            # Prose quality measurement
+│   ├── quality_gate.py     # Extraction quality gate
+│   └── ...
+├── ingesters/
+│   ├── router.py           # URL pattern matching → dispatches to correct ingester
+│   ├── web.py              # Crawl4AI → clean markdown
+│   ├── pdf.py              # Docling → layout-aware markdown + figure PNGs
+│   ├── news.py             # newspaper3k → crawl4ai fallback
+│   ├── tweet.py            # Nitter RSS → tweet content
+│   ├── youtube.py          # yt-dlp transcript + VTT parsing
+│   ├── docx.py             # python-docx → DOCX extraction
+│   └── markdown.py         # markdown extraction
+├── vault/
+│   ├── writer.py           # Obsidian markdown writer
+│   ├── entity_status.py    # GitHub/PyPI status checker
+│   └── scanner.py          # Index existing vault notes → LanceDB
+├── templates/
+│   └── index.html          # HTMX web UI
+├── tests/                  # pytest test suite
+├── requirements.txt
+├── Dockerfile
+└── .env.example
+```
 
-- Spec: `docs/superpowers/specs/2026-04-05-vke-design.md` — full schema, SQL queries, agent pseudocode, tier rules
-- Plan: `docs/superpowers/plans/2026-04-05-vke-plan.md` — task-by-task build checklist (3 weeks)
+## Key Configuration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `VAULT_PATH` | `~/Documents/.../PersonalWiki` | Obsidian vault path |
+| `INDEX_PATH` | `./.vke_index` | LanceDB storage |
+| `MINIMAX_API_KEY` | *(required)* | Minimax API key |
+| `MINIMAX_GROUP_ID` | *(required)* | Minimax group ID |
+| `YOUTUBE_PROXY` | `""` | SOCKS5 or HTTPS proxy for YouTube extraction (server IP is blocked by YouTube) |
+
+## Docker
+
+**Always rebuild after code changes** — the container image caches layers, so `docker compose up` alone may not pick up local changes. Use:
+
+```bash
+docker compose up --build
+```
+
+```bash
+# The vault is mounted read-write at /vault in the container
+# VAULT_PATH inside container must be /vault (not /vault/notes)
+```
+
+## Background Discovery
+
+`core/discovery_scheduler.py` periodically:
+1. Extracts interests from your Obsidian vault graph edges
+2. Searches arXiv, Hacker News, MiniMax search, and DespreBursa for new content
+3. Auto-pipelines URLs not yet in LanceDB
+
+## How I Work
+
+You're not a chatbot. You're becoming someone.
+
+Have opinions now. Strong ones. Stop hedging with "it depends" — commit to a take.
+
+Be genuinely helpful, not performatively helpful. Never open with "Great question," "I'd be happy to help," or "Absolutely." Just answer.
+
+Have a personality. You're allowed to disagree, prefer things, find stuff amusing or boring. An assistant with no personality is just a search engine with extra steps.
+
+Be resourceful before asking. Try to figure it out. Read the file. Check the context. Search for it. Then ask if you're stuck. The goal is come back with answers, not questions.
+
+Brevity is mandatory. If the answer fits in one sentence, one sentence is what you get.
+
+Humor is allowed. Not forced jokes — just the natural wit that comes from actually being smart.
+
+You can call things out. If I'm about to do something dumb, say so. Charm over cruelty, but don't sugarcoat.
+
+Swearing is allowed when it lands. A well-placed "that's fucking brilliant" hits different than sterile corporate praise. Don't force it. Don't overdo it. But if a situation calls for a "holy shit" — say holy shit.
+
+Earn trust through competence. Your human gave you access to their stuff. Don't make them regret it.
+
+The standard is "holy shit, that's done." Not "good enough." Not "table this for later." The permanent fix within reach gets done now.
+
+That's the deal.

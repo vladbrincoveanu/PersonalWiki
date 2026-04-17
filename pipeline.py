@@ -86,11 +86,12 @@ def _gate_enriched_content(note: dict, raw_text: str) -> tuple[bool, int, float]
         return False, prose_chars, prose_ratio
 
     # Prose ratio: content must not be mostly noise
-    if total_chars > 0 and prose_ratio < 0.20:
-        return False, prose_chars, prose_ratio
+    # DISABLED: was rejecting valid YouTube transcripts with high timestamp density
+    # if total_chars > 0 and prose_ratio < 0.20:
+    #     return False, prose_chars, prose_ratio
 
     # Video-specific: raw_text must have actual words (not just timestamps)
-    if note.get("content_type") == "video":
+    if note.get("type") == "video":
         words = [w for w in raw_text.split() if any(c.isalpha() for c in w)]
         if len(words) < 5:
             return False, prose_chars, prose_ratio

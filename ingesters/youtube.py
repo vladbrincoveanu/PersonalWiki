@@ -3,6 +3,7 @@ import re
 import subprocess
 import tempfile
 import whisper
+from contextlib import contextmanager
 from ingesters import Document
 from youtube_transcript_api import (
     YouTubeTranscriptApi,
@@ -10,6 +11,37 @@ from youtube_transcript_api import (
     TranscriptsDisabled,
     VideoUnavailable,
 )
+
+
+def _get_proxy():
+    """Return proxy dict/URL from config, or None if not set."""
+    from config import YOUTUBE_PROXY
+    if not YOUTUBE_PROXY:
+        return None
+    return YOUTUBE_PROXY
+
+
+@contextmanager
+def _proxy_env(proxy):
+    """Temporarily set HTTP_PROXY/HTTPS_PROXY env vars, then restore."""
+    if not proxy:
+        yield
+        return
+    old_http = os.environ.get("HTTP_PROXY")
+    old_https = os.environ.get("HTTPS_PROXY")
+    os.environ["HTTP_PROXY"] = proxy
+    os.environ["HTTPS_PROXY"] = proxy
+    try:
+        yield
+    finally:
+        if old_http is not None:
+            os.environ["HTTP_PROXY"] = old_http
+        else:
+            os.environ.pop("HTTP_PROXY", None)
+        if old_https is not None:
+            os.environ["HTTPS_PROXY"] = old_https
+        else:
+            os.environ.pop("HTTPS_PROXY", None)
 
 _TIMESTAMP_RE = re.compile(r"^\d{2}:\d{2}:\d{2}[.,]\d{3}\s*-->.*$", re.MULTILINE)
 _TAG_RE = re.compile(r"<[^>]+>")
@@ -52,9 +84,12 @@ def _parse_vtt(vtt_text: str) -> str:
     return " ".join(deduped)
 
 
-def _run_yt_dlp(url: str, args: list[str], tmpdir: str) -> list[str] | None:
+def _run_yt_dlp(url: str, args: list[str], tmpdir: str, proxy: str | None = None) -> list[str] | None:
     """Run yt-dlp with given args in tmpdir. Returns list of VTT file paths or None."""
     cmd = ["yt-dlp"] + args + ["--output", os.path.join(tmpdir, "%(id)s"), "--quiet", url]
+    if proxy:
+        cmd.insert(1, "--proxy")
+        cmd.insert(2, proxy)
     try:
         subprocess.run(cmd, capture_output=True, timeout=_TIMEOUT_SECONDS)
         vtt_files = [f for f in os.listdir(tmpdir) if f.endswith(".vtt")]
@@ -71,7 +106,7 @@ def _extract_video_id(url: str) -> str | None:
     return m.group(1) if m else None
 
 
-def _try_youtube_transcript_api(video_id: str) -> str | None:
+def _try_youtube_transcript_api(video_id: str, proxy: str | None = None) -> str | None:
     """Try to fetch English transcript via youtube-transcript-api.
 
     Strategy:
@@ -81,7 +116,7 @@ def _try_youtube_transcript_api(video_id: str) -> str | None:
 
     Returns transcript text or None if all strategies fail.
     """
-    try:
+    def _fetch():
         ytt = YouTubeTranscriptApi()
         all_transcripts = ytt.list(video_id)
 
@@ -110,6 +145,9 @@ def _try_youtube_transcript_api(video_id: str) -> str | None:
         text = " ".join(snippet["text"] for snippet in snippets)
         return text.strip() if text.strip() else None
 
+    try:
+        with _proxy_env(proxy):
+            return _fetch()
     except (NoTranscriptFound, TranscriptsDisabled, VideoUnavailable):
         return None
     except Exception:
@@ -117,15 +155,13 @@ def _try_youtube_transcript_api(video_id: str) -> str | None:
         return None
 
 
-def _try_whisper_transcription(url: str) -> str | None:
+def _try_whisper_transcription(url: str, proxy: str | None = None) -> str | None:
     """Download audio via yt-dlp and transcribe with Whisper base model.
 
     Called as last resort when no captions are available.
     Uses whisper 'base' model for speed (CPU, ~2x realtime).
     """
     try:
-        import tempfile
-
         with tempfile.TemporaryDirectory() as tmpdir:
             audio_path = os.path.join(tmpdir, "audio.mp3")
 
@@ -137,6 +173,9 @@ def _try_whisper_transcription(url: str) -> str | None:
                 "--quiet", "--no-warnings",
                 url,
             ]
+            if proxy:
+                cmd.insert(1, "--proxy")
+                cmd.insert(2, proxy)
             result = subprocess.run(cmd, capture_output=True, timeout=120)
             if result.returncode != 0:
                 return None
@@ -173,10 +212,10 @@ def _has_english_cues(vtt_text: str) -> bool:
     return _is_english_text(sample)
 
 
-def _try_subtitle_tiers(url: str, tmpdir: str) -> str | None:
+def _try_subtitle_tiers(url: str, tmpdir: str, proxy: str | None = None) -> str | None:
     """Try each subtitle tier. Returns transcript text or None."""
     for tier in _SUBTITLE_TIERS:
-        vtt_files = _run_yt_dlp(url, tier["args"], tmpdir)
+        vtt_files = _run_yt_dlp(url, tier["args"], tmpdir, proxy)
         if vtt_files:
             for vtt_file in vtt_files:
                 with open(vtt_file, encoding="utf-8") as f:
@@ -192,22 +231,23 @@ def _try_subtitle_tiers(url: str, tmpdir: str) -> str | None:
 
 def extract_youtube(url: str) -> Document:
     video_id = _extract_video_id(url)
+    proxy = _get_proxy()
 
     # Try youtube-transcript-api first (bypasses yt-dlp rate limit)
     if video_id:
-        api_transcript = _try_youtube_transcript_api(video_id)
+        api_transcript = _try_youtube_transcript_api(video_id, proxy)
         if api_transcript and api_transcript.strip():
             return Document(raw_text=api_transcript, content_type="video")
 
     # Try yt-dlp subtitle tiers as 2nd attempt
     with tempfile.TemporaryDirectory() as tmpdir:
-        transcript = _try_subtitle_tiers(url, tmpdir)
+        transcript = _try_subtitle_tiers(url, tmpdir, proxy)
         if transcript and transcript.strip():
             return Document(raw_text=transcript, content_type="video")
 
     # Try Whisper transcription as last resort (only if we had a valid video_id)
     if video_id:
-        whisper_transcript = _try_whisper_transcription(url)
+        whisper_transcript = _try_whisper_transcription(url, proxy)
         if whisper_transcript:
             return Document(raw_text=whisper_transcript, content_type="video")
 

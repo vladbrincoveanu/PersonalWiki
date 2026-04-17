@@ -7,6 +7,17 @@ from config import NOTES_DIR, VAULT_PATH
 from vault.entity_status import _build_prose
 
 
+_VALID_TAG_RE = re.compile(r"^[a-z0-9_-]{2,30}$")
+
+
+def _clean_tag(tag: str) -> str | None:
+    """Return a valid Obsidian tag string, or None if the tag is invalid."""
+    tag = tag.strip().lower().lstrip("#")
+    if _VALID_TAG_RE.match(tag):
+        return tag
+    return None
+
+
 def slugify(title: str) -> str:
     slug = title.lower()
     slug = re.sub(r"[^a-z0-9\s-]", "", slug)
@@ -284,7 +295,7 @@ def write_note(
         "title": title,
         "source": source,
         "type": note.get("type", "article"),
-        "tags": note.get("tags", []),
+        "tags": [t for raw in (note.get("tags") or []) if (t := _clean_tag(raw))],
         "ingested": ingested_date,
     }
 

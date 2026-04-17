@@ -196,6 +196,40 @@ def _scan_vault(vault_path: str | Path) -> tuple[dict[str, dict], list[str]]:
     return nodes, [t for t in tags if t]
 
 
+_GRAPH_KEYWORDS_CACHE: list[str] = []
+_CACHED_VAULT_PATH: str | None = None  # Track which vault the cache belongs to
+
+def _graph_keywords_file(vault_path: str | Path) -> Path:
+    """Return path to persisted graph keywords file."""
+    vp = Path(vault_path)
+    return vp / "_graph_keywords"
+
+MAX_GRAPH_KEYWORDS: int = 30  # Cap on stored graph keywords
+
+
+def _is_valid_topic_keyword(kw: str) -> bool:
+    """Return True if keyword looks like a useful search topic, not noise or prose."""
+    stripped = kw.strip()
+    if not stripped:
+        return False
+    # Reject anything that looks like a sentence (starts with verb, has spaces + lowercase words)
+    words = stripped.split()
+    if len(words) > 6:
+        return False  # Too long to be a topic
+    if any(c in stripped for c in ["#", "@", ":", "|", "(", "=", "."]) and len(words) > 2:
+        return False  # Looks like note body or code
+    if stripped.startswith("http") or "/" in stripped:
+        return False  # URL or path
+    if len(stripped) > 60:
+        return False
+    if _is_noise_keyword(stripped):
+        return False
+    # Reject if mostly lowercase words (prose-like) and > 3 words
+    if len(words) > 3 and sum(1 for w in words if w[0].islower()) / len(words) > 0.7:
+        return False
+    return True
+
+
 def extract_interests(vault_path: str | Path | None = None) -> list[str]:
     """
     Returns deduplicated list of interest keyword strings (sync, blocking).
@@ -203,10 +237,32 @@ def extract_interests(vault_path: str | Path | None = None) -> list[str]:
     plus frontmatter tags. Noise keywords are filtered. Candidates are then
     validated via LLM to ensure they are good web search topics.
 
-    Note: for async callers, prefer extract_interests_async() to avoid nested loops.
+    Graph keywords are persisted to _graph_keywords file for fast startup retrieval.
     """
+    global _GRAPH_KEYWORDS_CACHE, _CACHED_VAULT_PATH
     if vault_path is None:
         vault_path = os.environ.get("VAULT_PATH", str(VAULT_PATH))
+
+    keywords_file = Path(vault_path) / "_keywords"
+    graph_kw_file = _graph_keywords_file(vault_path)
+    vault_str = str(vault_path)
+
+    # Try in-memory cache first (only if same vault path)
+    if _GRAPH_KEYWORDS_CACHE and _CACHED_VAULT_PATH == vault_str:
+        return list(_GRAPH_KEYWORDS_CACHE)
+
+    # Try persisted cache file (suppressed already filtered at write time)
+    try:
+        cached = graph_kw_file.read_text(encoding="utf-8").strip()
+        if cached:
+            cached_kws = [kw for kw in cached.splitlines() if kw.strip()]
+            if cached_kws:
+                _GRAPH_KEYWORDS_CACHE = cached_kws
+                _CACHED_VAULT_PATH = vault_str
+                _logger.debug("Loaded %d cached graph keywords", len(cached_kws))
+                return cached_kws
+    except OSError:
+        pass  # File missing or unreadable — scan vault fresh
 
     nodes, tags = _scan_vault(vault_path)
 
@@ -224,26 +280,39 @@ def extract_interests(vault_path: str | Path | None = None) -> list[str]:
     hub_keywords = [t for t, _ in hub_nodes[:INTEREST_HUB_TOP_K]]
     leaf_keywords = [t for t, _ in leaf_nodes[:INTEREST_LEAF_TOP_K]]
 
-    # deduplicate while preserving order, filter noise
+    # deduplicate while preserving order, filter noise + validate topic quality
     seen: set[str] = set()
     candidates: list[str] = []
     for kw in hub_keywords + leaf_keywords + tags:
-        if kw in seen or _is_noise_keyword(kw):
+        if kw in seen or not _is_valid_topic_keyword(kw):
             continue
         seen.add(kw)
         candidates.append(kw)
 
+    # Cap before LLM call to avoid wasting tokens on candidates beyond the cap
+    candidates = candidates[:MAX_GRAPH_KEYWORDS * 3]
+
     # LLM validation: ask which candidates are good web search topics
-    # Also filter against suppressed blocklist
-    keywords_file = Path(vault_path) / "_keywords" if isinstance(vault_path, str) else vault_path / "_keywords"
     suppressed = _load_suppressed_for_extract(keywords_file)
 
     try:
         loop = asyncio.new_event_loop()
         result = loop.run_until_complete(_filter_keywords_via_llm(candidates))
         loop.close()
-        # Filter out suppressed keywords from LLM result
-        return [kw for kw in result if kw not in suppressed]
+        validated = [kw for kw in result if kw not in suppressed][:MAX_GRAPH_KEYWORDS]
+        _logger.info("LLM filtered %d candidates -> %d validated", len(candidates), len(validated))
     except Exception as e:
-        _logger.warning("LLM filter failed: %s — returning candidates (suppressed excluded)", e)
-        return [kw for kw in candidates if kw not in suppressed]
+        _logger.warning("LLM filter failed: %s — using top candidates (suppressed excluded)", e)
+        validated = [kw for kw in candidates if kw not in suppressed][:MAX_GRAPH_KEYWORDS]
+
+    # Persist for next startup and cache in memory
+    if validated:
+        _GRAPH_KEYWORDS_CACHE = validated
+        _CACHED_VAULT_PATH = vault_str
+        graph_kw_file.parent.mkdir(parents=True, exist_ok=True)
+        # Atomic write: temp file + rename
+        tmp = graph_kw_file.with_suffix(".tmp")
+        tmp.write_text("\n".join(validated) + "\n", encoding="utf-8")
+        tmp.rename(graph_kw_file)
+
+    return validated

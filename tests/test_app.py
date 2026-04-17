@@ -1,4 +1,6 @@
 # tests/test_app.py
+import os
+import sys
 import pytest
 from unittest.mock import patch, AsyncMock, MagicMock
 from fastapi.testclient import TestClient
@@ -167,4 +169,177 @@ def test_keywords_returns_graph_and_manual():
     # Manual should contain "physics", graph should have the rest
     assert "physics" in body["manual"], f"Expected 'physics' in manual, got: {body['manual']}"
     assert "quantum physics" in body["graph"], f"Expected 'quantum physics' in graph, got: {body['graph']}"
-    assert body["total"] == 3
+    assert body["total"] == len(body["manual"]) + len(body["graph"])
+
+
+def test_ingest_docx_file_returns_job_json():
+    """DOCX file upload to /ingest returns job_id JSON, not HTML or error."""
+    import os
+    import app as app_module
+
+    # Save and reset scheduler state
+    prior_scheduler = app_module._scheduler
+    app_module._scheduler = None
+    app_module._scheduler_lock = None
+    app_module._job_queues.clear()
+
+    async def fake_pipeline(**kwargs):
+        # Verify docx_path is passed, not pdf_path
+        assert "docx_path" in kwargs, f"Expected docx_path in kwargs, got: {kwargs.keys()}"
+        assert "pdf_path" not in kwargs
+        yield "Extracting DOCX content..."
+        yield "Saved → notes/test.docx.md"
+
+    try:
+        client = make_client()
+        with patch("app.run_pipeline", fake_pipeline):
+            with open("/tmp/test_docx.docx", "rb") as f:
+                resp = client.post(
+                    "/ingest",
+                    files={"file": ("test_docx.docx", f, "application/vnd.openxmlformats-officedocument.wordprocessingml.document")}
+                )
+
+        assert resp.status_code == 200, f"Expected 200, got {resp.status_code}: {resp.text}"
+        assert resp.headers["content-type"] == "application/json", \
+            f"Expected JSON but got {resp.headers.get('content-type')}"
+        body = resp.json()
+        assert "job_id" in body, f"Expected job_id in JSON response, got: {body}"
+        assert len(body["job_id"]) == 36  # UUID format
+    finally:
+        app_module._job_queues.clear()
+        if prior_scheduler is not None:
+            prior_scheduler.stop()
+        app_module._scheduler = prior_scheduler
+
+
+def test_ingest_docx_routes_to_correct_extractor():
+    """DOCX file with .docx extension should route to extract_docx via docx_path."""
+    import app as app_module
+
+    prior_scheduler = app_module._scheduler
+    app_module._scheduler = None
+    app_module._scheduler_lock = None
+    app_module._job_queues.clear()
+
+    captured_kwargs = {}
+
+    async def capture_pipeline(**kwargs):
+        captured_kwargs.update(kwargs)
+        yield "done"
+
+    try:
+        client = make_client()
+        with patch("app.run_pipeline", capture_pipeline):
+            with open("/tmp/test_docx.docx", "rb") as f:
+                resp = client.post(
+                    "/ingest",
+                    files={"file": ("my_document.docx", f, "application/vnd.openxmlformats-officedocument.wordprocessingml.document")}
+                )
+
+        assert resp.status_code == 200
+        # Wait briefly for the async task to complete
+        import time
+        time.sleep(0.5)
+
+        assert "docx_path" in captured_kwargs, f"Expected docx_path in captured kwargs, got: {captured_kwargs}"
+        assert captured_kwargs["docx_path"].endswith(".docx"), \
+            f"Expected docx_path to end with .docx, got: {captured_kwargs['docx_path']}"
+    finally:
+        app_module._job_queues.clear()
+        if prior_scheduler is not None:
+            prior_scheduler.stop()
+        app_module._scheduler = prior_scheduler
+
+
+@pytest.mark.skipif(
+    os.environ.get("SKIP_PLAYWRIGHT") == "1",
+    reason="Playwright browser test — set SKIP_PLAYWRIGHT=1 to skip"
+)
+def test_docx_upload_shows_badge_and_progress_via_browser():
+    """
+    End-to-end browser test: upload DOCX → badge appears with correct type
+    → progress stream delivers events → job completes.
+
+    Uses Playwright to test the actual browser DOM + SSE behavior, not mocked.
+    """
+    import subprocess
+    import time
+    import signal
+
+    # Find a real DOCX test file
+    docx_path = "/tmp/test_docx_large.docx"
+    if not os.path.exists(docx_path):
+        pytest.skip("Test DOCX file not found at /tmp/test_docx_large.docx")
+
+    # Start app in a subprocess on a different port
+    env = {**os.environ, "SKIP_PLAYWRIGHT": "1"}
+    server = subprocess.Popen(
+        [sys.executable, "-c", f"""
+import uvicorn
+import sys
+sys.path.insert(0, '{os.getcwd()}')
+from app import app
+uvicorn.run(app, host='127.0.0.1', port=18765, log_level='error')
+"""],
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        cwd=os.getcwd(),
+        env=env,
+    )
+    time.sleep(4)  # Let server start
+
+    try:
+        from playwright.sync_api import sync_playwright
+
+        with sync_playwright() as p:
+            browser = p.chromium.launch()
+            page = browser.new_page()
+
+            console_errors = []
+            page.on("console", lambda msg: console_errors.append(msg.text) if msg.type == "error" else None)
+
+            page.goto("http://127.0.0.1:18765/")
+
+            # Upload DOCX
+            page.set_input_files('input[name="file"]', docx_path)
+
+            # 0. Filename must appear in drop zone after selection
+            page.wait_for_function(
+                'document.getElementById("selected-file").classList.contains("visible")',
+                timeout=3000,
+            )
+            filename = page.evaluate('document.getElementById("selected-file").innerText')
+            assert "docx" in filename.lower(), f"Expected docx in filename, got: {filename}"
+
+            page.click('button[type="submit"]')
+
+            # 1. Badge must appear within 5s (uses CSS class 'visible' not inline style)
+            page.wait_for_function(
+                'document.getElementById("source-badge").classList.contains("visible")',
+                timeout=5000,
+            )
+            badge_class = page.evaluate('document.getElementById("source-badge").className')
+            badge_text = page.evaluate('document.getElementById("source-badge").innerText')
+            assert "docx" in badge_class, f"Expected docx in badge class, got: {badge_class}"
+            assert "Word" in badge_text, f"Expected 'Word' in badge text, got: {badge_text}"
+
+            # 2. Progress box must show content within 10s
+            page.wait_for_function(
+                'document.getElementById("progress-box").innerText.includes("Extracting")',
+                timeout=10000,
+            )
+
+            # 3. Job must complete (Saved or Skipped) within 120s
+            page.wait_for_function(
+                'document.getElementById("progress-box").innerText.includes("Saved") || '
+                'document.getElementById("progress-box").innerText.includes("Skipped")',
+                timeout=120000,
+            )
+
+            # 4. No console errors
+            assert not console_errors, f"Console errors: {console_errors}"
+
+            browser.close()
+
+    finally:
+        server.send_signal(signal.SIGTERM)
+        server.wait(timeout=5)

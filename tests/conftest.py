@@ -33,3 +33,27 @@ def cleanup_discovery_scheduler():
                 _app._scheduler_lock = None
     except Exception:
         pass
+
+
+@pytest.fixture(autouse=True)
+def cleanup_graph_keywords():
+    """
+    Reset graph_interests module globals before and after each test.
+
+    _GRAPH_KEYWORDS_CACHE and _CACHED_VAULT_PATH are module-level globals that
+    persist across tests in the same Python session. Without cleanup, a test
+    that calls extract_interests() may read a stale _graph_keywords file
+    written by a previous test to a pytest tmp_path directory, causing the
+    cache hit path to return incorrect results.
+    """
+    import core.graph_interests as gi
+
+    # Reset before test
+    gi._GRAPH_KEYWORDS_CACHE = []
+    gi._CACHED_VAULT_PATH = None
+
+    yield
+
+    # Reset after test
+    gi._GRAPH_KEYWORDS_CACHE = []
+    gi._CACHED_VAULT_PATH = None
