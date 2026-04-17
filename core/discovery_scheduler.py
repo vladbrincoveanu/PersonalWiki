@@ -33,6 +33,10 @@ from ingesters.web import extract_url
 from pathlib import Path
 from vault.junk_cleaner import cleanup_junk
 from core.prose import measure_prose
+from core.site_registry import SiteRegistry
+from core.sitemap_discovery import fetch_sitemap
+from core.sitemap_link_extractor import extract_links
+from urllib.parse import urlparse
 
 _logger = logging.getLogger(__name__)
 
@@ -141,6 +145,7 @@ class DiscoveryScheduler:
         # Eagerly load keywords in background so /keywords is ready before first poll
         t = threading.Thread(target=self._blocking_refresh, daemon=True)
         t.start()
+        self._site_registry = SiteRegistry()
 
     def _blocking_refresh(self):
         """Run _refresh_keywords synchronously in a thread (for __init__)."""
@@ -197,6 +202,42 @@ class DiscoveryScheduler:
         if url in self._seen_urls or url in self._in_flight:
             return False
         return True
+
+    async def search_sitemaps(self, keyword: str) -> list[dict]:
+        """Search all registered domain sitemaps for keyword-matching URLs.
+
+        Returns list of {url, title, snippet, source} dicts suitable for pipeline.
+        """
+        results = []
+        for domain in self._site_registry.all_domains():
+            if not domain:
+                continue
+            try:
+                entries = await fetch_sitemap(domain, keyword)
+            except Exception as e:
+                _logger.debug("Sitemap search failed for domain %s: %s", domain, e)
+                continue
+
+            for entry in entries:
+                url = entry.get("url", "")
+                if not url or not self._is_new_url(url):
+                    continue
+                from core.vector_store import get_store
+                store = get_store()
+                if store.exists(url):
+                    self._site_registry.add_url(domain, url)
+                    self._seen_urls.add(url)
+                    self._persist_seen_urls()
+                    continue
+
+                results.append({
+                    "url": url,
+                    "title": url.split("/")[-1],
+                    "snippet": entry.get("lastmod", "") or "",
+                    "source": "sitemap",
+                })
+
+        return results
 
     async def _refresh_keywords(self):
         """Re-extract interests from vault graph and merge manual keywords."""
@@ -596,7 +637,9 @@ class DiscoveryScheduler:
         store = get_store()
 
         ingested = 0
+        last_keyword = None
         for keyword in self._keywords:
+            last_keyword = keyword
             if ingested >= MAX_URLS_PER_CYCLE:
                 break
             results = await self._search_keyword(keyword)
@@ -626,6 +669,42 @@ class DiscoveryScheduler:
 
                 if ingested >= MAX_URLS_PER_CYCLE:
                     break
+
+        # Also search via sitemap for the last keyword processed
+        if last_keyword is not None:
+            try:
+                sitemap_results = await self.search_sitemaps(last_keyword)
+            except Exception as e:
+                _logger.warning("Discovery: sitemap search failed for %s: %s", last_keyword, e)
+                sitemap_results = []
+
+            for result in sitemap_results:
+                url = result["url"]
+                if not url or not self._is_new_url(url):
+                    continue
+                from core.vector_store import get_store
+                store = get_store()
+                if store.exists(url):
+                    self._seen_urls.add(url)
+                    self._persist_seen_urls()
+                    continue
+
+                _logger.info("Discovery: ingesting sitemap result %s", url)
+                self._in_flight.add(url)
+                try:
+                    if self._pipeline_func:
+                        asyncio.create_task(self._run_pipeline(url))
+                    ingested += 1
+                    self._update_keyword_score(last_keyword, +1)
+                    self._seen_urls.add(url)
+                    self._persist_seen_urls()
+                    domain = urlparse(url).netloc
+                    self._site_registry.add_url(domain, url)
+                except Exception as e:
+                    self._update_keyword_score(last_keyword, -2)
+                    _logger.error("Discovery: failed to queue sitemap result %s: %s", url, e)
+                finally:
+                    self._in_flight.discard(url)
 
         # Echo chamber guard: every 5th cycle, inject explore keywords
         self._discovery_cycle_count += 1

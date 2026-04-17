@@ -470,3 +470,36 @@ async def test_run_discovery_cycle_calls_cleanup_junk():
     ):
         await ds._run_discovery_cycle()
         mock_cleanup.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_search_sitemaps_returns_filtered_results():
+    """search_sitemaps queries all registered domains and returns keyword-matching URLs."""
+    from core.discovery_scheduler import DiscoveryScheduler
+
+    with patch("core.discovery_scheduler.SiteRegistry") as MockReg, \
+         patch("core.discovery_scheduler.fetch_sitemap") as mock_fetch, \
+         patch("core.vector_store.get_store") as mock_store:
+
+        mock_reg_instance = MagicMock()
+        mock_reg_instance.all_domains.return_value = ["example.com"]
+        MockReg.return_value = mock_reg_instance
+
+        mock_fetch.return_value = [
+            {"url": "https://example.com/transformer-guide", "lastmod": None, "priority": None}
+        ]
+
+        mock_store_instance = MagicMock()
+        mock_store_instance.exists.return_value = False
+        mock_store.return_value = mock_store_instance
+
+        scheduler = DiscoveryScheduler()
+        scheduler._site_registry = mock_reg_instance
+
+        # Patch the parent's _is_new_url to return True for our test URL
+        with patch.object(scheduler, "_is_new_url", return_value=True):
+            results = await scheduler.search_sitemaps("transformer")
+
+        assert len(results) == 1
+        assert "transformer" in results[0]["url"]
+        assert results[0]["source"] == "sitemap"
