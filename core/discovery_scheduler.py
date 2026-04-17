@@ -551,6 +551,28 @@ class DiscoveryScheduler:
             if len(validated) >= limit:
                 break
 
+        # Side-effect: try to discover sitemaps from MiniMax-returned domains
+        # This seeds the site registry even when MiniMax URLs themselves aren't useful
+        if hasattr(self, "_site_registry"):
+            seen_domains = set()
+            for r in raw_urls:
+                url = r.get("url", "")
+                if not url:
+                    continue
+                domain = urlparse(url).netloc
+                if not domain or domain in seen_domains:
+                    continue
+                seen_domains.add(domain)
+                if self._site_registry.is_known(domain):
+                    continue
+                try:
+                    sitemap_entries = await fetch_sitemap(domain, keyword="")
+                    if sitemap_entries:
+                        self._site_registry.add_domain(domain, source="minimax_discovery", url=url)
+                        _logger.info("Discovery: seeded domain %s from MiniMax sitemap", domain)
+                except Exception as e:
+                    _logger.debug("MiniMax sitemap seed failed for %s: %s", domain, e)
+
         return validated
 
     async def _search_desprebursa(self, keyword: str, limit: int = 5) -> list[dict]:
