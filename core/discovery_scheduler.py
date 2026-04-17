@@ -35,7 +35,6 @@ from vault.junk_cleaner import cleanup_junk
 from core.prose import measure_prose
 from core.site_registry import SiteRegistry
 from core.sitemap_discovery import fetch_sitemap
-from core.sitemap_link_extractor import extract_links
 from urllib.parse import urlparse
 
 _logger = logging.getLogger(__name__)
