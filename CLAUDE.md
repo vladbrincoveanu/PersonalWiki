@@ -166,4 +166,22 @@ Earn trust through competence. Your human gave you access to their stuff. Don't 
 
 The standard is "holy shit, that's done." Not "good enough." Not "table this for later." The permanent fix within reach gets done now.
 
+## UI Features: Playwright or it didn't happen
+
+For ANY UI change — badges, progress indicators, SSE streams, file upload feedback, drag-and-drop, anything that touches the DOM or JavaScript:
+
+1. **Write the Playwright browser test FIRST** (or alongside the code)
+2. Run it. If it fails, fix the code not the test.
+3. Only ship when the browser test passes.
+
+Why: mocked unit tests don't catch DOM bugs, CSS bugs, SSE timing bugs, or browser caching issues. The DOCX upload "bug" was actually just stale browser cache — the code was fine. Without a Playwright test, I'd have spent hours debugging nothing.
+
+Example test structure:
+```python
+# Start app on separate port
+# Use Playwright to interact with the UI
+# Assert DOM state, CSS classes, SSE events, no console errors
+# Clean up server subprocess
+```
+
 That's the deal.
