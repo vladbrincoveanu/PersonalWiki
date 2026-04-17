@@ -6,35 +6,54 @@
     <title>personalWiki</title>
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
     <script src="https://unpkg.com/htmx.org@1.9.10/dist/ext/sse.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Fira+Sans:wght@300;400;500;600&display=swap');
-
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
         :root {
             --bg: #020617;
             --surface: #0f172a;
             --surface-2: #1e293b;
+            --surface-3: #2d3a4f;
             --border: #334155;
+            --border-bright: #475569;
             --text: #f8fafc;
             --text-muted: #94a3b8;
+            --text-dim: #64748b;
             --accent: #22c55e;
+            --accent-hover: #16a34a;
             --accent-dim: #166534;
+            --accent-glow: rgba(34, 197, 94, 0.15);
             --danger: #ef4444;
+            --danger-dim: #7f1d1d;
             --warning: #f59e0b;
+            --info: #38bdf8;
+            --info-dim: #0c4a6e;
+            --radius: 12px;
+            --radius-sm: 8px;
         }
 
+        html { scroll-behavior: smooth; }
+
         body {
-            font-family: 'Fira Sans', sans-serif;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
             background: var(--bg);
             color: var(--text);
             min-height: 100vh;
-            padding: 2rem;
+            line-height: 1.6;
+            -webkit-font-smoothing: antialiased;
         }
 
+        /* ── Typography ── */
+        .mono { font-family: 'Space Mono', 'Fira Code', monospace; }
+
+        /* ── Layout ── */
         .container {
-            max-width: 860px;
+            max-width: 720px;
             margin: 0 auto;
+            padding: 2rem 1.25rem 4rem;
         }
 
         /* ── Header ── */
@@ -42,71 +61,80 @@
             display: flex;
             align-items: center;
             justify-content: space-between;
-            margin-bottom: 2rem;
+            margin-bottom: 3rem;
+            padding-bottom: 1.5rem;
+            border-bottom: 1px solid var(--border);
         }
-        header h1 {
-            font-family: 'Fira Code', monospace;
-            font-size: 1.25rem;
-            font-weight: 600;
-            color: var(--text);
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
         }
-        header h1 span { color: var(--accent); }
+        .logo-icon {
+            width: 36px;
+            height: 36px;
+            background: var(--accent);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 0 20px var(--accent-glow);
+        }
+        .logo-icon svg { width: 20px; height: 20px; color: #000; }
+        .logo-text {
+            font-family: 'Space Mono', monospace;
+            font-size: 1.1rem;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+        }
+        .logo-text span { color: var(--accent); }
         .status-badge {
             display: flex;
             align-items: center;
-            gap: 0.4rem;
+            gap: 0.5rem;
             font-size: 0.75rem;
             color: var(--text-muted);
+            font-family: 'Space Mono', monospace;
         }
         .status-dot {
-            width: 8px; height: 8px;
+            width: 8px;
+            height: 8px;
             border-radius: 50%;
             background: var(--accent);
-            box-shadow: 0 0 6px var(--accent);
+            box-shadow: 0 0 8px var(--accent);
             animation: pulse 2s ease-in-out infinite;
         }
         @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.4; }
-        }
-
-        /* ── Grid ── */
-        .grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 1rem;
-        }
-        @media (max-width: 640px) {
-            .grid { grid-template-columns: 1fr; }
+            0%, 100% { opacity: 1; box-shadow: 0 0 8px var(--accent); }
+            50% { opacity: 0.5; box-shadow: 0 0 4px var(--accent); }
         }
 
         /* ── Card ── */
         .card {
             background: var(--surface);
             border: 1px solid var(--border);
-            border-radius: 12px;
-            padding: 1.25rem;
+            border-radius: var(--radius);
+            padding: 1.5rem;
+            transition: border-color 0.2s;
         }
         .card-header {
             display: flex;
             align-items: center;
-            justify-content: space-between;
-            margin-bottom: 1rem;
+            gap: 0.5rem;
+            margin-bottom: 1.25rem;
         }
+        .card-header svg { width: 16px; height: 16px; color: var(--text-muted); flex-shrink: 0; }
         .card-title {
-            font-size: 0.75rem;
+            font-size: 0.7rem;
             font-weight: 600;
             text-transform: uppercase;
-            letter-spacing: 0.08em;
+            letter-spacing: 0.1em;
             color: var(--text-muted);
-            display: flex;
-            align-items: center;
-            gap: 0.4rem;
         }
-        .card-title svg { width: 14px; height: 14px; }
 
-        /* ── Ingest ── */
-        .ingest-card { grid-column: 1 / -1; }
+        /* ── Ingest Card ── */
+        .ingest-card { margin-bottom: 1rem; }
+
         .url-row {
             display: flex;
             gap: 0.5rem;
@@ -116,70 +144,178 @@
             flex: 1;
             background: var(--bg);
             border: 1px solid var(--border);
-            border-radius: 8px;
-            padding: 0.65rem 0.9rem;
+            border-radius: var(--radius-sm);
+            padding: 0.75rem 1rem;
             color: var(--text);
             font-size: 0.875rem;
-            font-family: 'Fira Code', monospace;
+            font-family: 'Space Mono', monospace;
             outline: none;
-            transition: border-color 0.2s;
+            transition: border-color 0.2s, box-shadow 0.2s;
         }
-        .url-row input:focus { border-color: var(--accent); }
-        .url-row input::placeholder { color: var(--text-muted); font-family: 'Fira Sans', sans-serif; }
+        .url-row input:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px var(--accent-glow);
+        }
+        .url-row input::placeholder {
+            color: var(--text-dim);
+            font-family: 'Inter', sans-serif;
+            font-size: 0.85rem;
+        }
+
         .file-row {
             display: flex;
             align-items: center;
-            gap: 0.5rem;
-            padding: 0.6rem 0.9rem;
+            gap: 0.75rem;
+            padding: 0.85rem 1rem;
             background: var(--bg);
             border: 1px dashed var(--border);
-            border-radius: 8px;
+            border-radius: var(--radius-sm);
             cursor: pointer;
-            transition: border-color 0.2s;
+            transition: border-color 0.2s, background 0.2s;
         }
-        .file-row:hover { border-color: var(--accent); }
-        .file-row span { font-size: 0.8rem; color: var(--text-muted); }
-        .file-row input[type="file"] { display: none; }
+        .file-row:hover {
+            border-color: var(--accent);
+            background: rgba(34, 197, 94, 0.03);
+        }
+        .file-row svg { width: 18px; height: 18px; color: var(--text-dim); flex-shrink: 0; transition: color 0.2s; }
+        .file-row:hover svg { color: var(--accent); }
+        .file-row.drag-over {
+            border-color: var(--accent);
+            background: rgba(34, 197, 94, 0.08);
+            border-style: solid;
+        }
+        .file-row.has-file {
+            border-color: var(--accent-dim);
+            border-style: solid;
+        }
         .file-label {
-            font-size: 0.8rem;
+            font-size: 0.85rem;
             color: var(--text-muted);
             cursor: pointer;
+            transition: color 0.2s;
         }
+        .file-row:hover .file-label { color: var(--text); }
+        .file-row input[type="file"] { display: none; }
+        .selected-file {
+            font-size: 0.8rem;
+            font-family: 'Space Mono', monospace;
+            color: var(--accent);
+            margin-left: 0.25rem;
+            max-width: 200px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            display: none;
+        }
+        .selected-file.visible { display: inline; }
+        .file-types {
+            margin-left: auto;
+            display: flex;
+            gap: 0.35rem;
+        }
+        .file-type-badge {
+            font-size: 0.65rem;
+            font-family: 'Space Mono', monospace;
+            padding: 0.15rem 0.4rem;
+            border-radius: 4px;
+            background: var(--surface-2);
+            color: var(--text-dim);
+            border: 1px solid var(--border);
+        }
+
         .btn-ingest {
             background: var(--accent);
             color: #000;
             border: none;
-            border-radius: 8px;
-            padding: 0.65rem 1.5rem;
+            border-radius: var(--radius-sm);
+            padding: 0.75rem 1.5rem;
             font-size: 0.875rem;
             font-weight: 600;
             cursor: pointer;
-            transition: background 0.2s, transform 0.1s;
+            transition: background 0.15s, transform 0.1s, box-shadow 0.15s;
             white-space: nowrap;
+            font-family: 'Inter', sans-serif;
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
         }
-        .btn-ingest:hover { background: #16a34a; }
+        .btn-ingest svg { width: 16px; height: 16px; }
+        .btn-ingest:hover {
+            background: var(--accent-hover);
+            box-shadow: 0 0 20px var(--accent-glow);
+        }
         .btn-ingest:active { transform: scale(0.97); }
-        .btn-ingest:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+        .btn-ingest:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
 
-        /* ── Progress ── */
-        .progress-card { grid-column: 1 / -1; }
+        /* ── Progress Card ── */
+        .progress-card {
+            margin-bottom: 1rem;
+            display: none;
+        }
+        .progress-card.active { display: block; }
+
+        #source-badge {
+            display: none;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 0.75rem;
+            padding: 0.4rem 0.75rem;
+            border-radius: var(--radius-sm);
+            font-size: 0.75rem;
+            font-family: 'Space Mono', monospace;
+            width: fit-content;
+            animation: fadeIn 0.2s ease;
+        }
+        #source-badge.visible { display: flex; }
+        #source-badge.url { background: var(--info-dim); color: var(--info); border: 1px solid #1e3a5f; }
+        #source-badge.pdf { background: var(--danger-dim); color: var(--danger); border: 1px solid #7f1d1d; }
+        #source-badge.docx { background: #1e3b4f; color: #38bdf8; border: 1px solid #0c4a6e; }
+        #source-badge.md { background: #1f3b2e; color: #4ade80; border: 1px solid #14532d; }
+        #source-badge.txt { background: #3b3b1f; color: #facc15; border: 1px solid #713f12; }
+        #source-badge svg { width: 14px; height: 14px; flex-shrink: 0; }
+
         #progress-box {
             background: var(--bg);
             border: 1px solid var(--border);
-            border-radius: 8px;
+            border-radius: var(--radius-sm);
             padding: 1rem;
-            min-height: 60px;
-            max-height: 200px;
+            min-height: 64px;
+            max-height: 180px;
             overflow-y: auto;
-            font-family: 'Fira Code', monospace;
-            font-size: 0.78rem;
-            line-height: 1.8;
-            display: none;
+            font-family: 'Space Mono', monospace;
+            font-size: 0.75rem;
+            line-height: 1.9;
+            scrollbar-width: thin;
+            scrollbar-color: var(--border) transparent;
         }
-        #progress-box:not(:empty) { display: block; }
+        #progress-box::-webkit-scrollbar { width: 6px; }
+        #progress-box::-webkit-scrollbar-track { background: transparent; }
+        #progress-box::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
         #progress-box p { color: var(--text-muted); margin: 0; }
-        #progress-box p:last-child { color: var(--accent); }
+        #progress-box p:last-child { color: var(--accent); font-weight: 600; }
         #progress-box .err { color: var(--danger); }
+        #progress-box .warn { color: var(--warning); }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-4px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* ── Two-Column Grid ── */
+        .two-col {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+        }
+        @media (max-width: 580px) {
+            .two-col { grid-template-columns: 1fr; }
+            .container { padding: 1.25rem 1rem 3rem; }
+        }
 
         /* ── Keywords ── */
         #keywords-chips {
@@ -191,52 +327,65 @@
         .kw-chip {
             display: inline-flex;
             align-items: center;
-            gap: 0.3rem;
+            gap: 0.35rem;
             background: var(--surface-2);
             border: 1px solid var(--border);
             border-radius: 20px;
-            padding: 0.2rem 0.5rem 0.2rem 0.65rem;
-            font-size: 0.75rem;
+            padding: 0.25rem 0.5rem 0.25rem 0.7rem;
+            font-size: 0.72rem;
             color: var(--text-muted);
-            transition: border-color 0.2s;
+            transition: border-color 0.15s, color 0.15s;
+            cursor: default;
         }
-        .kw-chip:hover { border-color: var(--text-muted); }
-        .kw-chip.graph { color: #60a5fa; border-color: #1e3a5f; background: #0c1a2e; }
+        .kw-chip:hover {
+            border-color: var(--border-bright);
+            color: var(--text);
+        }
+        .kw-chip.graph {
+            color: var(--info);
+            border-color: var(--info-dim);
+            background: rgba(56, 189, 248, 0.06);
+        }
+        .kw-chip.graph:hover { border-color: var(--info); }
         .kw-chip button {
             background: none;
             border: none;
-            color: var(--text-muted);
+            color: var(--text-dim);
             cursor: pointer;
-            font-size: 0.7rem;
+            font-size: 0.65rem;
             line-height: 1;
             padding: 0;
-            width: 16px;
-            height: 16px;
+            width: 14px;
+            height: 14px;
             border-radius: 50%;
             display: flex;
             align-items: center;
             justify-content: center;
             transition: background 0.15s, color 0.15s;
+            flex-shrink: 0;
         }
         .kw-chip button:hover { background: var(--danger); color: #fff; }
+        .kw-empty { font-size: 0.8rem; color: var(--text-dim); padding: 0.5rem 0; text-align: center; }
+
         #add-kw-row {
             display: flex;
             gap: 0.4rem;
-            margin-top: 0.6rem;
+            margin-top: 0.75rem;
         }
         #add-kw-input {
             flex: 1;
             background: var(--bg);
             border: 1px solid var(--border);
             border-radius: 6px;
-            padding: 0.35rem 0.6rem;
+            padding: 0.45rem 0.7rem;
             color: var(--text);
             font-size: 0.8rem;
             outline: none;
             transition: border-color 0.2s;
+            font-family: 'Inter', sans-serif;
         }
         #add-kw-input:focus { border-color: var(--accent); }
-        #add-kw-input::placeholder { color: var(--text-muted); }
+        #add-kw-input::placeholder { color: var(--text-dim); }
         #add-kw-btn {
             background: var(--surface-2);
             border: 1px solid var(--border);
@@ -244,8 +393,8 @@
             color: var(--text-muted);
             cursor: pointer;
             font-size: 0.8rem;
-            padding: 0.35rem 0.6rem;
-            transition: border-color 0.2s, color 0.2s;
+            padding: 0.45rem 0.75rem;
+            transition: border-color 0.15s, color 0.15s;
         }
         #add-kw-btn:hover { border-color: var(--accent); color: var(--accent); }
 
@@ -253,44 +402,46 @@
         #jobs-list {
             display: flex;
             flex-direction: column;
-            gap: 0.4rem;
+            gap: 0.35rem;
             min-height: 2rem;
         }
         .job-item {
             display: flex;
             align-items: center;
             gap: 0.6rem;
-            padding: 0.5rem 0.7rem;
+            padding: 0.55rem 0.75rem;
             background: var(--bg);
             border: 1px solid var(--border);
-            border-radius: 8px;
-            font-size: 0.78rem;
+            border-radius: var(--radius-sm);
+            font-size: 0.75rem;
             cursor: pointer;
-            transition: border-color 0.2s;
+            transition: border-color 0.15s;
         }
-        .job-item:hover { border-color: var(--text-muted); }
+        .job-item:hover { border-color: var(--border-bright); }
         .job-dot {
-            width: 8px; height: 8px;
+            width: 7px;
+            height: 7px;
             border-radius: 50%;
             flex-shrink: 0;
         }
-        .job-dot.done { background: var(--accent); }
-        .job-dot.running { background: var(--warning); animation: pulse 1s ease-in-out infinite; }
-        .job-dot.queued { background: var(--text-muted); }
+        .job-dot.done { background: var(--accent); box-shadow: 0 0 4px var(--accent); }
+        .job-dot.running { background: var(--warning); animation: pulse 0.8s ease-in-out infinite; }
+        .job-dot.queued { background: var(--text-dim); }
         .job-dot.err { background: var(--danger); }
         .job-url {
             flex: 1;
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
-            font-family: 'Fira Code', monospace;
+            font-family: 'Space Mono', monospace;
             color: var(--text-muted);
+            font-size: 0.7rem;
         }
-        .job-status { font-size: 0.7rem; color: var(--text-muted); white-space: nowrap; }
+        .job-status { font-size: 0.68rem; color: var(--text-dim); white-space: nowrap; font-family: 'Space Mono', monospace; }
         .job-delete {
             background: none;
             border: none;
-            color: var(--text-muted);
+            color: var(--text-dim);
             cursor: pointer;
             font-size: 0.7rem;
             padding: 0;
@@ -299,7 +450,24 @@
         }
         .job-item:hover .job-delete { opacity: 1; }
         .job-delete:hover { color: var(--danger); }
-        .no-jobs { font-size: 0.8rem; color: var(--text-muted); text-align: center; padding: 1rem 0; }
+        .no-jobs { font-size: 0.8rem; color: var(--text-dim); text-align: center; padding: 1.25rem 0; }
+
+        /* ── Ping ── */
+        .ping-line {
+            font-family: 'Space Mono', monospace;
+            font-size: 0.7rem;
+            color: var(--text-dim);
+            padding: 0.25rem 0;
+            border-top: 1px solid var(--border);
+            margin-top: 0.5rem;
+        }
+
+        /* ── Scrollbar ── */
+        ::selection { background: var(--accent-dim); color: var(--text); }
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--border-bright); }
     </style>
 </head>
 <body>
@@ -307,68 +475,107 @@
 
     <!-- Header -->
     <header>
-        <h1>personal<span>Wiki</span></h1>
+        <div class="logo">
+            <div class="logo-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                    <polyline points="14 2 14 8 20 8"/>
+                    <line x1="16" y1="13" x2="8" y2="13"/>
+                    <line x1="16" y1="17" x2="8" y2="17"/>
+                    <polyline points="10 9 9 9 8 9"/>
+                </svg>
+            </div>
+            <span class="logo-text">personal<span>Wiki</span></span>
+        </div>
         <div class="status-badge">
             <div class="status-dot"></div>
-            <span>live</span>
+            <span class="mono">live</span>
         </div>
     </header>
 
     <!-- Ingest Form -->
-    <div class="grid">
-        <div class="card ingest-card">
-            <div class="card-header">
-                <div class="card-title">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+    <div class="card ingest-card">
+        <div class="card-header">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="17 8 12 3 7 8"/>
+                <line x1="12" y1="3" x2="12" y2="15"/>
+            </svg>
+            <span class="card-title">Ingest</span>
+        </div>
+        <form id="ingest-form" action="/ingest" method="post" enctype="multipart/form-data">
+            <div class="url-row">
+                <input
+                    type="url"
+                    name="url"
+                    placeholder="https://arxiv.org/abs/... or any URL"
+                    autocomplete="off"
+                    autofocus
+                />
+                <button type="submit" class="btn-ingest" id="ingest-btn">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M5 12h14M12 5l7 7-7 7"/>
+                    </svg>
                     Ingest
-                </div>
+                </button>
             </div>
-            <form id="ingest-form" action="/ingest" method="post" enctype="multipart/form-data">
-                <div class="url-row">
-                    <input type="url" name="url" placeholder="https://arxiv.org/abs/..." autocomplete="off" />
-                    <button type="submit" class="btn-ingest" id="ingest-btn">Ingest</button>
+            <label class="file-row" for="file-input" id="file-row-label">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                    <polyline points="14 2 14 8 20 8"/>
+                </svg>
+                <span class="file-label" id="file-label-text">Drop a file here or click to browse</span>
+                <span id="selected-file" class="selected-file"></span>
+                <div class="file-types">
+                    <span class="file-type-badge">PDF</span>
+                    <span class="file-type-badge">DOCX</span>
+                    <span class="file-type-badge">MD</span>
+                    <span class="file-type-badge">TXT</span>
                 </div>
-                <label class="file-row">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                    <span class="file-label">drop PDF here or click</span>
-                    <input type="file" name="file" accept=".pdf" />
-                </label>
-            </form>
-        </div>
+            </label>
+            <input type="file" id="file-input" name="file" accept=".pdf,.docx,.md,.txt" style="display:none" />
+        </form>
+    </div>
 
-        <!-- Progress -->
-        <div class="card progress-card" style="grid-column:1/-1">
-            <div class="card-header">
-                <div class="card-title">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-                    Live Progress
-                </div>
-            </div>
-            <div id="progress-box"></div>
+    <!-- Progress -->
+    <div class="card progress-card" id="progress-card">
+        <div class="card-header">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+            </svg>
+            <span class="card-title">Live Progress</span>
         </div>
+        <div id="source-badge"></div>
+        <div id="progress-box"></div>
+    </div>
 
+    <!-- Two Column: Keywords + Jobs -->
+    <div class="two-col">
         <!-- Keywords -->
         <div class="card">
             <div class="card-header">
-                <div class="card-title">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
-                    Keywords (<span id="kw-count">0</span>)
-                </div>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/>
+                    <line x1="7" y1="7" x2="7.01" y2="7"/>
+                </svg>
+                <span class="card-title">Keywords</span>
+                <span class="mono" style="margin-left:auto;font-size:0.65rem;color:var(--text-dim)" id="kw-count">0</span>
             </div>
             <div id="keywords-chips"></div>
             <div id="add-kw-row">
-                <input id="add-kw-input" type="text" placeholder="Add a keyword..." />
-                <button id="add-kw-btn" type="button" onclick="addKeyword()">+ Add</button>
+                <input id="add-kw-input" type="text" placeholder="Add keyword..." />
+                <button id="add-kw-btn" type="button" onclick="addKeyword()">+</button>
             </div>
         </div>
 
         <!-- Recent Jobs -->
         <div class="card">
             <div class="card-header">
-                <div class="card-title">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                    Recent Jobs
-                </div>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"/>
+                    <polyline points="12 6 12 12 16 14"/>
+                </svg>
+                <span class="card-title">Recent Jobs</span>
             </div>
             <div id="jobs-list">
                 <div class="no-jobs">No jobs yet — ingest something</div>
@@ -385,6 +592,9 @@
             const data = await res.json();
             const chips = document.getElementById('keywords-chips');
             chips.innerHTML = '';
+            if (data.manual.length === 0 && data.graph.length === 0) {
+                chips.innerHTML = '<div class="kw-empty">No keywords yet</div>';
+            }
             data.manual.forEach(kw => chips.appendChild(makeChip(kw, true)));
             data.graph.forEach(kw => chips.appendChild(makeChip(kw, false)));
             document.getElementById('kw-count').textContent = data.total;
@@ -396,8 +606,9 @@
         span.className = 'kw-chip' + (isManual ? '' : ' graph');
         span.textContent = kw;
         const btn = document.createElement('button');
-        btn.textContent = '✕';
+        btn.innerHTML = '&times;';
         btn.title = 'Remove keyword';
+        btn.setAttribute('aria-label', 'Remove ' + kw);
         btn.onclick = (e) => { e.stopPropagation(); removeKeyword(kw, isManual); };
         span.appendChild(btn);
         return span;
@@ -426,8 +637,7 @@
             : `Suppress graph keyword "${kw}"?\n\nThis will delete vault files with [[${kw}]] or #${kw} tags.\n\nKeyword will be blocklisted.`;
         if (!confirm(msg)) return;
         try {
-            const endpoint = '/keywords/' + action;
-            const res = await fetch(endpoint, {
+            const res = await fetch('/keywords/' + action, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                 body: 'keyword=' + encodeURIComponent(kw)
@@ -436,9 +646,6 @@
                 const data = await res.json();
                 if (data.purged_count > 0) alert(`Removed. ${data.purged_count} file(s) deleted.`);
                 loadKeywords();
-            } else {
-                const err = await res.text();
-                alert('Failed: ' + err);
             }
         } catch(e) { alert('Failed: ' + e.message); }
     }
@@ -447,18 +654,108 @@
         if (e.key === 'Enter') { e.preventDefault(); addKeyword(); }
     });
 
-    // ── Form submit UX ──────────────────────────────────────────
+    // ── File Input & Drag-and-Drop ───────────────────────────
+    const fileInput = document.getElementById('file-input');
+    const fileRow = document.getElementById('file-row-label');
+    const selectedFileSpan = document.getElementById('selected-file');
+    const fileLabelText = document.getElementById('file-label-text');
+
+    // Show selected filename
+    fileInput.addEventListener('change', () => {
+        if (fileInput.files.length > 0) {
+            const name = fileInput.files[0].name;
+            selectedFileSpan.textContent = name;
+            selectedFileSpan.classList.add('visible');
+            fileLabelText.style.display = 'none';
+            fileRow.classList.add('has-file');
+        } else {
+            selectedFileSpan.textContent = '';
+            selectedFileSpan.classList.remove('visible');
+            fileLabelText.style.display = '';
+            fileRow.classList.remove('has-file');
+        }
+    });
+
+    // Drag and drop
+    fileRow.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        fileRow.classList.add('drag-over');
+    });
+    fileRow.addEventListener('dragleave', () => {
+        fileRow.classList.remove('drag-over');
+    });
+    fileRow.addEventListener('drop', (e) => {
+        e.preventDefault();
+        fileRow.classList.remove('drag-over');
+        const files = e.dataTransfer.files;
+        if (files.length > 0) {
+            // Create a new FileList-like object by directly setting files on the input
+            const dt = new DataTransfer();
+            for (const f of files) dt.items.add(f);
+            fileInput.files = dt.files;
+            fileInput.dispatchEvent(new Event('change'));
+        }
+    });
+
+    // ── Form Submit ──────────────────────────────────────────
     let activeSource = null;
+
+    const SOURCE_ICONS = {
+        url: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>`,
+        pdf: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>`,
+        docx: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>`,
+        md: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>`,
+        txt: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>`,
+    };
+
+    function setSourceBadge(sourceType, label) {
+        const badge = document.getElementById('source-badge');
+        badge.className = sourceType + ' visible';
+        badge.innerHTML = SOURCE_ICONS[sourceType] + '<span>' + label + '</span>';
+        document.getElementById('progress-card').classList.add('active');
+    }
+
+    function clearSourceBadge() {
+        const badge = document.getElementById('source-badge');
+        badge.className = '';
+        badge.style.display = 'none';
+        badge.innerHTML = '';
+        setTimeout(() => {
+            if (!badge.classList.contains('visible')) {
+                document.getElementById('progress-card').classList.remove('active');
+            }
+        }, 2000);
+    }
 
     document.getElementById('ingest-form').addEventListener('submit', async (e) => {
         e.preventDefault();
         const btn = document.getElementById('ingest-btn');
         btn.disabled = true;
         const box = document.getElementById('progress-box');
-        box.style.display = 'block';
+        const progressCard = document.getElementById('progress-card');
+        progressCard.classList.add('active');
         box.innerHTML = '<p>Starting...</p>';
 
-        // Close any existing SSE connection
+        const urlInput = document.querySelector('input[name="url"]');
+        const fileInput = document.querySelector('input[name="file"]');
+
+        if (urlInput && urlInput.value.trim()) {
+            try {
+                const u = new URL(urlInput.value.trim());
+                const domain = u.hostname.replace('www.', '');
+                setSourceBadge('url', domain);
+            } catch {
+                setSourceBadge('url', urlInput.value.trim().substring(0, 35));
+            }
+        } else if (fileInput && fileInput.files.length > 0) {
+            const fname = fileInput.files[0].name.toLowerCase();
+            if (fname.endsWith('.pdf')) setSourceBadge('pdf', 'PDF document');
+            else if (fname.endsWith('.docx') || fname.endsWith('.doc')) setSourceBadge('docx', 'Word document');
+            else if (fname.endsWith('.md') || fname.endsWith('.markdown')) setSourceBadge('md', 'Markdown');
+            else if (fname.endsWith('.txt')) setSourceBadge('txt', 'Text file');
+            else setSourceBadge('txt', fileInput.files[0].name);
+        }
+
         if (activeSource) { activeSource.close(); activeSource = null; }
 
         const form = e.target;
@@ -466,35 +763,53 @@
         try {
             const res = await fetch(form.action, { method: 'POST', body: formData });
             const data = await res.json();
-            if (!data.job_id) { box.innerHTML = '<p class="err">Failed to start job</p>'; btn.disabled = false; return; }
+            if (!data.job_id) {
+                box.innerHTML = '<p class="err">Failed to start job</p>';
+                btn.disabled = false;
+                clearSourceBadge();
+                return;
+            }
             const jobId = data.job_id;
 
-            // Raw EventSource — we control when to close it
             activeSource = new EventSource('/stream/' + jobId);
             activeSource.onmessage = (evt) => {
                 if (evt.data === '[FINAL]') {
                     activeSource.close();
                     activeSource = null;
                     btn.disabled = false;
+                    setTimeout(clearSourceBadge, 1500);
                     return;
                 }
-                box.innerHTML += evt.data;
+                // Parse for ping lines
+                if (evt.data.includes('ping -')) {
+                    // Don't add ping lines to progress box
+                    return;
+                }
+                // Handle warning/error styling
+                let data = evt.data;
+                if (data.includes('Warning:') || data.includes('warning:')) {
+                    data = data.replace(/<p>/, '<p class="warn">');
+                } else if (data.includes('Error:') || data.includes('error:') || data.includes('Skipped:')) {
+                    data = data.replace(/<p>/, '<p class="err">');
+                }
+                box.innerHTML += data;
                 box.scrollTop = box.scrollHeight;
             };
             activeSource.onerror = () => {
                 activeSource.close();
                 activeSource = null;
                 btn.disabled = false;
+                box.innerHTML += '<p class="err">Connection lost</p>';
+                setTimeout(clearSourceBadge, 2000);
             };
         } catch(err) {
             box.innerHTML = '<p class="err">Error: ' + err.message + '</p>';
             btn.disabled = false;
+            clearSourceBadge();
         }
     });
 
-    // ── SSE close handler (not needed with raw EventSource) ─────
-
-    // ── Init ───────────────────────────────────────────────────
+    // ── Init ─────────────────────────────────────────────────
     loadKeywords();
 </script>
 </body>
