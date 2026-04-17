@@ -6,10 +6,11 @@ from pathlib import Path
 from typing import AsyncGenerator
 from config import TOP_K_SIMILAR, MAX_EMBED_CHARS
 from core.embeddings import embed
+from core.prose import measure_prose
 from core.vector_store import get_store
 from core.minimax_client import enrich, _MIN_CHUNK_SIZE
 from core.gap_detector import detect_gaps
-from ingesters.router import extract, extract_pdf
+from ingesters.router import extract, extract_pdf, extract_docx, extract_markdown
 from vault.writer import write_note
 from vault.entity_status import fetch_entity_status
 
@@ -63,14 +64,51 @@ async def _run_gap_search_pipeline(url: str):
         logging.getLogger(__name__).warning("Gap search pipeline failed for %s: %s", url, e)
 
 
+def _gate_enriched_content(note: dict, raw_text: str) -> tuple[bool, int, float]:
+    """Return (pass, prose_chars, prose_ratio) for enriched content quality check.
+
+    Checks:
+    - Hard minimum: total prose chars >= 300
+    - Prose ratio: prose_chars / raw_text_chars >= 0.20
+    - Video-specific: raw_text must have >= 5 words with at least one alpha char
+    """
+    summary = note.get("summary", "") or ""
+    key_facts_list = note.get("key_facts", [])
+    key_facts = " ".join(key_facts_list) if key_facts_list else ""
+    enriched_text = (summary + " " + key_facts).strip()
+
+    prose_chars, _ = measure_prose(enriched_text)
+    total_chars = len(raw_text.strip())
+    prose_ratio = prose_chars / total_chars if total_chars > 0 else 0.0
+
+    # Hard minimum: need meaningful prose
+    if prose_chars < 300:
+        return False, prose_chars, prose_ratio
+
+    # Prose ratio: content must not be mostly noise
+    if total_chars > 0 and prose_ratio < 0.20:
+        return False, prose_chars, prose_ratio
+
+    # Video-specific: raw_text must have actual words (not just timestamps)
+    if note.get("content_type") == "video":
+        words = [w for w in raw_text.split() if any(c.isalpha() for c in w)]
+        if len(words) < 5:
+            return False, prose_chars, prose_ratio
+
+    return True, prose_chars, prose_ratio
+
+
 async def run_pipeline(
     url: str | None = None,
     pdf_path: str | None = None,
+    docx_path: str | None = None,
+    md_path: str | None = None,
+    txt_path: str | None = None,
 ) -> AsyncGenerator[str, None]:
     import logging
     _logger = logging.getLogger(__name__)
     store = get_store()
-    source = url or pdf_path
+    source = url or pdf_path or docx_path or md_path or txt_path
 
     # Duplicate check
     if url and store.exists(url):
@@ -93,8 +131,20 @@ async def run_pipeline(
             doc = extract_pdf(pdf_path)
             raw_text = doc.raw_text
             images = getattr(doc, 'images', None) or []
+        elif docx_path:
+            doc = extract_docx(docx_path)
+            raw_text = doc.raw_text
+            images = []
+        elif md_path:
+            doc = extract_markdown(md_path)
+            raw_text = doc.raw_text
+            images = []
+        elif txt_path:
+            doc = extract_markdown(txt_path)  # Reuse markdown extractor (plain text)
+            raw_text = doc.raw_text
+            images = []
         else:
-            yield "Error: No url or pdf_path provided."
+            yield "Error: No url or file provided."
             return
     except Exception as e:
         yield f"Error during extraction: {e}"
@@ -141,6 +191,12 @@ async def run_pipeline(
     else:
         # Article / paper: direct enrich
         note = await asyncio.to_thread(enrich, raw_text, similar_titles, source)
+
+    # Step 3.1: Pre-write content quality gate — reject thin/noise-heavy enriched content
+    gate_pass, prose_chars, prose_ratio = _gate_enriched_content(note, raw_text)
+    if not gate_pass:
+        yield f"Skipped: Content too thin (prose={prose_chars}, ratio={prose_ratio:.0%}, need ≥300 chars, ≥20%)"
+        return
 
     # Step 3.5a: Check entity status
     yield "Checking entity status..."

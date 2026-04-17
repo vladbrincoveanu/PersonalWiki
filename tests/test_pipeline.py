@@ -31,8 +31,12 @@ async def test_pipeline_url_yields_progress_steps():
                 "title": "Test Note",
                 "type": "article",
                 "tags": ["ai"],
-                "summary": "Summary.",
-                "key_facts": ["Fact"],
+                "summary": "This is a detailed summary of the test note that provides substantial information. It contains multiple sentences explaining the key points and main takeaways from the content. The summary is comprehensive and informative.",
+                "key_facts": [
+                    "First key fact is important and informative about the topic.",
+                    "Second key fact adds additional context and supporting details.",
+                    "Third key fact provides more information about the main subject.",
+                ],
                 "cross_links": ["existing-note"],
                 "raw_text": "Real extracted content from the web page that is definitely over one hundred characters long for testing purposes. " * 5,
                 "error": False,
@@ -124,8 +128,12 @@ async def test_pipeline_pdf_url_passes_images_to_writer(tmp_path):
                 "title": "Paper",
                 "type": "paper",
                 "tags": [],
-                "summary": "S.",
-                "key_facts": [],
+                "summary": "This paper provides a comprehensive overview of the research topic and its significance in the field. It discusses key findings and contributions.",
+                "key_facts": [
+                    "First key finding is important and contributes to the field.",
+                    "Second key finding provides additional evidence and support.",
+                    "Third key finding offers new insights into the topic.",
+                ],
                 "cross_links": [],
                 "raw_text": "# Paper\n\n<!-- image --> some content " + "x" * 500,
                 "error": False,
@@ -164,8 +172,12 @@ async def test_pipeline_runs_entity_status_search():
                 "title": "Test Paper",
                 "type": "paper",
                 "tags": [],
-                "summary": "A summary.",
-                "key_facts": [],
+                "summary": "This test paper provides a detailed summary of the research findings and their implications. It covers key aspects of the topic thoroughly.",
+                "key_facts": [
+                    "First key fact about the research and its significance.",
+                    "Second key fact that supports the main argument.",
+                    "Third key fact providing additional evidence and context.",
+                ],
                 "cross_links": [],
                 "entities": [{"name": "PyTorch", "slug": "pytorch", "type": "library"}],
                 "figure_captions": [],
@@ -205,7 +217,12 @@ async def test_pipeline_calls_detect_gaps_and_attaches_gap_entities():
 
     enriched_note = {
         "title": "Test Note", "type": "article", "tags": ["ai"],
-        "summary": "Summary.", "key_facts": ["Fact"],
+        "summary": "This is a detailed summary of the test note providing substantial information about the key topics. It contains multiple important points and findings.",
+        "key_facts": [
+            "First key fact that provides important context about the topic.",
+            "Second key fact that supports the main discussion and arguments.",
+            "Third key fact that adds valuable insights and information.",
+        ],
         "cross_links": [], "raw_text": "Real extracted content from the web page that is definitely over one hundred characters long for testing purposes. " * 5, "error": False,
         "entities": [{"name": "MissingEntity", "slug": "missing-entity"}],
     }
@@ -237,7 +254,12 @@ async def test_pipeline_no_gap_searches_when_no_gaps():
 
     enriched_note = {
         "title": "Test Note", "type": "article", "tags": [],
-        "summary": "S.", "key_facts": [], "cross_links": [], "raw_text": "Real extracted content from the web page that is definitely over one hundred characters long for testing purposes. " * 5, "error": False,
+        "summary": "This is a detailed summary that provides substantial information about the topic. It contains multiple sentences with important context and key takeaways for the reader.",
+        "key_facts": [
+            "First key fact contributes important information about the subject and its significance in the broader context.",
+            "Second key fact adds additional context and supporting details that reinforce the main points.",
+        ],
+        "cross_links": [], "raw_text": "Real extracted content from the web page that is definitely over one hundred characters long for testing purposes. " * 5, "error": False,
         "entities": [],
     }
 
@@ -255,3 +277,116 @@ async def test_pipeline_no_gap_searches_when_no_gaps():
 
         mock_detect.assert_called_once()
         mock_create_task.assert_not_called()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Tests for _gate_enriched_content
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_gate_enriched_content_rejects_thin_prose():
+    """Thin enriched content (summary + key_facts under 300 prose chars) is rejected."""
+    from pipeline import _gate_enriched_content
+
+    # Very short summary, no key_facts — should fail hard minimum
+    note = {"summary": "Short.", "key_facts": []}
+    raw_text = "This is some raw text that is long enough to pass the ratio check but the enriched prose is too short."
+
+    passed, prose_chars, prose_ratio = _gate_enriched_content(note, raw_text)
+    assert passed is False
+    assert prose_chars < 300
+
+
+def test_gate_enriched_content_rejects_low_prose_ratio():
+    """Content where prose ratio < 20%% is rejected (mostly noise/timestamps)."""
+    from pipeline import _gate_enriched_content
+
+    # Enriched content has >= 300 prose chars, but raw_text is huge (mostly noise)
+    # so ratio = 300 / 5000 = 0.06 < 0.20
+    note = {
+        "summary": (
+            "This summary contains meaningful content that describes the topic. "
+            "It provides important context and details about the subject matter. "
+            "The information presented is valuable for understanding the key concepts."
+        ),
+        "key_facts": [
+            "First important fact about the topic and its significance.",
+            "Second important fact that clarifies the main argument.",
+            "Third fact that provides additional supporting details.",
+        ],
+    }
+    # Huge raw_text of mostly noise/timestamps — ratio will be < 0.20
+    raw_text = "00:00:00 --> 00:00:01\n[music playing]\n00:00:01 --> 00:00:02\n[silence]\n" * 100
+
+    passed, prose_chars, prose_ratio = _gate_enriched_content(note, raw_text)
+    assert passed is False
+    assert prose_chars >= 300  # passes hard minimum
+    assert prose_ratio < 0.20  # fails ratio check
+
+
+def test_gate_enriched_content_accepts_valid_content():
+    """Valid enriched content with >= 300 prose chars and ratio >= 20%% passes."""
+    from pipeline import _gate_enriched_content
+
+    note = {
+        "summary": (
+            "This is a detailed summary that contains multiple sentences. "
+            "It provides substantial information about the topic at hand. "
+            "The content is meaningful and contains proper prose with normal words. "
+            "The topic is important for understanding the broader context."
+        ),
+        "key_facts": [
+            "First key fact is important and informative for the discussion.",
+            "Second key fact adds more detail and clarifies the main points.",
+            "Third key fact explains why this matters in the broader context.",
+        ],
+    }
+    raw_text = "Some raw extracted text. " * 50  # enough chars for ratio check
+
+    passed, prose_chars, prose_ratio = _gate_enriched_content(note, raw_text)
+    assert passed is True
+    assert prose_chars >= 300
+    assert prose_ratio >= 0.20
+
+
+def test_gate_enriched_content_rejects_video_with_timestamp_heavy_transcript():
+    """Video content where raw_text has fewer than 5 real words (only timestamps) is rejected."""
+    from pipeline import _gate_enriched_content
+
+    note = {
+        "summary": "Interesting content.",
+        "key_facts": ["A fact."],
+        "content_type": "video",
+    }
+    # Transcript that's just timestamps and symbols — no real words
+    raw_text = (
+        "00:00:00 --> 00:00:01\n[music playing]\n"
+        "00:00:01 --> 00:00:02\n[silence]\n"
+        "00:00:02 --> 00:00:03\n[applause]\n"
+    )
+
+    passed, prose_chars, prose_ratio = _gate_enriched_content(note, raw_text)
+    assert passed is False
+
+
+def test_gate_enriched_content_video_with_real_words_passes():
+    """Video with real words in transcript (>= 5 words with alpha chars) passes gate."""
+    from pipeline import _gate_enriched_content
+
+    note = {
+        "summary": "Detailed summary about machine learning concepts and their applications in modern AI systems and practical deployments.",
+        "key_facts": [
+            "ML is a key technology in artificial intelligence and data science.",
+            "Neural networks are important for deep learning and pattern recognition.",
+            "These technologies are transforming many industries worldwide.",
+        ],
+        "content_type": "video",
+    }
+    raw_text = (
+        "00:00:00 Today we discuss machine learning and artificial intelligence. "
+        "00:00:15 Neural networks form the foundation of deep learning systems. "
+        "00:00:30 These technologies are transforming many industries."
+    )
+
+    passed, prose_chars, prose_ratio = _gate_enriched_content(note, raw_text)
+    assert passed is True
+    assert prose_chars >= 300
