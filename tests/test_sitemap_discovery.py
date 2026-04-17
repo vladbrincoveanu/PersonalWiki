@@ -2,12 +2,6 @@ import pytest
 from unittest.mock import patch, AsyncMock, MagicMock
 
 
-class MockCrawler:
-    async def __a__(self): return self
-    async def __aexit__(self, *args): pass
-    araw_get = AsyncMock()
-
-
 def _build_mock_result(xml_content: str):
     mock = MagicMock()
     mock.success = True

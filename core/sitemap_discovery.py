@@ -13,6 +13,8 @@ try:
 except ImportError:
     AsyncWebCrawler = None  # type: ignore
 
+_SITEMAP_PATHS = ["sitemap.xml", "sitemap-index.xml", "sitemap1.xml", "sitemap_news.xml", "sitemap_images.xml"]
+
 
 def _build_sitemap_urls(domain: str) -> list[str]:
     """
@@ -32,12 +34,12 @@ def _build_sitemap_urls(domain: str) -> list[str]:
 
     # Subdomain variants
     if subdomain:
-        for path in ["sitemap.xml", "sitemap-index.xml", "sitemap1.xml", "sitemap_news.xml", "sitemap_images.xml"]:
+        for path in _SITEMAP_PATHS:
             urls.append(f"https://{domain}/{path}")
             urls.append(f"https://{subdomain}.{parent_domain}/{path}")
 
     # Parent domain variants
-    for path in ["sitemap.xml", "sitemap-index.xml", "sitemap1.xml", "sitemap_news.xml", "sitemap_images.xml"]:
+    for path in _SITEMAP_PATHS:
         urls.append(f"https://{parent_domain}/{path}")
 
     return urls
