@@ -32,6 +32,7 @@ from core.keywords_manager import (
 from ingesters.web import extract_url
 from pathlib import Path
 from vault.junk_cleaner import cleanup_junk
+from core.prose import measure_prose
 
 _logger = logging.getLogger(__name__)
 
@@ -44,34 +45,8 @@ _SEEN_URLS_FILE = Path.home() / ".personalWiki" / "discovery_seen_urls.json"
 # ---------------------------------------------------------------------------
 
 def _measure_prose(text: str) -> tuple[int, float]:
-    """Return (prose_char_count, prose_ratio) for text.
-
-    Prose blocks: split by double newlines, filter blocks with <3 words,
-    all-caps blocks, and blocks with <30% alphabetic chars.
-    """
-    total_chars = len(text.strip())
-    if total_chars == 0:
-        return 0, 0.0
-
-    blocks = re.split(r"\n\s*\n", text.strip())
-    prose_chars = 0
-
-    for block in blocks:
-        block = block.strip()
-        words = block.split()
-        if len(words) < 3:
-            continue
-        # Skip all-caps blocks (headings, nav)
-        if block.isupper():
-            continue
-        # Skip blocks with mostly symbols (tables, data)
-        alpha = sum(1 for c in block if c.isalpha())
-        if alpha / len(block) < 0.3:
-            continue
-        prose_chars += len(block)
-
-    ratio = prose_chars / total_chars if total_chars > 0 else 0.0
-    return prose_chars, ratio
+    """Wrapper for core.prose.measures_prose."""
+    return measure_prose(text)
 
 
 def _extract_article_links(html: str, parent_url: str, keyword: str) -> list[str]:
