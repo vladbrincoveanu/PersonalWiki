@@ -132,7 +132,7 @@ def test_parse_sitemap_xml_missing_priority():
     result = _parse_sitemap_xml(xml)
     assert len(result) == 1
     assert result[0]["url"] == "https://example.com/page1"
-    assert result[0]["priority"] == ""
+    assert result[0]["priority"] is None
 
 
 # -------------------------------------------------------------------
@@ -214,3 +214,52 @@ async def test_fetch_sitemap_no_keyword_matches():
         result = await fetch_sitemap("example.com", "transformer")
 
     assert result == []
+
+
+@pytest.mark.asyncio
+async def test_fetch_sitemap_resolves_sitemapindex():
+    """When a sitemap-index is returned, child sitemaps are fetched and their URLs returned."""
+    from core.sitemap_discovery import fetch_sitemap
+
+    # First call returns sitemapindex (entries with no lastmod and no priority)
+    sitemapindex_xml = '''<?xml version="1.0" encoding="UTF-8"?>
+<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <sitemap>
+    <loc>https://example.com/sitemap1.xml</loc>
+  </sitemap>
+</sitemapindex>'''
+
+    # Second call returns urlset with matching URL
+    urlset_xml = '''<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://example.com/transformer-paper</loc>
+    <lastmod>2024-01-01</lastmod>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://example.com/cat-pictures</loc>
+    <lastmod>2024-01-02</lastmod>
+    <priority>0.7</priority>
+  </url>
+</urlset>'''
+
+    call_log = []
+
+    class MockCrawler:
+        async def __a__(self): return self
+        async def __aenter__(self): return self
+        async def __aexit__(self, *args): pass
+        async def araw_get(self, url):
+            call_log.append(url)
+            if "sitemap1" in url:
+                return _build_mock_result(urlset_xml)
+            return _build_mock_result(sitemapindex_xml)
+
+    with patch("core.sitemap_discovery.AsyncWebCrawler", return_value=MockCrawler()):
+        result = await fetch_sitemap("example.com", "transformer")
+
+    assert len(result) == 1
+    assert result[0]["url"] == "https://example.com/transformer-paper"
+    # Verify child sitemap was actually fetched
+    assert "https://example.com/sitemap1.xml" in call_log

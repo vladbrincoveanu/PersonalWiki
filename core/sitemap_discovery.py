@@ -56,7 +56,7 @@ def _parse_sitemap_xml(content: str) -> list[dict]:
     Parse sitemap XML content.
 
     Handles both regular <urlset> and sitemap-index <sitemapindex> formats.
-    Returns a list of dicts with keys: url, lastmod, priority (priority is "" if absent).
+    Returns a list of dicts with keys: url, lastmod, priority (None if absent).
     """
     entries = []
 
@@ -86,9 +86,36 @@ def _parse_sitemap_xml(content: str) -> list[dict]:
         priority_match = priority_pattern.search(block_text)
         priority = priority_match.group(1).strip() if priority_match else ""
 
-        entries.append({"url": url, "lastmod": lastmod, "priority": priority})
+        entries.append({
+            "url": url,
+            "lastmod": lastmod if lastmod else None,
+            "priority": priority if priority else None,
+        })
 
     return entries
+
+
+def _is_sitemapindex_entry(entry: dict) -> bool:
+    """Entries from a sitemap-index have no lastmod and no priority."""
+    return entry.get("lastmod") is None and entry.get("priority") is None
+
+
+async def _fetch_one_sitemap(sitemap_url: str) -> list[dict]:
+    """
+    Fetch and parse a single sitemap URL (urlset only).
+    Returns list of entries with url/lastmod/priority.
+    """
+    try:
+        async with AsyncWebCrawler() as crawler:
+            result = await crawler.araw_get(sitemap_url)
+            if result is None or not getattr(result, "success", True):
+                return []
+            xml_content: str = getattr(result, "markdown", "") or ""
+            if not xml_content.strip():
+                return []
+            return _parse_sitemap_xml(xml_content)
+    except Exception:
+        return []
 
 
 async def fetch_sitemap(domain: str, keyword: str) -> list[dict]:
@@ -96,8 +123,9 @@ async def fetch_sitemap(domain: str, keyword: str) -> list[dict]:
     Fetch and filter sitemap entries for a domain.
 
     Probes multiple sitemap URLs via crawl4ai AsyncWebCrawler,
-    parses the first successful response, filters by keyword,
-    and returns entries as list of {url, lastmod, priority}.
+    parses the first successful response. If the response is a sitemap-index,
+    recursively fetches each child sitemap and collects their URL entries.
+    Finally filters by keyword and returns entries as list of {url, lastmod, priority}.
 
     Returns an empty list if no sitemap is found or no entries match the keyword.
     """
@@ -105,19 +133,22 @@ async def fetch_sitemap(domain: str, keyword: str) -> list[dict]:
 
     for sitemap_url in sitemap_urls:
         try:
-            async with AsyncWebCrawler() as crawler:
-                result = await crawler.araw_get(sitemap_url)
-                if result is None or not getattr(result, "success", True):
-                    continue
+            entries = await _fetch_one_sitemap(sitemap_url)
+            if not entries:
+                continue
 
-                xml_content: str = getattr(result, "markdown", "") or ""
-                if not xml_content.strip():
-                    continue
+            # Detect sitemap-index: entries have no lastmod and no priority
+            if _is_sitemapindex_entry(entries[0]):
+                # Recursively fetch each child sitemap and collect entries
+                all_entries = []
+                for entry in entries:
+                    child_entries = await _fetch_one_sitemap(entry["url"])
+                    all_entries.extend(child_entries)
+                entries = all_entries
 
-                entries = _parse_sitemap_xml(xml_content)
-                filtered = _filter_by_keyword(entries, keyword)
-                if filtered:
-                    return filtered
+            filtered = _filter_by_keyword(entries, keyword)
+            if filtered:
+                return filtered
         except Exception:
             # If this URL fails, try the next one
             continue
