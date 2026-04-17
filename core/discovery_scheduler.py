@@ -706,8 +706,6 @@ class DiscoveryScheduler:
             return
         self._running = True
         self._pipeline_func = pipeline_func
-        # Initial keyword refresh inline so keywords are available immediately
-        await self._refresh_keywords()
         self._scheduler_task = asyncio.create_task(self._scheduler_loop())
         _logger.info("Discovery scheduler started")
 

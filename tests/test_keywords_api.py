@@ -1,7 +1,7 @@
 import asyncio
 import sys
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, AsyncMock
 
 # Mock whisper before importing app to avoid ModuleNotFoundError
 sys.modules["whisper"] = MagicMock()
@@ -57,7 +57,7 @@ async def test_get_scheduler_lazy_starts():
         app_module._scheduler_lock = asyncio.Lock()
 
         try:
-            mock_start = MagicMock()
+            mock_start = AsyncMock()
             with patch.object(app_module.DiscoveryScheduler, "start", mock_start):
                 s = await app_module._get_scheduler()
                 assert mock_start.call_count == 1, "scheduler.start should be called on first _get_scheduler() call"

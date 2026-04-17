@@ -29,5 +29,7 @@ def cleanup_discovery_scheduler():
             if hasattr(_app, "_scheduler") and _app._scheduler is not None:
                 _app._scheduler.stop()
                 _app._scheduler = None
+            if hasattr(_app, "_scheduler_lock"):
+                _app._scheduler_lock = None
     except Exception:
         pass
