@@ -487,6 +487,116 @@
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
         ::-webkit-scrollbar-thumb:hover { background: var(--border-bright); }
+
+        /* Discovery panel */
+        .discovery-panel {
+          background: var(--surface);
+          border: 1px solid var(--border);
+          border-radius: var(--radius);
+          padding: 1rem;
+          margin-top: 1rem;
+        }
+
+        .discovery-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 0.75rem;
+        }
+
+        .discovery-header h3 {
+          font-size: 0.9rem;
+          font-weight: 600;
+          color: var(--text);
+        }
+
+        .refresh-btn {
+          background: var(--surface-2);
+          border: 1px solid var(--border);
+          border-radius: var(--radius-sm);
+          color: var(--text-muted);
+          cursor: pointer;
+          font-size: 0.9rem;
+          padding: 0.25rem 0.5rem;
+          transition: border-color 0.15s, color 0.15s;
+        }
+        .refresh-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+        .discovery-stats {
+          display: flex;
+          gap: 1rem;
+          font-size: 0.75rem;
+          color: var(--text-muted);
+          margin-bottom: 0.75rem;
+          padding-bottom: 0.75rem;
+          border-bottom: 1px solid var(--border);
+        }
+
+        .discovery-stat {
+          display: flex;
+          align-items: center;
+          gap: 0.25rem;
+        }
+
+        .discovery-stat .num {
+          color: var(--text);
+          font-weight: 600;
+        }
+
+        .discovery-feed {
+          max-height: 300px;
+          overflow-y: auto;
+        }
+
+        .discovery-item {
+          display: flex;
+          align-items: flex-start;
+          gap: 0.5rem;
+          padding: 0.4rem 0;
+          border-bottom: 1px solid var(--surface-2);
+          font-size: 0.8rem;
+        }
+
+        .discovery-item:last-child {
+          border-bottom: none;
+        }
+
+        .discovery-badge {
+          flex-shrink: 0;
+          font-size: 0.7rem;
+          padding: 0.1rem 0.3rem;
+          border-radius: 4px;
+          font-weight: 600;
+        }
+
+        .badge-ingested { background: var(--accent-dim); color: var(--accent); }
+        .badge-failed { background: var(--danger-dim); color: var(--danger); }
+        .badge-pending { background: var(--surface-3); color: var(--text-muted); }
+
+        .discovery-item-content {
+          flex: 1;
+          min-width: 0;
+        }
+
+        .discovery-item-title {
+          color: var(--text);
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          display: block;
+        }
+
+        .discovery-item-domain {
+          color: var(--text-dim);
+          font-size: 0.7rem;
+        }
+
+        .discovery-empty {
+          color: var(--text-dim);
+          font-size: 0.8rem;
+          text-align: center;
+          padding: 1rem;
+        }
     </style>
 </head>
 <body>
@@ -601,6 +711,20 @@
                 <div class="no-jobs">No jobs yet — ingest something</div>
             </div>
         </div>
+    </div>
+
+    <!-- Discovery Panel -->
+    <div id="discovery-panel" class="discovery-panel">
+      <div class="discovery-header">
+        <h3>🔍 Discovery</h3>
+        <button onclick="loadDiscoveryActivity()" class="refresh-btn" title="Refresh">↻</button>
+      </div>
+      <div id="discovery-stats" class="discovery-stats">
+        <span>—</span>
+      </div>
+      <div id="discovery-feed" class="discovery-feed">
+        <div class="discovery-empty">No discovery activity today.</div>
+      </div>
     </div>
 </div>
 
@@ -855,8 +979,118 @@
         }
     });
 
+    // ── Discovery ─────────────────────────────────────────────
+    async function loadDiscoveryActivity() {
+      try {
+        const res = await fetch('/api/discovery/activity');
+        if (!res.ok) return;
+        const data = await res.json();
+        renderDiscoveryActivity(data);
+      } catch (e) {
+        console.warn('Discovery activity load failed:', e);
+      }
+    }
+
+    function renderDiscoveryActivity(data) {
+      const stats = data.stats || {};
+      const events = data.events || [];
+
+      // Render stats
+      const statsEl = document.getElementById('discovery-stats');
+      if (statsEl) {
+        let lastCycle = '—';
+        if (stats.last_cycle_at) {
+          try {
+            lastCycle = new Date(stats.last_cycle_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          } catch (e) {
+            lastCycle = '—';
+          }
+        }
+        statsEl.innerHTML = '';
+
+        const s1 = document.createElement('span');
+        s1.className = 'discovery-stat';
+        const n1 = document.createElement('span');
+        n1.className = 'num';
+        n1.textContent = stats.discovered_today || 0;
+        s1.appendChild(n1);
+        s1.appendChild(document.createTextNode(' today'));
+
+        const s2 = document.createElement('span');
+        s2.className = 'discovery-stat';
+        const n2 = document.createElement('span');
+        n2.className = 'num';
+        n2.textContent = stats.queue_depth || 0;
+        s2.appendChild(n2);
+        s2.appendChild(document.createTextNode(' queue'));
+
+        const s3 = document.createElement('span');
+        s3.className = 'discovery-stat';
+        s3.textContent = lastCycle;
+
+        statsEl.appendChild(s1);
+        statsEl.appendChild(s2);
+        statsEl.appendChild(s3);
+      }
+
+      // Render feed using DOM methods (no innerHTML with user data)
+      const feedEl = document.getElementById('discovery-feed');
+      if (!feedEl) return;
+
+      feedEl.innerHTML = '';
+      if (events.length === 0) {
+        const empty = document.createElement('div');
+        empty.className = 'discovery-empty';
+        empty.textContent = 'No discovery activity today.';
+        feedEl.appendChild(empty);
+        return;
+      }
+
+      const reversed = events.slice().reverse();
+      reversed.forEach(function(event) {
+        const item = document.createElement('div');
+        item.className = 'discovery-item';
+
+        const badge = document.createElement('span');
+        badge.className = 'discovery-badge';
+        if (event.status === 'ingested') {
+          badge.classList.add('badge-ingested');
+          badge.textContent = '✅';
+        } else if (event.status === 'failed') {
+          badge.classList.add('badge-failed');
+          badge.textContent = '❌';
+        } else {
+          badge.classList.add('badge-pending');
+          badge.textContent = '⏳';
+        }
+
+        const content = document.createElement('div');
+        content.className = 'discovery-item-content';
+
+        const link = document.createElement('a');
+        link.href = event.url || '#';
+        link.target = '_blank';
+        link.className = 'discovery-item-title';
+        link.title = event.url || '';
+        link.textContent = event.title || event.url || '';
+
+        const domain = document.createElement('span');
+        domain.className = 'discovery-item-domain';
+        const sourceParts = (event.source || '').split(': ');
+        domain.textContent = sourceParts[sourceParts.length - 1] || '';
+
+        content.appendChild(link);
+        content.appendChild(domain);
+        item.appendChild(badge);
+        item.appendChild(content);
+        feedEl.appendChild(item);
+      });
+    }
+
     // ── Init ─────────────────────────────────────────────────
     loadKeywords();
+    loadDiscoveryActivity();
+    setInterval(loadDiscoveryActivity, 30000);
 </script>
 </body>
 </html>
