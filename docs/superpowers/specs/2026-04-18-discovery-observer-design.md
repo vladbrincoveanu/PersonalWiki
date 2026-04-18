@@ -25,7 +25,7 @@ Three-part system:
 **Interface:**
 - `DiscoveryLogger.record(url, title, source, status)` — record an event
 - `DiscoveryLogger.today()` — all events from today
-- `DiscoveryLogger.stats()` — `{discovered, ingested, failed, queue_depth}`
+- `DiscoveryLogger.stats()` — `{discovered_today, ingested_today, failed_today, queue_depth, last_cycle_at}`
 
 **Data model:**
 ```python
