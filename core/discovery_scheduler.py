@@ -307,7 +307,7 @@ class DiscoveryScheduler:
         for url in sitemap_urls:
             if self._is_new_url(url):
                 _logger.info("Discovery: discovered via %s: %s", domain, url)
-                self._seen_urls.add(url)
+                self._sitemap_queue.put_nowait(url)
 
     def _try_sitemap(self, domain: str) -> list[str]:
         """Try to fetch sitemap for a domain and return article URLs."""

@@ -456,6 +456,28 @@ def test_search_minimax_returns_real_urls_with_real_content():
 
 
 @pytest.mark.asyncio
+async def test_enqueue_interest_domain_pushes_to_queue():
+    """Enqueued domain's sitemap URLs go to _sitemap_queue, not _seen_urls."""
+    from core.discovery_scheduler import DiscoveryScheduler
+
+    scheduler = DiscoveryScheduler()
+
+    # Mock _try_sitemap to return known URLs
+    with patch.object(scheduler, '_try_sitemap', return_value=[
+        'https://example.com/article1',
+        'https://example.com/article2',
+    ]):
+        scheduler._enqueue_interest_domain('example.com')
+
+    # URLs should be in queue, NOT in _seen_urls
+    assert scheduler._sitemap_queue.qsize() == 2
+    # _seen_urls should NOT have these (that was the bug)
+    assert 'https://example.com/article1' not in scheduler._seen_urls
+
+    scheduler.stop()
+
+
+@pytest.mark.asyncio
 async def test_run_discovery_cycle_calls_cleanup_junk():
     """
     TDD: Verify cleanup_junk() is called at the end of _run_discovery_cycle().
