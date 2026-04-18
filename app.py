@@ -181,6 +181,17 @@ async def suppress_keyword(keyword: str = Form(...)):
     return {"suppressed": keyword, "purged": purged, "purged_count": len(purged)}
 
 
+@app.get("/api/discovery/activity")
+async def get_discovery_activity():
+    """Return today's discovery activity: stats and events."""
+    from core.discovery_logger import get_discovery_logger
+    logger = get_discovery_logger()
+    return {
+        "stats": logger.stats(),
+        "events": [dict(e) for e in logger.today()],
+    }
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("app:app", host="127.0.0.1", port=8000, reload=True)

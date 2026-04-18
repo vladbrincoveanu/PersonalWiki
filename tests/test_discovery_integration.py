@@ -142,3 +142,47 @@ def test_interests_are_deduplicated(tmp_path):
     interests = extract_interests(vault_path=str(tmp_path))
 
     assert interests.count("RLHF") == 1
+
+
+# =============================================================================
+# Test 8: Discovery Activity API Endpoint
+# =============================================================================
+@pytest.mark.asyncio
+async def test_discovery_activity_api():
+    """GET /api/discovery/activity returns today's events and stats."""
+    from unittest.mock import patch, MagicMock
+    from fastapi.testclient import TestClient
+    from app import app
+
+    with patch("core.discovery_logger.get_discovery_logger") as mock_logger:
+        mock_instance = MagicMock()
+        mock_instance.stats.return_value = {
+            "discovered_today": 3,
+            "ingested_today": 2,
+            "failed_today": 1,
+            "queue_depth": 0,
+            "last_cycle_at": "2026-04-18T10:00:00Z",
+        }
+        mock_instance.today.return_value = [
+            {
+                "url": "https://pytorch.org/blog",
+                "title": "PyTorch Blog",
+                "source": "sitemap: pytorch.org",
+                "status": "ingested",
+                "discovered_at": "2026-04-18T10:00:00Z",
+                "ingested_at": "2026-04-18T10:01:00Z",
+                "error": None,
+            }
+        ]
+        mock_logger.return_value = mock_instance
+
+        client = TestClient(app)
+        response = client.get("/api/discovery/activity")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["stats"]["discovered_today"] == 3
+        assert data["stats"]["ingested_today"] == 2
+        assert data["stats"]["failed_today"] == 1
+        assert len(data["events"]) == 1
+        assert data["events"][0]["url"] == "https://pytorch.org/blog"
