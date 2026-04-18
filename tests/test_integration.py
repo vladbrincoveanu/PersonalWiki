@@ -273,8 +273,8 @@ async def test_pipeline_docx_creates_note():
         assert any("Saved" in m for m in messages), (
             f"Pipeline never reported 'Saved': {messages}"
         )
-        assert any("Extracting DOCX" in m for m in messages), (
-            f"Pipeline never reported 'Extracting DOCX': {messages}"
+        assert any("Extracting content" in m for m in messages), (
+            f"Pipeline never reported 'Extracting content': {messages}"
         )
 
         # -- Note file must exist ---------------------------------------------
