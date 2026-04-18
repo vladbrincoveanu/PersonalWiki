@@ -108,7 +108,7 @@ async def test_pipeline_pdf_url_passes_images_to_writer(tmp_path):
 
     written_images = []
 
-    def capture_write_note(note, source, images=(), entity_statuses=()):
+    def capture_write_note(note, source, images=(), entity_statuses=(), is_discovery=False):
         written_images.extend(images)
         return "/vault/notes/paper.md"
 

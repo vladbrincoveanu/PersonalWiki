@@ -105,6 +105,7 @@ async def run_pipeline(
     docx_path: str | None = None,
     md_path: str | None = None,
     txt_path: str | None = None,
+    is_discovery: bool = False,
 ) -> AsyncGenerator[str, None]:
     import logging
     _logger = logging.getLogger(__name__)
@@ -219,7 +220,8 @@ async def run_pipeline(
     # Step 4: Write
     yield "Saving note..."
     path = write_note(
-        note, source=source, images=images, entity_statuses=entity_statuses
+        note, source=source, images=images, entity_statuses=entity_statuses,
+        is_discovery=is_discovery,
     )
 
     # Step 5: Index
