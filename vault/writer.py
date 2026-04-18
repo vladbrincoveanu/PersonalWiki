@@ -276,18 +276,24 @@ def write_note(
     ingested_date: str | None = None,
     images: Sequence[bytes] = (),
     entity_statuses: list[dict] = (),
+    is_discovery: bool = False,
 ) -> str:
-    NOTES_DIR.mkdir(parents=True, exist_ok=True)
+    # Discovered notes go to notes/discovered/, others to notes/
+    if is_discovery:
+        notes_subdir = NOTES_DIR / "discovered"
+    else:
+        notes_subdir = NOTES_DIR
+    notes_subdir.mkdir(parents=True, exist_ok=True)
 
     title = note.get("title") or "Untitled"
     ingested_date = ingested_date or str(date.today())
     slug = slugify(title)
-    filepath = NOTES_DIR / f"{slug}.md"
+    filepath = notes_subdir / f"{slug}.md"
 
     # Handle slug collisions
     counter = 1
     while filepath.exists():
-        filepath = NOTES_DIR / f"{slug}-{counter}.md"
+        filepath = notes_subdir / f"{slug}-{counter}.md"
         counter += 1
     final_slug = filepath.stem
 
@@ -298,6 +304,8 @@ def write_note(
         "tags": [t for raw in (note.get("tags") or []) if (t := _clean_tag(raw))],
         "ingested": ingested_date,
     }
+    if is_discovery:
+        metadata["discovery"] = "auto"
 
     # Replace image placeholders before building body
     figure_captions = note.get("figure_captions", [])
@@ -308,6 +316,8 @@ def write_note(
         )
 
     body = _build_body(note, entity_statuses=entity_statuses)
+    if is_discovery:
+        body = body.rstrip() + "\n\n#auto-discovery\n"
 
     post = frontmatter.Post(body, **metadata)
     with open(filepath, "w", encoding="utf-8") as f:
