@@ -86,3 +86,17 @@ def test_discovery_logger_today_only(tmp_path):
 
         events = logger.today()
         assert all(e["discovered_at"].startswith("2026-04-18") for e in events)
+
+
+def test_discovery_logger_stats_empty(tmp_path):
+    """Stats doesn't crash when there are no events."""
+    from core.discovery_logger import DiscoveryLogger
+
+    with patch("core.discovery_logger._LOG_FILE", tmp_path / "log.json"):
+        logger = DiscoveryLogger()
+        stats = logger.stats()
+        assert stats["discovered_today"] == 0
+        assert stats["ingested_today"] == 0
+        assert stats["failed_today"] == 0
+        assert stats["queue_depth"] == 0
+        assert stats["last_cycle_at"] is None

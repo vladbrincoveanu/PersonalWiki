@@ -1,11 +1,10 @@
 # core/quality_gate.py
 from dataclasses import dataclass
-import urllib.request
 import logging
 
 _logger = logging.getLogger(__name__)
 
-_ERROR_SIGNALS = ["[PAYWALLED]", "[PAYWALL]", "404", "Page not found", "[BLOCKED]"]
+_ERROR_SIGNALS = ["[PAYWALLED]", "[PAYWALL]", "[SUBSCRIPTION REQUIRED]", "404", "Page not found", "[BLOCKED]"]
 _MIN_ARTICLE_CHARS = 500
 _MIN_VIDEO_WORDS = 200
 
@@ -36,9 +35,6 @@ class QualityGate:
         else:
             if len(stripped) < _MIN_ARTICLE_CHARS:
                 return GateResult(pass_=False, reason=f"Content too thin: {len(stripped)} chars, need >{_MIN_ARTICLE_CHARS}")
-
-        if any(p in stripped for p in ["[PAYWALLED]", "[PAYWALL]", "[SUBSCRIPTION REQUIRED]"]):
-            return GateResult(pass_=False, reason="Paywall detected")
 
         return GateResult(pass_=True)
 

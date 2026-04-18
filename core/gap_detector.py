@@ -22,8 +22,8 @@ def _build_vault_index(vault_path: Path) -> tuple[set[str], set[str]]:
             m = re.search(r"^#\s+(.+)$", content, re.MULTILINE)
             if m:
                 titles.add(m.group(1).strip().lower())
-        except Exception:
-            pass
+        except Exception as e:
+            _logger.debug("Could not read vault file %s: %s", md_file, e)
     return slugs, titles
 
 
@@ -50,7 +50,7 @@ def detect_gaps(note_entities: list[dict], vault_path: str | Path | None = None)
     missing = []
     for entity in note_entities:
         name = entity.get("name", "")
-        slug = entity.get("slug", name.lower().replace(" ", "-")).lower().replace(" ", "-")
+        slug = entity.get("slug", name.lower().replace(" ", "-")).replace("_", "-")
         if not name:
             continue
         # Normalize slug: dashes and underscores are equivalent

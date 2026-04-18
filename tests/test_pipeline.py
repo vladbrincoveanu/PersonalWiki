@@ -22,7 +22,6 @@ async def test_pipeline_url_yields_progress_steps():
             raw_text="Real extracted content from the web page that is definitely over one hundred characters long for testing purposes. " * 5,
             images=[]
         ))),
-        patch("pipeline._is_pdf_url", return_value=False),
         patch("pipeline.embed", return_value=[0.1] * 384),
         patch("pipeline.get_store", return_value=mock_store),
         patch(
@@ -118,7 +117,6 @@ async def test_pipeline_pdf_url_passes_images_to_writer(tmp_path):
 
     with (
         patch("pipeline.get_store", return_value=mock_store),
-        patch("pipeline._is_pdf_url", return_value=True),
         patch("urllib.request.urlretrieve", side_effect=fake_urlretrieve),
         patch("ingesters.pdf.extract_pdf_full", return_value=fake_result),
         patch("pipeline.embed", return_value=[0.1] * 384),
@@ -160,7 +158,6 @@ async def test_pipeline_runs_entity_status_search():
 
     with (
         patch("pipeline.get_store", return_value=mock_store),
-        patch("pipeline._is_pdf_url", return_value=False),
         patch("ingesters.news.extract_news", AsyncMock(return_value=MagicMock(
             raw_text="Real extracted content from the web page that is definitely over one hundred characters long for testing purposes. " * 5,
             images=[]
@@ -229,7 +226,6 @@ async def test_pipeline_calls_detect_gaps_and_attaches_gap_entities():
 
     with patch("pipeline.get_store", return_value=mock_store), \
          patch("ingesters.news.extract_news", AsyncMock(return_value=MagicMock(raw_text="Real extracted content from the web page that is definitely over one hundred characters long for testing purposes. " * 5, images=[]))), \
-         patch("pipeline._is_pdf_url", return_value=False), \
          patch("pipeline.embed", return_value=[0.1] * 384), \
          patch("pipeline.enrich", return_value=enriched_note), \
          patch("pipeline.write_note", return_value="/vault/notes/test-note.md"), \
@@ -265,7 +261,6 @@ async def test_pipeline_no_gap_searches_when_no_gaps():
 
     with patch("pipeline.get_store", return_value=mock_store), \
          patch("ingesters.news.extract_news", AsyncMock(return_value=MagicMock(raw_text="Real extracted content from the web page that is definitely over one hundred characters long for testing purposes. " * 5, images=[]))), \
-         patch("pipeline._is_pdf_url", return_value=False), \
          patch("pipeline.embed", return_value=[0.1] * 384), \
          patch("pipeline.enrich", return_value=enriched_note), \
          patch("pipeline.write_note", return_value="/vault/notes/test-note.md"), \

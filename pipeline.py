@@ -1,7 +1,5 @@
 import asyncio
 import os
-import tempfile
-import urllib.request
 from pathlib import Path
 from typing import AsyncGenerator
 from config import TOP_K_SIMILAR, MAX_EMBED_CHARS
@@ -13,19 +11,6 @@ from core.gap_detector import detect_gaps
 from ingesters.router import extract, extract_pdf, extract_docx, extract_markdown
 from vault.writer import write_note
 from vault.entity_status import fetch_entity_status
-
-
-def _is_pdf_url(url: str) -> bool:
-    """Return True if the URL serves a PDF (by extension or Content-Type)."""
-    if url.lower().split("?")[0].endswith(".pdf"):
-        return True
-    try:
-        req = urllib.request.Request(url, method="HEAD")
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            ct = resp.headers.get("Content-Type", "")
-            return "application/pdf" in ct
-    except Exception:
-        return False
 
 
 async def _run_gap_searches(gap_entities: list[str]):

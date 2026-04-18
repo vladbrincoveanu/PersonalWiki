@@ -164,7 +164,7 @@ class DiscoveryLogger:
             "ingested_today": sum(1 for e in events if get_status(e) == "ingested"),
             "failed_today": sum(1 for e in events if get_status(e) == "failed"),
             "queue_depth": sum(1 for e in events if get_status(e) == "enqueued"),
-            "last_cycle_at": getattr(events[-1], "discovered_at", None) or events[-1].get("discovered_at") if events else None,
+            "last_cycle_at": events[-1]["discovered_at"] if events else None,
         }
 
 
