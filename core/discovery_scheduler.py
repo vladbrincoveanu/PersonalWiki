@@ -303,7 +303,7 @@ class DiscoveryScheduler:
         self._interest_domains.add(domain)
         _logger.info("Discovery: enqueued interest domain %s", domain)
         dl_logger = get_discovery_logger()
-        dl_logger.record(f"https://{domain}", None, f"domain: {domain}", "enqueued")
+        dl_logger.record(f"https://{domain}", None, f"link: {domain}", "enqueued")
 
         # Try to fetch sitemap and extract candidate URLs
         sitemap_urls = self._try_sitemap(domain)
@@ -706,6 +706,8 @@ class DiscoveryScheduler:
 
                 _logger.info("Discovery: ingesting %s — %s", url, result["title"])
                 self._in_flight.add(url)
+                dl_logger = get_discovery_logger()
+                dl_logger.record(url, result.get("title"), f"keyword: {keyword}", "enqueued")
                 try:
                     if self._pipeline_func:
                         await self._run_pipeline(url)
