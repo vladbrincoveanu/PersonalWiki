@@ -8,6 +8,14 @@ def test_discovery_scheduler_initializes():
     assert scheduler._running is False
     assert scheduler._keywords == []
 
+def test_sitemap_queue_initialized():
+    """Scheduler initializes with empty sitemap queue."""
+    from core.discovery_scheduler import DiscoveryScheduler
+    scheduler = DiscoveryScheduler()
+    assert hasattr(scheduler, '_sitemap_queue')
+    assert scheduler._sitemap_queue.empty()
+    scheduler.stop()
+
 def test_deduplication_against_seen_urls():
     from core.discovery_scheduler import DiscoveryScheduler
     scheduler = DiscoveryScheduler()

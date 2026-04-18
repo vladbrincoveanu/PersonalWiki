@@ -136,10 +136,12 @@ class DiscoveryScheduler:
         self._seen_urls: set[str] = set()
         self._in_flight: set[str] = set()
         self._pipeline_func = None
+        self._start_lock = asyncio.Lock()
         # Amplification loop state
         self._keyword_scores: dict[str, int] = {}       # keyword -> quality score
         self._discovery_cycle_count = 0                  # count for echo chamber guard
         # Recursive link discovery state
+        self._sitemap_queue: asyncio.Queue[str] = asyncio.Queue()  # sitemap URLs pending ingestion
         self._interest_domains: set[str] = set()         # domains discovered via link extraction
         self._warm_seen_urls()
         # Eagerly load keywords in background so /keywords is ready before first poll
@@ -283,6 +285,10 @@ class DiscoveryScheduler:
         ]
         available = [k for k in explore_pool if k not in self._keywords]
         return random.sample(available, min(2, len(available)))
+
+    def is_interest_domain_enqueued(self, domain: str) -> bool:
+        """Check if a domain was already enqueued for interest discovery."""
+        return domain in self._interest_domains
 
     def _enqueue_interest_domain(self, domain: str) -> None:
         """
@@ -690,7 +696,6 @@ class DiscoveryScheduler:
                     continue
                 if store.exists(url):
                     self._seen_urls.add(url)
-                    self._persist_seen_urls()
                     continue
 
                 _logger.info("Discovery: ingesting %s — %s", url, result["title"])
@@ -701,7 +706,6 @@ class DiscoveryScheduler:
                     ingested += 1
                     self._update_keyword_score(keyword, +1)  # Successful ingest
                     self._seen_urls.add(url)
-                    self._persist_seen_urls()
 
                     # Recursive link discovery: extract links from the crawled page
                     # and enqueue any new interest domains found
@@ -719,6 +723,9 @@ class DiscoveryScheduler:
 
                 if ingested >= MAX_URLS_PER_CYCLE:
                     break
+
+        # Persist seen URLs once after the cycle
+        self._persist_seen_urls()
 
         # Echo chamber guard: every 5th cycle, inject explore keywords
         self._discovery_cycle_count += 1
@@ -769,15 +776,16 @@ class DiscoveryScheduler:
         if not DISCOVERY_ENABLED:
             _logger.info("Discovery: disabled via DISCOVERY_ENABLED")
             return
-        if self._running or self._scheduler_task is not None:
-            _logger.warning("Discovery scheduler already running")
-            return
-        self._running = True
-        self._pipeline_func = pipeline_func
-        # Eagerly refresh keywords so /keywords is never empty on first request
-        await self._refresh_keywords()
-        self._scheduler_task = asyncio.create_task(self._scheduler_loop())
-        _logger.info("Discovery scheduler started")
+        async with self._start_lock:
+            if self._running or self._scheduler_task is not None:
+                _logger.warning("Discovery scheduler already running")
+                return
+            self._pipeline_func = pipeline_func
+            # Eagerly refresh keywords so /keywords is never empty on first request
+            await self._refresh_keywords()
+            self._running = True
+            self._scheduler_task = asyncio.create_task(self._scheduler_loop())
+            _logger.info("Discovery scheduler started")
 
     def stop(self):
         self._running = False
