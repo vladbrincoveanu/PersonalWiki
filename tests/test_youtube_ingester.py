@@ -108,7 +108,7 @@ def test_extract_youtube_all_tiers_fail_then_transcript_api(monkeypatch, tmp_pat
     import ingesters.youtube as yt
 
     api_calls = []
-    def mock_ytt_api(video_id):
+    def mock_ytt_api(video_id, proxy=None):
         api_calls.append(video_id)
         return "API transcript text here"
 
