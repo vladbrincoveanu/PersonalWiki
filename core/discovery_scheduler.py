@@ -751,6 +751,15 @@ class DiscoveryScheduler:
             ingested += 1
             self._seen_urls.add(url)
 
+        # Write daily digest
+        from core.digest_writer import write_daily_digest
+        from datetime import date
+
+        today_str = date.today().isoformat()
+        events = get_discovery_logger().today()
+        if events:
+            write_daily_digest([dict(e) for e in events], today_str)
+
         # Echo chamber guard: every 5th cycle, inject explore keywords
         self._discovery_cycle_count += 1
         if self._discovery_cycle_count % 5 == 0:
