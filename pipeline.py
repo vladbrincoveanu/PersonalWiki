@@ -129,19 +129,20 @@ async def run_pipeline(
             raw_text = doc.raw_text
             images = getattr(doc, 'images', None) or []
         elif pdf_path:
-            doc = extract_pdf(pdf_path)
+            yield "Extracting PDF..."
+            doc = await asyncio.to_thread(extract_pdf, pdf_path)
             raw_text = doc.raw_text
             images = getattr(doc, 'images', None) or []
         elif docx_path:
-            doc = extract_docx(docx_path)
+            doc = await asyncio.to_thread(extract_docx, docx_path)
             raw_text = doc.raw_text
             images = []
         elif md_path:
-            doc = extract_markdown(md_path)
+            doc = await asyncio.to_thread(extract_markdown, md_path)
             raw_text = doc.raw_text
             images = []
         elif txt_path:
-            doc = extract_markdown(txt_path)  # Reuse markdown extractor (plain text)
+            doc = await asyncio.to_thread(extract_markdown, txt_path)  # Reuse markdown extractor (plain text)
             raw_text = doc.raw_text
             images = []
         else:
