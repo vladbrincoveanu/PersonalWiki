@@ -35,6 +35,7 @@ from vault.junk_cleaner import cleanup_junk
 from core.prose import measure_prose
 from core.discovery_link_extractor import DiscoveryLinkExtractor
 from core.interest_domain_matcher import InterestDomainMatcher
+from core.discovery_logger import get_discovery_logger
 
 _logger = logging.getLogger(__name__)
 
@@ -301,12 +302,16 @@ class DiscoveryScheduler:
             return
         self._interest_domains.add(domain)
         _logger.info("Discovery: enqueued interest domain %s", domain)
+        dl_logger = get_discovery_logger()
+        dl_logger.record(f"https://{domain}", None, f"domain: {domain}", "enqueued")
 
         # Try to fetch sitemap and extract candidate URLs
         sitemap_urls = self._try_sitemap(domain)
         for url in sitemap_urls:
             if self._is_new_url(url):
                 _logger.info("Discovery: discovered via %s: %s", domain, url)
+                dl_logger = get_discovery_logger()
+                dl_logger.record(url, None, f"sitemap: {domain}", "enqueued")
                 self._sitemap_queue.put_nowait(url)
 
     def _try_sitemap(self, domain: str) -> list[str]:
@@ -763,11 +768,14 @@ class DiscoveryScheduler:
 
     async def _run_pipeline(self, url: str):
         """Run ingestion pipeline for a single URL."""
+        dl_logger = get_discovery_logger()
         try:
             from pipeline import run_pipeline
-            async for _ in run_pipeline(url=url):
+            async for _ in run_pipeline(url=url, is_discovery=True):
                 pass
+            dl_logger.update_status(url, "ingested")
         except Exception as e:
+            dl_logger.update_status(url, "failed", error=str(e))
             _logger.error("Discovery: pipeline failed for %s: %s", url, e)
 
     async def _scheduler_loop(self):
