@@ -514,6 +514,38 @@ async def test_discovery_cycle_drains_sitemap_queue():
 
 
 @pytest.mark.asyncio
+async def test_rate_limit_shared_across_phases():
+    """MAX_URLS_PER_CYCLE budget shared between keyword and sitemap phases."""
+    from core.discovery_scheduler import DiscoveryScheduler
+    from config import MAX_URLS_PER_CYCLE
+
+    scheduler = DiscoveryScheduler()
+    original_limit = MAX_URLS_PER_CYCLE
+
+    # Load queue with more URLs than the limit
+    for i in range(15):
+        await scheduler._sitemap_queue.put(f'https://example.com/sitemap-{i}')
+
+    pipeline_calls = []
+    async def mock_run_pipeline(url):
+        pipeline_calls.append(url)
+
+    scheduler._run_pipeline = mock_run_pipeline
+
+    with patch.object(scheduler, '_search_keyword', return_value=[]):
+        with patch('core.vector_store.get_store') as mock_store:
+            mock_store_instance = MagicMock()
+            mock_store_instance.exists.return_value = False
+            mock_store.return_value = mock_store_instance
+            await scheduler._run_discovery_cycle()
+
+    # Should pipeline only MAX_URLS_PER_CYCLE, not all 15
+    assert len(pipeline_calls) == original_limit
+
+    scheduler.stop()
+
+
+@pytest.mark.asyncio
 async def test_run_discovery_cycle_calls_cleanup_junk():
     """
     TDD: Verify cleanup_junk() is called at the end of _run_discovery_cycle().
