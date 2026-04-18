@@ -478,6 +478,42 @@ async def test_enqueue_interest_domain_pushes_to_queue():
 
 
 @pytest.mark.asyncio
+async def test_discovery_cycle_drains_sitemap_queue():
+    """After keyword searches, cycle drains sitemap queue up to MAX_URLS_PER_CYCLE."""
+    from core.discovery_scheduler import DiscoveryScheduler
+
+    scheduler = DiscoveryScheduler()
+
+    # Pre-load queue with sitemap URLs
+    await scheduler._sitemap_queue.put('https://example.com/sitemap-article-1')
+    await scheduler._sitemap_queue.put('https://example.com/sitemap-article-2')
+
+    # Track which URLs get pipeline calls
+    pipeline_calls = []
+    original_run_pipeline = scheduler._run_pipeline
+
+    async def mock_run_pipeline(url):
+        pipeline_calls.append(url)
+
+    scheduler._run_pipeline = mock_run_pipeline
+
+    # Mock _search_keyword to return nothing (skip keyword phase)
+    with patch.object(scheduler, '_search_keyword', return_value=[]):
+        with patch('core.vector_store.get_store') as mock_store:
+            mock_store_instance = MagicMock()
+            mock_store_instance.exists.return_value = False
+            mock_store.return_value = mock_store_instance
+            await scheduler._run_discovery_cycle()
+
+    # Both sitemap URLs should have been pipeline-called
+    assert len(pipeline_calls) == 2
+    assert 'https://example.com/sitemap-article-1' in pipeline_calls
+    assert 'https://example.com/sitemap-article-2' in pipeline_calls
+
+    scheduler.stop()
+
+
+@pytest.mark.asyncio
 async def test_run_discovery_cycle_calls_cleanup_junk():
     """
     TDD: Verify cleanup_junk() is called at the end of _run_discovery_cycle().

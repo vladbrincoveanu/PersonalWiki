@@ -686,6 +686,7 @@ class DiscoveryScheduler:
         link_extractor = DiscoveryLinkExtractor(matcher=InterestDomainMatcher())
 
         ingested = 0
+        seen_this_cycle: set[str] = set()
         for keyword in self._keywords:
             if ingested >= MAX_URLS_PER_CYCLE:
                 break
@@ -726,6 +727,22 @@ class DiscoveryScheduler:
 
         # Persist seen URLs once after the cycle
         self._persist_seen_urls()
+
+        # Phase 2: drain sitemap queue
+        while ingested < MAX_URLS_PER_CYCLE:
+            try:
+                url = self._sitemap_queue.get_nowait()
+            except asyncio.QueueEmpty:
+                break
+
+            if url in seen_this_cycle or store.exists(url):
+                self._seen_urls.add(url)
+                continue
+
+            seen_this_cycle.add(url)
+            await self._run_pipeline(url)
+            ingested += 1
+            self._seen_urls.add(url)
 
         # Echo chamber guard: every 5th cycle, inject explore keywords
         self._discovery_cycle_count += 1
