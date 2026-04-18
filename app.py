@@ -112,7 +112,13 @@ async def stream(job_id: str):
             return
         queue, done_event = entry
         while True:
-            msg = await queue.get()
+            try:
+                msg = await asyncio.wait_for(queue.get(), timeout=15)
+            except asyncio.TimeoutError:
+                if done_event.is_set():
+                    break
+                yield {"event": "message", "data": "ping - still processing..."}
+                continue
             if msg is None:
                 yield {"event": "message", "data": "[FINAL]"}
                 break
