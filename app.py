@@ -126,6 +126,16 @@ async def stream(job_id: str):
     return EventSourceResponse(generate())
 
 
+@app.get("/note/{slug}")
+async def get_note(slug: str):
+    """Return the markdown content of a saved note."""
+    from config import VAULT_PATH
+    note_path = Path(VAULT_PATH) / "notes" / f"{slug}.md"
+    if not note_path.exists():
+        raise HTTPException(404, "Note not found")
+    return {"content": note_path.read_text()}
+
+
 @app.get("/keywords")
 async def get_keywords():
     """Return the scheduler's keyword list split into manual vs graph-derived."""

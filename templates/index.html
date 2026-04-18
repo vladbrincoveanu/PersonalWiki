@@ -301,6 +301,24 @@
         #progress-box .err { color: var(--danger); }
         #progress-box .warn { color: var(--warning); }
         #progress-box .success { color: var(--accent); font-weight: 600; }
+        #note-preview {
+            margin-top: 1rem;
+            padding: 1rem;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            max-height: 400px;
+            overflow-y: auto;
+            font-size: 0.85rem;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+        #note-preview h1, #note-preview h2, #note-preview h3 {
+            margin-top: 0.5em;
+        }
+        #note-preview pre {
+            overflow-x: auto;
+        }
 
         @keyframes fadeIn {
             from { opacity: 0; transform: translateY(-4px); }
@@ -548,6 +566,7 @@
         </div>
         <div id="source-badge"></div>
         <div id="progress-box"></div>
+        <div id="note-preview" style="display:none;"></div>
     </div>
 
     <!-- Two Column: Keywords + Jobs -->
@@ -735,6 +754,9 @@
         const box = document.getElementById('progress-box');
         const progressCard = document.getElementById('progress-card');
         progressCard.classList.add('active');
+        const preview = document.getElementById('note-preview');
+        preview.style.display = 'none';
+        preview.innerHTML = '';
         box.innerHTML = '<p>Starting...</p>';
 
         const urlInput = document.querySelector('input[name="url"]');
@@ -778,6 +800,22 @@
                     activeSource.close();
                     activeSource = null;
                     btn.disabled = false;
+                    // Try to show saved note content
+                    const savedLine = Array.from(box.querySelectorAll('p')).find(p => p.textContent.includes('Saved ->'));
+                    if (savedLine) {
+                        const match = savedLine.textContent.match(/Saved -> notes\/(.+)/);
+                        if (match) {
+                            const slug = match[1];
+                            fetch('/note/' + slug)
+                                .then(r => r.json())
+                                .then(data => {
+                                    const preview = document.getElementById('note-preview');
+                                    preview.innerHTML = '<div style="color:var(--accent);font-weight:600;margin-bottom:0.5rem;">Saved Note</div>' + data.content.replace(/\n/g, '<br>');
+                                    preview.style.display = 'block';
+                                })
+                                .catch(() => {});
+                        }
+                    }
                     if (!box.textContent.includes('Saved ->')) {
                         box.innerHTML += '<p class="warn">Finished (check vault)</p>';
                     } else {
