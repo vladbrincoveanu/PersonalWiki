@@ -300,6 +300,7 @@
         #progress-box p:last-child { color: var(--accent); font-weight: 600; }
         #progress-box .err { color: var(--danger); }
         #progress-box .warn { color: var(--warning); }
+        #progress-box .success { color: var(--accent); font-weight: 600; }
 
         @keyframes fadeIn {
             from { opacity: 0; transform: translateY(-4px); }
@@ -777,7 +778,12 @@
                     activeSource.close();
                     activeSource = null;
                     btn.disabled = false;
-                    setTimeout(clearSourceBadge, 1500);
+                    if (!box.textContent.includes('Saved ->')) {
+                        box.innerHTML += '<p class="warn">Finished (check vault)</p>';
+                    } else {
+                        box.innerHTML += '<p class="success">Done!</p>';
+                    }
+                    setTimeout(clearSourceBadge, 3000);
                     return;
                 }
                 // Parse for ping lines
@@ -785,12 +791,14 @@
                     // Don't add ping lines to progress box
                     return;
                 }
-                // Handle warning/error styling
+                // Handle warning/error/success styling
                 let data = evt.data;
                 if (data.includes('Warning:') || data.includes('warning:')) {
                     data = data.replace(/<p>/, '<p class="warn">');
                 } else if (data.includes('Error:') || data.includes('error:') || data.includes('Skipped:')) {
                     data = data.replace(/<p>/, '<p class="err">');
+                } else if (data.includes('Saved ->')) {
+                    data = data.replace(/<p>/, '<p class="success">');
                 }
                 box.innerHTML += data;
                 box.scrollTop = box.scrollHeight;
