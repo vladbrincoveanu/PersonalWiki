@@ -38,21 +38,17 @@ class DiscoveryLinkExtractor:
             return
 
         links = extract_links(html, page_url)
-        new_domains: list[str] = []
 
         for link in links:
             domain = self._extract_domain(link)
             if not domain:
                 continue
             if self._matcher.is_interest_domain(domain):
-                if not self._has_domain_enqueued(scheduler, domain):
-                    new_domains.append(domain)
-
-        for domain in new_domains:
-            try:
-                scheduler._enqueue_interest_domain(domain)
-            except Exception as e:
-                _logger.debug("Discovery: failed to enqueue interest domain %s: %s", domain, e)
+                if not scheduler.is_interest_domain_enqueued(domain):
+                    try:
+                        scheduler._enqueue_interest_domain(domain)
+                    except Exception as e:
+                        _logger.debug("Discovery: failed to enqueue interest domain %s: %s", domain, e)
 
     def _extract_domain(self, url: str) -> str:
         """Extract clean domain from URL."""
@@ -64,11 +60,3 @@ class DiscoveryLinkExtractor:
             return domain
         except Exception:
             return ""
-
-    def _has_domain_enqueued(self, scheduler, domain: str) -> bool:
-        """Check if domain was already enqueued in this cycle."""
-        # Check scheduler's tracked interest domains
-        if hasattr(scheduler, "_interest_domains"):
-            if domain in scheduler._interest_domains:
-                return True
-        return False

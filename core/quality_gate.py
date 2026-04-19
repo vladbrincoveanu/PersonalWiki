@@ -1,6 +1,7 @@
 # core/quality_gate.py
 from dataclasses import dataclass
 import logging
+import requests
 
 _logger = logging.getLogger(__name__)
 
@@ -46,7 +47,6 @@ class QualityGate:
         if not MINIMAX_API_KEY:
             return GateResult(pass_=True)
 
-        import requests
         prompt = (
             f'Keyword: "{keyword}"\n\n'
             f'Content preview (first 500 chars):\n{raw_text[:500]}\n\n'
