@@ -31,7 +31,7 @@ from core.keywords_manager import (
 )
 from ingesters.web import extract_url
 from pathlib import Path
-from vault.junk_cleaner import cleanup_junk
+from vault.doctor import cleanup_junk
 from core.prose import measure_prose
 from core.discovery_link_extractor import DiscoveryLinkExtractor
 from core.interest_domain_matcher import InterestDomainMatcher
