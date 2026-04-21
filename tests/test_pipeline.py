@@ -107,7 +107,7 @@ async def test_pipeline_pdf_url_passes_images_to_writer(tmp_path):
 
     written_images = []
 
-    def capture_write_note(note, source, images=(), entity_statuses=(), is_discovery=False):
+    def capture_write_note(note, source, images=(), entity_statuses=(), is_discovery=False, source_keyword=None):
         written_images.extend(images)
         return "/vault/notes/paper.md"
 
@@ -366,6 +366,52 @@ def test_gate_enriched_content_rejects_video_with_timestamp_heavy_transcript():
 
     passed, prose_chars, prose_ratio = _gate_enriched_content(note, raw_text)
     assert passed is False
+
+
+@pytest.mark.asyncio
+async def test_pipeline_passes_source_keyword_to_write_note():
+    """run_pipeline() accepts source_keyword and forwards it to write_note()."""
+    from pipeline import run_pipeline
+
+    mock_store = MagicMock()
+    mock_store.exists.return_value = False
+    mock_store.search.return_value = []
+
+    captured_kwargs = {}
+
+    def capture_write_note(note, source, images=(), entity_statuses=(), is_discovery=False, source_keyword=None):
+        captured_kwargs.update({"source_keyword": source_keyword})
+        return "/vault/notes/test-note.md"
+
+    enriched_note = {
+        "title": "Test Note", "type": "article", "tags": [],
+        "summary": "This is a detailed summary that provides substantial information about the topic. It contains multiple sentences with important context and key takeaways for the reader.",
+        "key_facts": [
+            "First key fact contributes important information about the subject.",
+            "Second key fact adds additional context and supporting details.",
+        ],
+        "cross_links": [], "raw_text": "Real extracted content from the web page that is definitely over one hundred characters long for testing purposes. " * 5, "error": False,
+        "entities": [],
+    }
+
+    with (
+        patch("pipeline.get_store", return_value=mock_store),
+        patch("ingesters.news.extract_news", AsyncMock(return_value=MagicMock(
+            raw_text="Real extracted content from the web page that is definitely over one hundred characters long for testing purposes. " * 5,
+            images=[]
+        ))),
+        patch("pipeline.embed", return_value=[0.1] * 384),
+        patch("pipeline.enrich", return_value=enriched_note),
+        patch("pipeline.write_note", side_effect=capture_write_note),
+        patch("pipeline.detect_gaps", return_value=[]),
+        patch("pipeline.asyncio.create_task"),
+    ):
+        async for _ in run_pipeline(url="https://example.com", source_keyword="my-test-keyword"):
+            pass
+
+    assert captured_kwargs.get("source_keyword") == "my-test-keyword", (
+        f"Expected source_keyword='my-test-keyword', got {captured_kwargs.get('source_keyword')!r}"
+    )
 
 
 def test_gate_enriched_content_video_with_real_words_passes():

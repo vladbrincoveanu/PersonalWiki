@@ -91,6 +91,7 @@ async def run_pipeline(
     md_path: str | None = None,
     txt_path: str | None = None,
     is_discovery: bool = False,
+    source_keyword: str | None = None,
 ) -> AsyncGenerator[str, None]:
     import logging
     _logger = logging.getLogger(__name__)
@@ -206,7 +207,7 @@ async def run_pipeline(
     yield "Saving note..."
     path = write_note(
         note, source=source, images=images, entity_statuses=entity_statuses,
-        is_discovery=is_discovery,
+        is_discovery=is_discovery, source_keyword=source_keyword,
     )
 
     # Step 5: Index

@@ -277,6 +277,7 @@ def write_note(
     images: Sequence[bytes] = (),
     entity_statuses: list[dict] = (),
     is_discovery: bool = False,
+    source_keyword: str | None = None,
 ) -> str:
     # Discovered notes go to notes/discovered/, others to notes/
     if is_discovery:
@@ -306,6 +307,8 @@ def write_note(
     }
     if is_discovery:
         metadata["discovery"] = "auto"
+    if source_keyword:
+        metadata["source_keyword"] = source_keyword
 
     # Replace image placeholders before building body
     figure_captions = note.get("figure_captions", [])

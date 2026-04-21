@@ -461,3 +461,51 @@ def test_build_video_body_missing_quote_keys_no_crash():
     body = _build_video_body(note)
     assert "Valid quote" in body
     assert "Valid" in body
+
+
+def test_write_note_source_keyword_in_frontmatter():
+    """write_note() with source_keyword should write it to frontmatter."""
+    note = {
+        "title": "Test Discovery Note",
+        "type": "article",
+        "tags": [],
+        "summary": "A test summary.",
+        "key_facts": [],
+        "cross_links": [],
+        "raw_text": "Some content.",
+        "error": False,
+    }
+    with tempfile.TemporaryDirectory() as tmp:
+        notes_dir = Path(tmp) / "notes"
+        notes_dir.mkdir()
+        with patch("vault.writer.NOTES_DIR", notes_dir):
+            path = write_note(
+                note,
+                source="https://example.com",
+                source_keyword="machine learning",
+            )
+
+        post = frontmatter.load(path)
+        assert post.metadata.get("source_keyword") == "machine learning"
+
+
+def test_write_note_source_keyword_omitted_no_frontmatter_key():
+    """write_note() without source_keyword should not have source_keyword in frontmatter."""
+    note = {
+        "title": "Test Note No Keyword",
+        "type": "article",
+        "tags": [],
+        "summary": "A test summary.",
+        "key_facts": [],
+        "cross_links": [],
+        "raw_text": "Some content.",
+        "error": False,
+    }
+    with tempfile.TemporaryDirectory() as tmp:
+        notes_dir = Path(tmp) / "notes"
+        notes_dir.mkdir()
+        with patch("vault.writer.NOTES_DIR", notes_dir):
+            path = write_note(note, source="https://example.com")
+
+        post = frontmatter.load(path)
+        assert "source_keyword" not in post.metadata
