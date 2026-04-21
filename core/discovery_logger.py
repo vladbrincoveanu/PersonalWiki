@@ -1,7 +1,7 @@
 """Discovery activity logger — ring buffer of events persisted to JSON."""
 import json
 import threading
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Literal
 
@@ -34,7 +34,7 @@ class DiscoveryEvent(dict):
         self["title"] = title or _domain_from_url(url)
         self["source"] = source
         self["status"] = status
-        self["discovered_at"] = discovered_at or datetime.utcnow().isoformat() + "Z"
+        self["discovered_at"] = discovered_at or datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
         self["ingested_at"] = ingested_at
         self["error"] = error
 
@@ -137,7 +137,7 @@ class DiscoveryLogger:
                 if event["url"] == url:
                     event["status"] = status
                     if status == "ingested":
-                        event["ingested_at"] = datetime.utcnow().isoformat() + "Z"
+                        event["ingested_at"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
                     if error:
                         event["error"] = error
                     break

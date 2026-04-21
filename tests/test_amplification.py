@@ -19,7 +19,8 @@ def test_update_keyword_score_triggers_suppress():
         mock_suppress.assert_called_once_with("bad-kw")
 
 
-def test_amplify_from_note_adds_keywords():
+def test_amplify_from_note_does_not_add_keywords():
+    """Amplification is disabled — keywords are user-owned only."""
     from core.discovery_scheduler import DiscoveryScheduler
     scheduler = DiscoveryScheduler()
 
@@ -30,8 +31,9 @@ def test_amplify_from_note_adds_keywords():
             "raw_text": "Some content about transformers."
         }))
 
-    assert "new-kw-1" in scheduler._keywords
-    assert "new-kw-2" in scheduler._keywords
+    # Amplification is disabled — keywords should NOT be added
+    assert "new-kw-1" not in scheduler._keywords
+    assert "new-kw-2" not in scheduler._keywords
 
 
 def test_get_explore_keywords():
