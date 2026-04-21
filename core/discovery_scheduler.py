@@ -248,22 +248,8 @@ class DiscoveryScheduler:
 
     async def _amplify_from_note(self, note: dict):
         """Extract new keywords from a recently written note and add to pool."""
-        from core.keyword_extractor import extract_keywords_from_note
-
-        title = note.get("title", "")
-        raw_text = note.get("raw_text", "")
-
-        new_keywords = await asyncio.to_thread(extract_keywords_from_note, title, raw_text)
-        if not new_keywords:
-            return
-
-        for kw in new_keywords:
-            score = self._keyword_scores.get(kw, 0)
-            if score < -5:
-                continue
-            if kw not in self._keywords:
-                self._keywords.append(kw)
-                _logger.info("Amplification: added keyword %r from note %r", kw, title)
+        # Amplification disabled — causes echo-chamber effects in discovery
+        return
 
     def _update_keyword_score(self, keyword: str, delta: int):
         """Update score for a keyword. Suppresses if below -5."""
@@ -710,7 +696,7 @@ class DiscoveryScheduler:
                 dl_logger.record(url, result.get("title"), f"keyword: {keyword}", "enqueued")
                 try:
                     if self._pipeline_func:
-                        await self._run_pipeline(url)
+                        await self._run_pipeline(url, keyword=keyword)
                     ingested += 1
                     self._update_keyword_score(keyword, +1)  # Successful ingest
                     self._seen_urls.add(url)
@@ -777,12 +763,12 @@ class DiscoveryScheduler:
         except Exception as e:
             _logger.warning("Junk cleanup failed: %s", e)
 
-    async def _run_pipeline(self, url: str):
+    async def _run_pipeline(self, url: str, keyword: str | None = None):
         """Run ingestion pipeline for a single URL."""
         dl_logger = get_discovery_logger()
         try:
             from pipeline import run_pipeline
-            async for _ in run_pipeline(url=url, is_discovery=True):
+            async for _ in run_pipeline(url=url, is_discovery=True, source_keyword=keyword):
                 pass
             dl_logger.update_status(url, "ingested")
         except Exception as e:

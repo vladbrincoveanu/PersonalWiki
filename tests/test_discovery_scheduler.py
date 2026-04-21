@@ -568,3 +568,55 @@ async def test_run_discovery_cycle_calls_cleanup_junk():
     ):
         await ds._run_discovery_cycle()
         mock_cleanup.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_run_pipeline_receives_source_keyword():
+    """
+    TDD RED: _run_pipeline() must pass source_keyword to run_pipeline().
+
+    When keyword is in scope (discovery cycle loop), _run_pipeline() should
+    forward it as source_keyword to the pipeline's run_pipeline() call.
+    Currently _run_pipeline() does NOT accept a keyword parameter, so this fails.
+    """
+    from core.discovery_scheduler import DiscoveryScheduler
+
+    scheduler = DiscoveryScheduler()
+
+    captured_calls = []
+
+    async def mock_run_pipeline(*args, **kwargs):
+        captured_calls.append({'args': args, 'kwargs': kwargs})
+        yield "done"
+
+    with patch('pipeline.run_pipeline', side_effect=mock_run_pipeline):
+        # _run_pipeline() currently takes only (self, url) — keyword not accepted
+        # After fix: _run_pipeline(self, url, keyword=None) and keyword is forwarded
+        await scheduler._run_pipeline('https://example.com/article', keyword='reinforcement learning')
+
+    assert len(captured_calls) == 1, f"Expected 1 call to run_pipeline, got {len(captured_calls)}"
+    assert captured_calls[0]['kwargs'].get('source_keyword') == 'reinforcement learning', \
+        f"source_keyword not forwarded! Got kwargs: {captured_calls[0]['kwargs']}"
+
+
+@pytest.mark.asyncio
+async def test_amplify_from_note_is_disabled():
+    """
+    TDD RED: _amplify_from_note() must be a no-op (return immediately).
+
+    Amplification causes echo-chamber effects in discovery. It must be disabled.
+    Before the fix: _amplify_from_note() calls extract_keywords_from_note and adds keywords.
+    After the fix: _amplify_from_note() returns immediately after docstring.
+    """
+    from core.discovery_scheduler import DiscoveryScheduler
+
+    scheduler = DiscoveryScheduler()
+    scheduler._keywords = ["existing"]
+
+    # Call _amplify_from_note with a note that would add keywords if amplification were active.
+    # After fix: method returns immediately, keywords unchanged.
+    await scheduler._amplify_from_note({"title": "Test Note", "raw_text": "some content about new-keyword and another-keyword"})
+
+    # Keywords must remain unchanged (amplification would have added new keywords)
+    assert scheduler._keywords == ["existing"], \
+        f"Keywords were modified: {scheduler._keywords} — amplification was not disabled!"
