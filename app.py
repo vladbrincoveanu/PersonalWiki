@@ -13,9 +13,11 @@ from pipeline import run_pipeline
 from vault.scanner import scan_vault
 from core.discovery_scheduler import DiscoveryScheduler, KEYWORDS_FILE
 from core.keywords_manager import load_manual_keywords
+from core.doctor_scheduler import DoctorScheduler
 
 _job_queues: dict[str, tuple[asyncio.Queue, asyncio.Event]] = {}
 _scheduler: DiscoveryScheduler | None = None
+_doctor_scheduler: DoctorScheduler | None = None
 _scheduler_lock = asyncio.Lock()
 
 async def _get_scheduler() -> DiscoveryScheduler:
@@ -26,17 +28,25 @@ async def _get_scheduler() -> DiscoveryScheduler:
             if _scheduler is None:
                 _scheduler = DiscoveryScheduler()
                 await _scheduler.start(pipeline_func=run_pipeline)
+        # Start daily doctor cron (only once, after scheduler is initialized)
+        global _doctor_scheduler
+        _doctor_scheduler = DoctorScheduler(interval_hours=24)
+        _doctor_scheduler.start(_scheduler)
     return _scheduler
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     try:
-        count = await asyncio.to_thread(scan_vault)
-        if count:
-            print(f"Startup: indexed {count} notes.")
-    except Exception as e:
-        print(f"Startup: scan_vault failed ({e}), starting without vault index.")
-    yield
+        try:
+            count = await asyncio.to_thread(scan_vault)
+            if count:
+                print(f"Startup: indexed {count} notes.")
+        except Exception as e:
+            print(f"Startup: scan_vault failed ({e}), starting without vault index.")
+        yield
+    finally:
+        if _doctor_scheduler:
+            _doctor_scheduler.stop()
 
 app = FastAPI(lifespan=lifespan)
 templates = Jinja2Templates(directory="templates")
