@@ -22,3 +22,4 @@ sentence-transformers
 openai-whisper
 python-docx
 markdown
+mcp
