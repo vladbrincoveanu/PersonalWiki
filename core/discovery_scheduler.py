@@ -26,6 +26,7 @@ from core.keywords_manager import (
     add_keyword as _km_add,
     remove_keyword as _km_remove,
     purge_keyword as _km_purge,
+    _cascade_delete_by_source_keyword,
 )
 from ingesters.web import extract_url
 from pathlib import Path
@@ -220,13 +221,16 @@ class DiscoveryScheduler:
         _logger.info("Discovery: added manual keyword %r", keyword)
 
     def remove_keyword(self, keyword: str) -> list[str]:
-        """Remove keyword from _keywords; purge from vault via purge_keyword."""
+        """Remove keyword from _keywords; cascade delete source_keyword notes + wikilinks."""
         _km_remove(keyword, KEYWORDS_FILE)
         if keyword in self._keywords:
             self._keywords.remove(keyword)
-        deleted = _km_purge(keyword, Path(VAULT_PATH))
-        _logger.info("Discovery: removed manual keyword %r, purged %d files", keyword, len(deleted))
-        return deleted
+        # Cascade delete by source_keyword frontmatter first
+        cascade_deleted = _cascade_delete_by_source_keyword(keyword, Path(VAULT_PATH))
+        # Then remove wikilinks from remaining files
+        wikilink_deleted = _km_purge(keyword, Path(VAULT_PATH))
+        _logger.info("Discovery: removed manual keyword %r, cascade-deleted %d files, purged %d wikilinks", keyword, len(cascade_deleted), len(wikilink_deleted))
+        return cascade_deleted + wikilink_deleted
 
     def suppress_keyword(self, keyword: str) -> list[str]:
         """Suppress disabled — keywords are user-owned only. Just removes from _keywords."""
