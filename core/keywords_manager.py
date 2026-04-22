@@ -85,8 +85,6 @@ def _cascade_delete_by_source_keyword(keyword: str, vault_path: Path) -> list[st
         try:
             content = md_file.read_text(encoding="utf-8")
             parsed = fm.parse(content)
-            if parsed is None:
-                continue
             metadata, _ = parsed
             if metadata.get("source_keyword") == keyword:
                 md_file.unlink()

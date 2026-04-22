@@ -135,6 +135,7 @@ class DiscoveryScheduler:
         self._in_flight: set[str] = set()
         self._pipeline_func = None
         self._start_lock = asyncio.Lock()
+        self._keywords_lock = threading.Lock()
         # Recursive link discovery state
         self._sitemap_queue: asyncio.Queue[str] = asyncio.Queue()  # sitemap URLs pending ingestion
         self._interest_domains: set[str] = set()         # domains discovered via link extraction
@@ -187,23 +188,31 @@ class DiscoveryScheduler:
         try:
             # Graph extraction disabled — keywords are user-owned only
             manual = _load_manual_keywords(KEYWORDS_FILE)
-            self._keywords = list(manual)
+            with self._keywords_lock:
+                self._keywords = list(manual)
             _logger.info("Discovery: refreshed %d manual keywords", len(manual))
         except Exception as e:
             _logger.warning("Discovery: failed to refresh keywords: %s", e)
 
+    def get_keywords(self) -> list[str]:
+        """Return a copy of active keywords (thread-safe)."""
+        with self._keywords_lock:
+            return list(self._keywords)
+
     def add_keyword(self, keyword: str):
         """Add a manual keyword to _keywords and activate it."""
         _km_add(keyword, KEYWORDS_FILE)
-        if keyword not in self._keywords:
-            self._keywords.append(keyword)
+        with self._keywords_lock:
+            if keyword not in self._keywords:
+                self._keywords.append(keyword)
         _logger.info("Discovery: added manual keyword %r", keyword)
 
     def remove_keyword(self, keyword: str) -> list[str]:
         """Remove keyword from _keywords; cascade delete source_keyword notes + wikilinks."""
         _km_remove(keyword, KEYWORDS_FILE)
-        if keyword in self._keywords:
-            self._keywords.remove(keyword)
+        with self._keywords_lock:
+            if keyword in self._keywords:
+                self._keywords.remove(keyword)
         # Cascade delete by source_keyword frontmatter first
         cascade_deleted = _cascade_delete_by_source_keyword(keyword, Path(VAULT_PATH))
         # Then remove wikilinks from remaining files
@@ -628,7 +637,7 @@ class DiscoveryScheduler:
 
         ingested = 0
         seen_this_cycle: set[str] = set()
-        for keyword in self._keywords:
+        for keyword in self.get_keywords():
             if ingested >= MAX_URLS_PER_CYCLE:
                 break
             results = await self._search_keyword(keyword)

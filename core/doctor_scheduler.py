@@ -42,8 +42,8 @@ class DoctorScheduler:
             if not self._running:
                 break
             try:
-                # Read active keywords from the DiscoveryScheduler SOT
-                keywords = list(discovery_scheduler_ref._keywords)
+                # Read active keywords from the DiscoveryScheduler SOT (thread-safe)
+                keywords = discovery_scheduler_ref.get_keywords()
                 result = run_vault_doctor(keywords)
                 _logger.info(
                     "Doctor: cleaned vault — untitled=%d sparse=%d orphaned=%d video-no-content=%d total_deleted=%d",
