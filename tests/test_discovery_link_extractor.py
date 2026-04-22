@@ -12,13 +12,14 @@ def test_process_page_links_extracts_and_filters():
         <a href="https://pytorch.org/tutorials">PyTorch tutorial</a>
     </body></html>
     """
-    with patch("core.interest_domain_matcher.extract_interests", return_value=["github.com", "pytorch.org"]):
+    with patch("core.interest_domain_matcher.load_manual_keywords", return_value=["github.com", "pytorch.org"]):
         from core.interest_domain_matcher import InterestDomainMatcher
         from core.discovery_link_extractor import DiscoveryLinkExtractor
 
         mock_scheduler = MagicMock()
         mock_scheduler._is_new_url.return_value = True
         mock_scheduler._interest_domains = set()
+        mock_scheduler.is_interest_domain_enqueued.return_value = False
 
         extractor = DiscoveryLinkExtractor(matcher=InterestDomainMatcher())
         extractor.process_page_links("https://example.com/article", html, mock_scheduler)
@@ -30,7 +31,7 @@ def test_process_page_links_extracts_and_filters():
 def test_process_page_links_skips_non_interest_domains():
     """Links to non-interest domains are skipped."""
     html = '<html><body><a href="https://random-site.com/page">Random</a></body></html>'
-    with patch("core.interest_domain_matcher.extract_interests", return_value=["github.com"]):
+    with patch("core.interest_domain_matcher.load_manual_keywords", return_value=["github.com"]):
         from core.interest_domain_matcher import InterestDomainMatcher
         from core.discovery_link_extractor import DiscoveryLinkExtractor
 

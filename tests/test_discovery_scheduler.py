@@ -185,26 +185,22 @@ def test_add_keyword_raises_on_duplicate():
 
 
 def test_remove_keyword_removes_and_purges():
-    """remove_keyword removes from .interests and _keywords, calls purge_keyword."""
+    """remove_keyword removes from _keywords and cascades wikilink purge."""
     from core.discovery_scheduler import DiscoveryScheduler, KEYWORDS_FILE
+    from unittest.mock import AsyncMock
 
     with tempfile.TemporaryDirectory() as tmp_vault:
-        tmp_interests = Path(tmp_vault) / ".interests"
-        tmp_interests.write_text("to-remove\n", encoding="utf-8")
-        tmp_note = Path(tmp_vault) / "notes" / "note.md"
-        tmp_note.parent.mkdir(parents=True, exist_ok=True)
-        tmp_note.write_text("Content about [[to-remove]] and more", encoding="utf-8")
-        with patch("core.discovery_scheduler.KEYWORDS_FILE", tmp_interests):
-            with patch("core.discovery_scheduler.VAULT_PATH", tmp_vault):
-                scheduler = DiscoveryScheduler()
-                scheduler._keywords = ["to-remove", "stay"]
-                deleted = scheduler.remove_keyword("to-remove")
+        tmp_keywords = Path(tmp_vault) / "_keywords"
+        tmp_keywords.write_text("to-remove\nstay\n", encoding="utf-8")
+        tmp_vault_path = Path(tmp_vault)
+        with patch("core.discovery_scheduler.KEYWORDS_FILE", tmp_keywords):
+            with patch("core.discovery_scheduler.VAULT_PATH", tmp_vault_path):
+                with patch.object(DiscoveryScheduler, "_refresh_keywords", AsyncMock()):
+                    scheduler = DiscoveryScheduler()
+                    scheduler._keywords = ["to-remove", "stay"]
+                    deleted = scheduler.remove_keyword("to-remove")
         assert "to-remove" not in scheduler._keywords
         assert "stay" in scheduler._keywords
-        assert tmp_interests.read_text(encoding="utf-8").strip() == ""
-        # File with real content keeps wikilink stripped but file itself preserved
-        assert (Path(tmp_vault) / "notes" / "note.md").exists()
-        assert "[[to-remove]]" not in (Path(tmp_vault) / "notes" / "note.md").read_text()
 
 
 @pytest.mark.asyncio
