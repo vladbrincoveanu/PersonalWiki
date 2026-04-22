@@ -137,8 +137,6 @@ class DiscoveryScheduler:
         self._in_flight: set[str] = set()
         self._pipeline_func = None
         self._start_lock = asyncio.Lock()
-        # Keyword quality tracking (for discovery cycle scoring)
-        self._keyword_scores: dict[str, int] = {}       # keyword -> quality score
         # Recursive link discovery state
         self._sitemap_queue: asyncio.Queue[str] = asyncio.Queue()  # sitemap URLs pending ingestion
         self._interest_domains: set[str] = set()         # domains discovered via link extraction
@@ -232,24 +230,9 @@ class DiscoveryScheduler:
         _logger.info("Discovery: removed manual keyword %r, cascade-deleted %d files, purged %d wikilinks", keyword, len(cascade_deleted), len(wikilink_deleted))
         return cascade_deleted + wikilink_deleted
 
-    def suppress_keyword(self, keyword: str) -> list[str]:
-        """Suppress disabled — keywords are user-owned only. Just removes from _keywords."""
-        if keyword in self._keywords:
-            self._keywords.remove(keyword)
-        return []
-
     async def _amplify_from_note(self, note: dict):
-        """Extract new keywords from a recently written note and add to pool."""
-        # Amplification disabled — causes echo-chamber effects in discovery
+        """Amplification disabled — keywords are user-owned only."""
         return
-
-    def _update_keyword_score(self, keyword: str, delta: int):
-        """Update score for a keyword. Suppresses if below -5."""
-        self._keyword_scores[keyword] = self._keyword_scores.get(keyword, 0) + delta
-        score = self._keyword_scores[keyword]
-        if score < -5 and keyword in self._keywords:
-            self.suppress_keyword(keyword)
-            _logger.info("Amplification: suppressed keyword %r (score %d)", keyword, score)
 
     def _get_explore_keywords(self) -> list[str]:
         """Exploration disabled — keywords are user-owned only."""

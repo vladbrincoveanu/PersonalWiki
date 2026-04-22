@@ -183,14 +183,6 @@ async def remove_keyword(keyword: str = Form(...)):
     return {"removed": keyword, "purged": purged, "purged_count": len(purged)}
 
 
-@app.post("/keywords/suppress")
-async def suppress_keyword(keyword: str = Form(...)):
-    """Suppress a graph keyword: block it from discovery and purge related files."""
-    scheduler = await _get_scheduler()
-    purged = scheduler.suppress_keyword(keyword)
-    return {"suppressed": keyword, "purged": purged, "purged_count": len(purged)}
-
-
 @app.get("/api/discovery/activity")
 async def get_discovery_activity():
     """Return today's discovery activity: stats and events."""
