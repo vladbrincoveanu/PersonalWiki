@@ -1,44 +1,30 @@
-import pytest, asyncio
+import pytest
+import asyncio
 from unittest.mock import patch, MagicMock
 
 
-def test_update_keyword_score_positive():
+def test_amplify_from_note_does_nothing():
+    """_amplify_from_note must be a no-op — keywords are user-owned only."""
     from core.discovery_scheduler import DiscoveryScheduler
-    scheduler = DiscoveryScheduler()
-    scheduler._keywords.append("test-kw")
-    scheduler._update_keyword_score("test-kw", +1)
-    assert scheduler._keyword_scores.get("test-kw") == 1
+
+    # Prevent _blocking_refresh from running so _keywords stays empty
+    with patch.object(DiscoveryScheduler, '_blocking_refresh'):
+        scheduler = DiscoveryScheduler()
+        original_keywords = list(scheduler._keywords)
+
+    # Even if _amplify_from_note is called with note content, no keywords should be added
+    asyncio.run(scheduler._amplify_from_note({
+        "title": "Test Note",
+        "raw_text": "machine learning transformers neural networks"
+    }))
+    assert scheduler._keywords == original_keywords, "amplification should not add keywords"
 
 
-def test_update_keyword_score_triggers_suppress():
+def test_get_explore_keywords_returns_empty():
+    """_get_explore_keywords must return empty list — exploration disabled."""
     from core.discovery_scheduler import DiscoveryScheduler
-    scheduler = DiscoveryScheduler()
-    scheduler._keywords.append("bad-kw")
-    with patch.object(scheduler, 'suppress_keyword') as mock_suppress:
-        scheduler._update_keyword_score("bad-kw", -6)
-        mock_suppress.assert_called_once_with("bad-kw")
 
+    with patch.object(DiscoveryScheduler, '_blocking_refresh'):
+        scheduler = DiscoveryScheduler()
 
-def test_amplify_from_note_does_not_add_keywords():
-    """Amplification is disabled — keywords are user-owned only."""
-    from core.discovery_scheduler import DiscoveryScheduler
-    scheduler = DiscoveryScheduler()
-
-    with patch("core.keyword_extractor.extract_keywords_from_note",
-               return_value=["new-kw-1", "new-kw-2"]):
-        asyncio.run(scheduler._amplify_from_note({
-            "title": "Test Note",
-            "raw_text": "Some content about transformers."
-        }))
-
-    # Amplification is disabled — keywords should NOT be added
-    assert "new-kw-1" not in scheduler._keywords
-    assert "new-kw-2" not in scheduler._keywords
-
-
-def test_get_explore_keywords():
-    from core.discovery_scheduler import DiscoveryScheduler
-    scheduler = DiscoveryScheduler()
-    keywords = scheduler._get_explore_keywords()
-    assert len(keywords) <= 2
-    assert isinstance(keywords, list)
+    assert scheduler._get_explore_keywords() == [], "_get_explore_keywords must return empty list"

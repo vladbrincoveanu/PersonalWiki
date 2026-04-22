@@ -26,8 +26,6 @@ from core.keywords_manager import (
     add_keyword as _km_add,
     remove_keyword as _km_remove,
     purge_keyword as _km_purge,
-    suppress_keyword as _km_suppress,
-    load_suppressed_keywords as _load_suppressed,
 )
 from ingesters.web import extract_url
 from pathlib import Path
@@ -138,9 +136,8 @@ class DiscoveryScheduler:
         self._in_flight: set[str] = set()
         self._pipeline_func = None
         self._start_lock = asyncio.Lock()
-        # Amplification loop state
+        # Keyword quality tracking (for discovery cycle scoring)
         self._keyword_scores: dict[str, int] = {}       # keyword -> quality score
-        self._discovery_cycle_count = 0                  # count for echo chamber guard
         # Recursive link discovery state
         self._sitemap_queue: asyncio.Queue[str] = asyncio.Queue()  # sitemap URLs pending ingestion
         self._interest_domains: set[str] = set()         # domains discovered via link extraction
@@ -206,18 +203,12 @@ class DiscoveryScheduler:
         return True
 
     async def _refresh_keywords(self):
-        """Re-extract interests from vault graph and merge manual keywords."""
+        """Load manual keywords only — graph extraction disabled (amplification off)."""
         try:
-            from core.graph_interests import extract_interests
-            keywords = await asyncio.to_thread(extract_interests)
+            # Graph extraction disabled — keywords are user-owned only
             manual = _load_manual_keywords(KEYWORDS_FILE)
-            suppressed = _load_suppressed(KEYWORDS_FILE)
-            # Filter out suppressed keywords from graph extraction
-            keywords = [kw for kw in keywords if kw not in suppressed]
-            merged = list(dict.fromkeys([*keywords, *manual]))
-            self._keywords = merged
-            _logger.info("Discovery: refreshed %d interest keywords (%d graph + %d manual, %d suppressed)",
-                          len(merged), len(keywords), len(manual), len(suppressed))
+            self._keywords = list(manual)
+            _logger.info("Discovery: refreshed %d manual keywords", len(manual))
         except Exception as e:
             _logger.warning("Discovery: failed to refresh keywords: %s", e)
 
@@ -238,13 +229,10 @@ class DiscoveryScheduler:
         return deleted
 
     def suppress_keyword(self, keyword: str) -> list[str]:
-        """Suppress a graph keyword: add to blocklist and purge matching vault files."""
-        _km_suppress(keyword, KEYWORDS_FILE)
+        """Suppress disabled — keywords are user-owned only. Just removes from _keywords."""
         if keyword in self._keywords:
             self._keywords.remove(keyword)
-        deleted = _km_purge(keyword, Path(VAULT_PATH))
-        _logger.info("Discovery: suppressed graph keyword %r, purged %d files", keyword, len(deleted))
-        return deleted
+        return []
 
     async def _amplify_from_note(self, note: dict):
         """Extract new keywords from a recently written note and add to pool."""
@@ -260,18 +248,8 @@ class DiscoveryScheduler:
             _logger.info("Amplification: suppressed keyword %r (score %d)", keyword, score)
 
     def _get_explore_keywords(self) -> list[str]:
-        """Return 1-2 random explore keywords from a broader pool."""
-        explore_pool = [
-            "distributed systems",
-            "program synthesis",
-            "diffusion models",
-            "formal verification",
-            "compilers",
-            "operating systems",
-            "network protocols",
-        ]
-        available = [k for k in explore_pool if k not in self._keywords]
-        return random.sample(available, min(2, len(available)))
+        """Exploration disabled — keywords are user-owned only."""
+        return []
 
     def is_interest_domain_enqueued(self, domain: str) -> bool:
         """Check if a domain was already enqueued for interest discovery."""
@@ -745,15 +723,6 @@ class DiscoveryScheduler:
         events = get_discovery_logger().today()
         if events:
             write_daily_digest([dict(e) for e in events], today_str)
-
-        # Echo chamber guard: every 5th cycle, inject explore keywords
-        self._discovery_cycle_count += 1
-        if self._discovery_cycle_count % 5 == 0:
-            explore_kws = self._get_explore_keywords()
-            for kw in explore_kws:
-                if kw not in self._keywords:
-                    self._keywords.append(kw)
-                    _logger.info("Amplification: explore keyword added %r", kw)
 
         # Junk cleanup — remove video notes with no transcript
         try:
