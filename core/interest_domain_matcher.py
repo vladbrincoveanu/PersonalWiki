@@ -8,9 +8,13 @@ get_interest_domains() -> set[str]
     Returns all domains derived from interest keywords.
 """
 import logging
+from pathlib import Path
 from urllib.parse import urlparse
 
-from core.graph_interests import extract_interests
+from config import VAULT_PATH
+from core.keywords_manager import load_manual_keywords
+
+_KEYWORDS_FILE = Path(VAULT_PATH) / "_keywords"
 
 _logger = logging.getLogger(__name__)
 
@@ -659,16 +663,16 @@ class InterestDomainMatcher:
         self._refresh(vault_path)
 
     def _refresh(self, vault_path: str | None = None):
-        """Reload interest domains from graph."""
+        """Reload interest domains from keywords file."""
         try:
-            interests = extract_interests(vault_path)
+            keywords = load_manual_keywords(_KEYWORDS_FILE)
             domains: set[str] = set()
-            for kw in interests:
+            for kw in keywords:
                 domain = _keyword_to_domain(kw)
                 if domain:
                     domains.add(domain)
             self._domains = domains
-            _logger.debug("InterestDomainMatcher: loaded %d domains from graph", len(domains))
+            _logger.debug("InterestDomainMatcher: loaded %d domains from keywords", len(domains))
         except Exception as e:
             _logger.warning("InterestDomainMatcher: failed to load interests: %s", e)
             self._domains = set()

@@ -1,18 +1,10 @@
-import pytest, asyncio, os, tempfile
+"""
+Full integration tests for the autonomous discovery system.
+Tests scheduler deduplication, gap detection.
+"""
+import pytest
 from pathlib import Path
 
-def test_graph_interests_extracts_from_vault(tmp_path, monkeypatch):
-    """Verify extract_interests works against a small vault."""
-    vault = tmp_path / "notes"
-    vault.mkdir()
-    (vault / "RLHF.md").write_text("# RLHF\n[[PPO]]\n[[reward-model]]\n")
-    (vault / "PPO.md").write_text("# PPO\n[[RLHF]]\n")
-    (vault / "reward-model.md").write_text("# Reward Model\n")
-    from core.graph_interests import extract_interests
-    interests = extract_interests(vault_path=str(tmp_path.parent))
-    # RLHF has highest connectivity, should appear and rank above lower-connectivity nodes
-    assert "RLHF" in interests
-    assert "PPO" in interests  # also connected but lower than RLHF
 
 def test_scheduler_deduplicates_against_seen_urls():
     """Verify deduplication logic in DiscoveryScheduler."""
@@ -24,6 +16,7 @@ def test_scheduler_deduplicates_against_seen_urls():
         assert s._is_new_url("http://example.com/2") is True
     finally:
         s.stop()
+
 
 def test_gap_detector_not_confused_by_case(tmp_path, monkeypatch):
     """Gap detection is case-insensitive."""

@@ -24,16 +24,20 @@ def test_deduplication_against_seen_urls():
     assert scheduler._is_new_url("https://arxiv.org/abs/9999") is True
 
 @pytest.mark.asyncio
-async def test_keyword_refresh():
-    from core.discovery_scheduler import DiscoveryScheduler
-    scheduler = DiscoveryScheduler()
-    with (
-        patch("core.graph_interests.extract_interests", return_value=["RLHF", "KV-cache"]),
-        patch("core.discovery_scheduler._load_manual_keywords", return_value=[]),
-        patch("core.discovery_scheduler._load_suppressed", return_value=[]),
-    ):
-        await scheduler._refresh_keywords()
-    assert scheduler._keywords == ["RLHF", "KV-cache"]
+async def test_keyword_refresh_loads_manual_only():
+    """_refresh_keywords loads only manual keywords — no graph extraction."""
+    from core.discovery_scheduler import DiscoveryScheduler, KEYWORDS_FILE
+
+    with tempfile.TemporaryDirectory() as tmp_vault:
+        tmp_keywords = Path(tmp_vault) / "_keywords"
+        tmp_keywords.write_text("machine-learning\nquantum-physics\n", encoding="utf-8")
+        with patch("core.discovery_scheduler.KEYWORDS_FILE", tmp_keywords):
+            scheduler = DiscoveryScheduler()
+            await scheduler._refresh_keywords()
+        assert "machine-learning" in scheduler._keywords
+        assert "quantum-physics" in scheduler._keywords
+        # No graph keywords — amplification disabled
+        assert len(scheduler._keywords) == 2
 
 
 def test_search_desprebursa_sitemap_parsing():
@@ -131,49 +135,51 @@ async def test_search_desprebursa_respects_limit():
 
 
 @pytest.mark.asyncio
-async def test_refresh_keywords_includes_manual():
-    """Manual keywords from .interests are merged with graph keywords."""
+async def test_refresh_keywords_includes_manual_only():
+    """_refresh_keywords loads only from _keywords file — no graph keywords."""
     from core.discovery_scheduler import DiscoveryScheduler, KEYWORDS_FILE
 
     with tempfile.TemporaryDirectory() as tmp_vault:
-        tmp_interests = Path(tmp_vault) / ".interests"
-        tmp_interests.write_text("manual-keyword\n", encoding="utf-8")
-        with patch("core.discovery_scheduler.KEYWORDS_FILE", tmp_interests):
-            with patch("core.graph_interests.extract_interests", return_value=["graph-kw"]):
-                scheduler = DiscoveryScheduler()
-                await scheduler._refresh_keywords()
+        tmp_keywords = Path(tmp_vault) / "_keywords"
+        tmp_keywords.write_text("manual-keyword\n", encoding="utf-8")
+        with patch("core.discovery_scheduler.KEYWORDS_FILE", tmp_keywords):
+            scheduler = DiscoveryScheduler()
+            await scheduler._refresh_keywords()
         assert "manual-keyword" in scheduler._keywords
-        assert "graph-kw" in scheduler._keywords
-        assert len(scheduler._keywords) == 2
+        # No graph keywords — amplification disabled
+        assert len(scheduler._keywords) == 1
 
 
 def test_add_keyword_appends_and_activates():
-    """add_keyword writes to .interests and adds to _keywords if not present."""
+    """add_keyword writes to _keywords and adds to _keywords if not present."""
     from core.discovery_scheduler import DiscoveryScheduler, KEYWORDS_FILE
 
     with tempfile.TemporaryDirectory() as tmp_vault:
-        tmp_interests = Path(tmp_vault) / ".interests"
-        with patch("core.discovery_scheduler.KEYWORDS_FILE", tmp_interests):
-            scheduler = DiscoveryScheduler()
-            scheduler._keywords = ["existing"]
-            scheduler.add_keyword("new-kw")
-        assert "new-kw" in scheduler._keywords
-        assert "existing" in scheduler._keywords
-        assert tmp_interests.read_text(encoding="utf-8") == "new-kw\n"
+        tmp_keywords = Path(tmp_vault) / "_keywords"
+        with patch("core.discovery_scheduler.KEYWORDS_FILE", tmp_keywords):
+            with patch.object(DiscoveryScheduler, "_blocking_refresh"):
+                scheduler = DiscoveryScheduler()
+                scheduler._keywords = ["existing"]
+                with patch("core.discovery_scheduler._km_add") as mock_add:
+                    scheduler.add_keyword("new-kw")
+                    mock_add.assert_called_once_with("new-kw", tmp_keywords)
+                assert "new-kw" in scheduler._keywords
+                assert "existing" in scheduler._keywords
 
 
 def test_add_keyword_raises_on_duplicate():
-    """add_keyword raises ValueError when keyword already exists in .interests."""
+    """add_keyword raises ValueError when keyword already exists in _keywords."""
     from core.discovery_scheduler import DiscoveryScheduler, KEYWORDS_FILE
 
     with tempfile.TemporaryDirectory() as tmp_vault:
-        tmp_interests = Path(tmp_vault) / ".interests"
-        tmp_interests.write_text("existing\n", encoding="utf-8")
-        with patch("core.discovery_scheduler.KEYWORDS_FILE", tmp_interests):
-            scheduler = DiscoveryScheduler()
-            scheduler._keywords = ["existing"]
-            with pytest.raises(ValueError, match="already exists"):
-                scheduler.add_keyword("existing")
+        tmp_keywords = Path(tmp_vault) / "_keywords"
+        tmp_keywords.write_text("existing\n", encoding="utf-8")
+        with patch("core.discovery_scheduler.KEYWORDS_FILE", tmp_keywords):
+            with patch.object(DiscoveryScheduler, "_blocking_refresh"):
+                scheduler = DiscoveryScheduler()
+                scheduler._keywords = ["existing"]
+                with pytest.raises(ValueError, match="already exists"):
+                    scheduler.add_keyword("existing")
         # _keywords unchanged since keyword was already present
         assert scheduler._keywords.count("existing") == 1
 

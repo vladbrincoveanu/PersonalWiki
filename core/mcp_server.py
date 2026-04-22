@@ -10,7 +10,10 @@ if str(project_root) not in sys.path:
 from mcp.server.fastmcp import FastMCP
 from config import VAULT_PATH
 from core.vector_store import get_store
-from core.graph_interests import extract_interests
+from core.keywords_manager import load_manual_keywords
+from pathlib import Path
+
+_KEYWORDS_FILE = Path(VAULT_PATH) / "_keywords"
 
 # Create an MCP server named "personalWiki"
 mcp = FastMCP("personalWiki")
@@ -72,17 +75,17 @@ def read_note_content(path: str) -> str:
 @mcp.tool()
 def get_vault_graph_interests() -> str:
     """
-    Get the current list of top high-value entity nodes / topics from the vault graph.
-    This helps understand what knowledge is already heavily connected or indexed in the vault.
-    Returns a comma-separated list of top topics.
+    Get the current list of keywords from the vault keywords file.
+    This helps understand what topics are actively tracked in the vault.
+    Returns a comma-separated list of keywords.
     """
     try:
-        interests = extract_interests()
-        if not interests:
-            return "No interests found in vault graph."
-        return f"Top interests/entities in vault graph:\n{', '.join(interests)}"
+        keywords = load_manual_keywords(_KEYWORDS_FILE)
+        if not keywords:
+            return "No keywords found."
+        return f"Active keywords:\n{', '.join(keywords)}"
     except Exception as e:
-        return f"Error extracting graph interests: {e}"
+        return f"Error reading keywords: {e}"
 
 if __name__ == "__main__":
     # Start the MCP server using stdio transport (the default for FastMCP run)

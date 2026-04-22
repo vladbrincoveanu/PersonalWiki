@@ -1,37 +1,13 @@
 """
 Full integration tests for the autonomous discovery system.
-Tests graph interests, gap detection, scheduler deduplication, and pipeline integration.
+Tests gap detection, scheduler deduplication, and pipeline integration.
 """
 import pytest
 from pathlib import Path
 
 
 # =============================================================================
-# Test 1: Graph Interests with Real Vault Structure
-# =============================================================================
-def test_graph_interests_hub_node_ranking(tmp_path):
-    """Hub nodes (most connected) appear first in interests."""
-    vault = tmp_path / "notes"
-    vault.mkdir()
-    # Hubs: RLHF connected to 3 others
-    (vault / "RLHF.md").write_text("# RLHF\n[[PPO]]\n[[reward-model]]\n[[GPT-4]]\n")
-    # Medium: PPO connected to 2
-    (vault / "PPO.md").write_text("# PPO\n[[RLHF]]\n[[reward-model]]\n")
-    # Leaf: reward-model only points out
-    (vault / "reward-model.md").write_text("# Reward Model\n[[RLHF]]\n")
-    # Isolated: GPT-4 no links
-    (vault / "GPT-4.md").write_text("# GPT-4\n")
-
-    from core.graph_interests import extract_interests
-    interests = extract_interests(vault_path=str(tmp_path))
-
-    # RLHF has highest connectivity (3 outbound + 2 inbound = 5)
-    assert interests.index("RLHF") < interests.index("PPO")
-    assert interests.index("PPO") < interests.index("reward-model")
-
-
-# =============================================================================
-# Test 2: Gap Detection Follows Pipeline Integration
+# Test 1: Gap Detection Follows Pipeline Integration
 # =============================================================================
 def test_gap_detector_from_enriched_note(tmp_path):
     """Simulate an enriched note with known and unknown entities."""
@@ -57,7 +33,7 @@ def test_gap_detector_from_enriched_note(tmp_path):
 
 
 # =============================================================================
-# Test 3: Discovery Scheduler Deduplication
+# Test 2: Discovery Scheduler Deduplication
 # =============================================================================
 def test_discovery_scheduler_dedup_all_layers():
     """Scheduler deduplicates at seen, in-flight, and store levels."""
@@ -81,38 +57,18 @@ def test_discovery_scheduler_dedup_all_layers():
 
 
 # =============================================================================
-# Test 4: Gap Entities Attached to Note
+# Test 3: Gap Entities Attached to Note
 # =============================================================================
 def test_pipeline_attaches_gap_entities(tmp_path, monkeypatch):
     """When detect_gaps returns entities, they are attached to the note."""
     from core.gap_detector import detect_gaps
 
-    # We can't fully run the pipeline without network, but we can test the gap attachment path
     gaps = detect_gaps([{"name": "Unknown Entity X", "slug": "unknown-entity-x"}], vault_path=str(tmp_path))
     assert "Unknown Entity X" in gaps
 
 
 # =============================================================================
-# Test 5: Wikilink Pipe Syntax Parsing
-# =============================================================================
-def test_wikilink_pipe_syntax_parsed(tmp_path):
-    """[[target|display]] wikilinks extract 'target' as the link."""
-    vault = tmp_path / "notes"
-    vault.mkdir()
-    (vault / "A.md").write_text("# A\nSee [[B|Display B]] and [[C]].\n")
-    (vault / "B.md").write_text("# B\n")
-    (vault / "C.md").write_text("# C\n")
-
-    from core.graph_interests import _scan_vault
-    nodes, _ = _scan_vault(tmp_path)
-
-    # B should have an inbound link from A (not "B|Display B")
-    assert "B" in nodes["A"]["outbound"]
-    assert "B|Display B" not in nodes["A"]["outbound"]
-
-
-# =============================================================================
-# Test 6: Scheduler Start/Stop Guards
+# Test 4: Scheduler Start/Stop Guards
 # =============================================================================
 @pytest.mark.asyncio
 async def test_scheduler_double_start_guard():
@@ -128,24 +84,7 @@ async def test_scheduler_double_start_guard():
 
 
 # =============================================================================
-# Test 7: Interest Keyword Deduplication
-# =============================================================================
-def test_interests_are_deduplicated(tmp_path):
-    """Same keyword from hub + leaf + tag only appears once."""
-    vault = tmp_path / "notes"
-    vault.mkdir()
-    # RLHF appears in wikilinks AND as a tag
-    (vault / "A.md").write_text("---\ntags: [RLHF, LLM]\n---\n# A\n[[RLHF]]\n")
-    (vault / "RLHF.md").write_text("# RLHF\n[[A]]\n")
-
-    from core.graph_interests import extract_interests
-    interests = extract_interests(vault_path=str(tmp_path))
-
-    assert interests.count("RLHF") == 1
-
-
-# =============================================================================
-# Test 8: Discovery Activity API Endpoint
+# Test 5: Discovery Activity API Endpoint
 # =============================================================================
 @pytest.mark.asyncio
 async def test_discovery_activity_api():
