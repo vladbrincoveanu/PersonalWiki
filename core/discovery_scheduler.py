@@ -6,14 +6,13 @@ deduplicates against LanceDB, triggers pipeline for new URLs.
 import asyncio
 import json
 import logging
-import os
-import random
 import re
 import requests
 import threading
 import time
 import urllib.request
 import xml.etree.ElementTree as ET
+from core.prose import measure_prose
 from config import (
     DISCOVERY_ENABLED,
     DISCOVERY_INTERVAL,
@@ -31,7 +30,6 @@ from core.keywords_manager import (
 from ingesters.web import extract_url
 from pathlib import Path
 from vault.doctor import cleanup_junk
-from core.prose import measure_prose
 from core.discovery_link_extractor import DiscoveryLinkExtractor
 from core.interest_domain_matcher import InterestDomainMatcher
 from core.discovery_logger import get_discovery_logger
@@ -147,29 +145,12 @@ class DiscoveryScheduler:
 
     def _blocking_refresh(self):
         """Run _refresh_keywords synchronously in a thread (for __init__)."""
+        new_loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(new_loop)
         try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            loop = None
-
-        if loop and loop.is_running():
-            # Already in an event loop — use a new one for the thread
-            new_loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(new_loop)
-            try:
-                new_loop.run_until_complete(self._refresh_keywords())
-            finally:
-                new_loop.close()
-        else:
-            # No running loop — always create a new event loop for this thread
-            # (get_event_loop() raises RuntimeError in Python 3.14+ for threads
-            # without an event loop, which is always the case for our daemon thread)
-            new_loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(new_loop)
-            try:
-                new_loop.run_until_complete(self._refresh_keywords())
-            finally:
-                new_loop.close()
+            new_loop.run_until_complete(self._refresh_keywords())
+        finally:
+            new_loop.close()
 
     def _warm_seen_urls(self):
         """Populate _seen_urls from disk cache and vector store."""
@@ -261,7 +242,6 @@ class DiscoveryScheduler:
         for url in sitemap_urls:
             if self._is_new_url(url):
                 _logger.info("Discovery: discovered via %s: %s", domain, url)
-                dl_logger = get_discovery_logger()
                 dl_logger.record(url, None, f"sitemap: {domain}", "enqueued")
                 self._sitemap_queue.put_nowait(url)
 
@@ -388,22 +368,27 @@ class DiscoveryScheduler:
             })
         return results
 
-    def _search_hn(self, keyword: str, limit: int = 3) -> list[dict]:
+    async def _search_hn(self, keyword: str, limit: int = 3) -> list[dict]:
         """Search Hacker News via Algolia API."""
-        import json, urllib.request
-        url = "https://hn.algolia.com/api/v1/search"
-        params = f"?query={urllib.request.quote(keyword)}&tags=story&hitsPerPage={limit}"
-        with urllib.request.urlopen(url + params, timeout=10) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-        results = []
-        for hit in data.get("hits", []):
-            results.append({
-                "url": hit.get("url", f"https://news.ycombinator.com/item?id={hit.get('objectID')}"),
-                "title": hit.get("title", ""),
-                "snippet": hit.get("excerpt", "")[:200],
-                "source": "hn",
-            })
-        return results
+        import json
+        import urllib.request
+
+        def _blocking_search():
+            url = "https://hn.algolia.com/api/v1/search"
+            params = f"?query={urllib.request.quote(keyword)}&tags=story&hitsPerPage={limit}"
+            with urllib.request.urlopen(url + params, timeout=10) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+            results = []
+            for hit in data.get("hits", []):
+                results.append({
+                    "url": hit.get("url", f"https://news.ycombinator.com/item?id={hit.get('objectID')}"),
+                    "title": hit.get("title", ""),
+                    "snippet": hit.get("excerpt", "")[:200],
+                    "source": "hn",
+                })
+            return results
+
+        return await asyncio.to_thread(_blocking_search)
 
     async def _search_minimax(self, keyword: str, limit: int = 3) -> list[dict]:
         """
