@@ -386,37 +386,6 @@
         .kw-chip button:hover { background: var(--danger); color: #fff; }
         .kw-empty { font-size: 0.8rem; color: var(--text-dim); padding: 0.5rem 0; text-align: center; }
 
-        #add-kw-row {
-            display: flex;
-            gap: 0.4rem;
-            margin-top: 0.75rem;
-        }
-        #add-kw-input {
-            flex: 1;
-            background: var(--bg);
-            border: 1px solid var(--border);
-            border-radius: 6px;
-            padding: 0.45rem 0.7rem;
-            color: var(--text);
-            font-size: 0.8rem;
-            outline: none;
-            transition: border-color 0.2s;
-            font-family: 'Inter', sans-serif;
-        }
-        #add-kw-input:focus { border-color: var(--accent); }
-        #add-kw-input::placeholder { color: var(--text-dim); }
-        #add-kw-btn {
-            background: var(--surface-2);
-            border: 1px solid var(--border);
-            border-radius: 6px;
-            color: var(--text-muted);
-            cursor: pointer;
-            font-size: 0.8rem;
-            padding: 0.45rem 0.75rem;
-            transition: border-color 0.15s, color 0.15s;
-        }
-        #add-kw-btn:hover { border-color: var(--accent); color: var(--accent); }
-
         /* ── Jobs ── */
         #jobs-list {
             display: flex;
@@ -689,13 +658,8 @@
                     <line x1="7" y1="7" x2="7.01" y2="7"/>
                 </svg>
                 <span class="card-title">Keywords</span>
-                <span class="mono" style="margin-left:auto;font-size:0.65rem;color:var(--text-dim)" id="kw-count">0</span>
             </div>
             <div id="keywords-chips"></div>
-            <div id="add-kw-row">
-                <input id="add-kw-input" type="text" placeholder="Add keyword..." />
-                <button id="add-kw-btn" type="button" onclick="addKeyword()">+</button>
-            </div>
         </div>
 
         <!-- Recent Jobs -->
@@ -736,67 +700,39 @@
             const data = await res.json();
             const chips = document.getElementById('keywords-chips');
             chips.innerHTML = '';
-            if (data.manual.length === 0 && data.graph.length === 0) {
+            const kws = data.keywords || [];
+            if (kws.length === 0) {
                 chips.innerHTML = '<div class="kw-empty">No keywords yet</div>';
+                return;
             }
-            data.manual.forEach(kw => chips.appendChild(makeChip(kw, true)));
-            data.graph.forEach(kw => chips.appendChild(makeChip(kw, false)));
-            document.getElementById('kw-count').textContent = data.total;
+            kws.forEach(kw => chips.appendChild(makeChip(kw)));
         } catch(e) { console.error('Failed to load keywords', e); }
     }
 
-    function makeChip(kw, isManual) {
+    function makeChip(kw) {
         const span = document.createElement('span');
-        span.className = 'kw-chip' + (isManual ? '' : ' graph');
-        span.textContent = kw;
+        span.className = 'kw-chip';
+        const txt = document.createTextNode(kw);
+        span.appendChild(txt);
         const btn = document.createElement('button');
-        btn.innerHTML = '&times;';
-        btn.title = 'Remove keyword';
-        btn.setAttribute('aria-label', 'Remove ' + kw);
-        btn.onclick = (e) => { e.stopPropagation(); removeKeyword(kw, isManual); };
+        btn.className = 'kw-remove';
+        btn.textContent = '\u00d7';
+        btn.onclick = (e) => { e.stopPropagation(); removeKeyword(kw); };
         span.appendChild(btn);
         return span;
     }
 
-    async function addKeyword() {
-        const input = document.getElementById('add-kw-input');
-        const kw = input.value.trim();
-        if (!kw) return;
+    async function removeKeyword(kw) {
+        if (!confirm('Remove keyword "' + kw + '"?\n\nThis will delete all discovery articles tagged with this keyword.')) return;
         try {
-            const res = await fetch('/keywords/add', {
+            const res = await fetch('/keywords/remove', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: 'keyword=' + encodeURIComponent(kw)
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ keyword: kw })
             });
-            input.value = '';
             if (res.ok) loadKeywords();
-            else { const e = await res.json(); alert('Error: ' + (e.detail || e.error)); }
-        } catch(e) { alert('Failed: ' + e.message); }
+        } catch(e) { console.error('Failed to remove keyword', e); }
     }
-
-    async function removeKeyword(kw, isManual) {
-        const action = isManual ? 'remove' : 'suppress';
-        const msg = isManual
-            ? `Remove manual keyword "${kw}"?\n\nThis will delete all vault files containing [[${kw}]].`
-            : `Suppress graph keyword "${kw}"?\n\nThis will delete vault files with [[${kw}]] or #${kw} tags.\n\nKeyword will be blocklisted.`;
-        if (!confirm(msg)) return;
-        try {
-            const res = await fetch('/keywords/' + action, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: 'keyword=' + encodeURIComponent(kw)
-            });
-            if (res.ok) {
-                const data = await res.json();
-                if (data.purged_count > 0) alert(`Removed. ${data.purged_count} file(s) deleted.`);
-                loadKeywords();
-            }
-        } catch(e) { alert('Failed: ' + e.message); }
-    }
-
-    document.getElementById('add-kw-input').addEventListener('keydown', e => {
-        if (e.key === 'Enter') { e.preventDefault(); addKeyword(); }
-    });
 
     // ── File Input & Drag-and-Drop ───────────────────────────
     const fileInput = document.getElementById('file-input');
