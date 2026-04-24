@@ -162,8 +162,10 @@ async def get_keywords():
 
 
 @app.post("/keywords/add")
-async def add_keyword(keyword: str = Form(...)):
+async def add_keyword(request: Request):
     """Add a manual keyword to .interests."""
+    body = await request.json()
+    keyword = body.get("keyword", "")
     scheduler = await _get_scheduler()
     try:
         scheduler.add_keyword(keyword)
@@ -173,8 +175,10 @@ async def add_keyword(keyword: str = Form(...)):
 
 
 @app.post("/keywords/remove")
-async def remove_keyword(keyword: str = Form(...)):
+async def remove_keyword(request: Request):
     """Remove a manual keyword from _keywords and purge related files."""
+    body = await request.json()
+    keyword = body.get("keyword", "")
     scheduler = await _get_scheduler()
     try:
         purged = scheduler.remove_keyword(keyword)
