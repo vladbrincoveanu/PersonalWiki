@@ -30,17 +30,19 @@ def _slugify(text: str) -> str:
     return slug
 
 
-def _is_junk_note(note: dict, active_keywords: list[str], file_stem: str) -> tuple[bool, str]:
+def _is_junk_note(note: dict, active_keywords: list[str]) -> tuple[bool, str]:
     """
     Return (is_junk, reason) where reason is one of:
     video-no-content, untitled-no-h1, untitled-exact, untitled-h1,
-    transcript-failed, no-body, sparse, orphaned-discovery,
-    orphaned-discovery-no-keyword-link, or "" if not junk.
+    transcript-failed, no-body, sparse, orphaned-no-keyword-link,
+    or "" if not junk.
     """
     title = note.get("title", "")
     body = note.get("body", note.get("raw_text", ""))
     raw_text = note.get("raw_text", "")
     note_type = note.get("type", "")
+
+    is_video = note_type == "video"
 
     # Transcript failed marker in title
     if "[NO_TRANSCRIPT]" in title or "[TRANSLATION_FAILED]" in title:
@@ -50,44 +52,34 @@ def _is_junk_note(note: dict, active_keywords: list[str], file_stem: str) -> tup
     if title.lower() == "untitled":
         return True, "untitled-exact"
 
-    # Video with no/short transcript — check BEFORE untitled/no-body for videos
-    if note_type == "video" and len(raw_text) < 50:
+    # Video with no/short transcript
+    if is_video and len(raw_text) < 50:
         return True, "video-no-content"
 
-    # No body — skip for videos (body == raw_text for videos, handled by video-no-content)
-    if note_type != "video" and not body.strip():
-        return True, "no-body"
-
-    # Untitled no H1 — no "# " heading in body (skip for videos)
-    if note_type != "video" and not re.search(r"^#\s", body, re.MULTILINE):
-        return True, "untitled-no-h1"
-
-    # H1 untitled — first line starts "# untitled" (case-insensitive, skip for videos)
-    if note_type != "video":
+    # Non-video checks
+    if not is_video:
+        if not body.strip():
+            return True, "no-body"
+        if not re.search(r"^#\s", body, re.MULTILINE):
+            return True, "untitled-no-h1"
         first_line = body.split("\n", 1)[0]
         if re.match(r"^#\s*untitled$", first_line, re.IGNORECASE):
             return True, "untitled-h1"
 
-    # Orphaned — source_keyword not in active_keywords (or blank)
-    # AND body has no wikilink to its own declared source_keyword
-    # AND body has no wikilink to any active keyword
+    # Orphaned — source_keyword not in active keywords (or blank)
+    # AND body has no wikilink to its own source_keyword or any active keyword
     source_keyword = note.get("source_keyword", "")
     if source_keyword not in active_keywords:
-        # Check if body links to its own source_keyword
-        own_link = f"[[{source_keyword}]]" if source_keyword else ""
-        own_link_slug = f"[[{_slugify(source_keyword)}]]" if source_keyword else ""
-        has_own_link = (own_link in body or own_link_slug in body) if source_keyword else False
-
-        # Check if body links to any active keyword
-        has_keyword_link = False
-        for kw in active_keywords:
-            if f"[[{kw}]]" in body or f"[[{_slugify(kw)}]]" in body:
-                has_keyword_link = True
-                break
-
+        has_own_link = (
+            f"[[{source_keyword}]]" in body
+            or f"[[{_slugify(source_keyword)}]]" in body
+        ) if source_keyword else False
+        has_keyword_link = any(
+            f"[[{kw}]]" in body or f"[[{_slugify(kw)}]]" in body
+            for kw in active_keywords
+        )
         if not has_own_link and not has_keyword_link:
             return True, "orphaned-no-keyword-link"
-        # Has wikilink to own source or any active keyword — not junk
 
     # Sparse — raw_text < 200 chars
     if len(raw_text) < 200:
@@ -123,7 +115,7 @@ def run_vault_doctor(active_keywords: list[str]) -> dict[str, list[str]]:
             note["raw_text"] = content
             note["body"] = content
 
-            is_junk, reason = _is_junk_note(note, active_keywords, md_path.stem)
+            is_junk, reason = _is_junk_note(note, active_keywords)
             if not is_junk:
                 continue
 
