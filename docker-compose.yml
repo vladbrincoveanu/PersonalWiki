@@ -2,7 +2,7 @@ services:
   personalwiki:
     build: .
     ports:
-      - "8000:8000"
+      - "8010:8000"
     volumes:
       - ${VAULT_PATH:-/Users/vladbrincoveanu/Library/Mobile Documents/iCloud~md~obsidian/Documents/PersonalWiki}:/vault
     env_file:

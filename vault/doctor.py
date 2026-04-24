@@ -8,8 +8,9 @@ Detects and removes:
 - Notes with [NO_TRANSCRIPT] or [TRANSLATION_FAILED] in title
 - Notes with empty body
 - Sparse notes with < 200 chars raw_text
-- Orphaned discovery notes (discovery: auto but source_keyword not in active_keywords
-  and no wikilink to any active keyword)
+- Orphaned notes: source_keyword not in active keywords (or blank),
+  AND body has no wikilink to its own source_keyword,
+  AND body has no wikilink to any active keyword
 """
 import logging
 import re
@@ -67,21 +68,26 @@ def _is_junk_note(note: dict, active_keywords: list[str], file_stem: str) -> tup
         if re.match(r"^#\s*untitled$", first_line, re.IGNORECASE):
             return True, "untitled-h1"
 
-    # Orphaned discovery — discovery: auto AND source_keyword not in active_keywords
-    # AND no wikilink to any active keyword
-    discovery = note.get("discovery", "")
+    # Orphaned — source_keyword not in active_keywords (or blank)
+    # AND body has no wikilink to its own declared source_keyword
+    # AND body has no wikilink to any active keyword
     source_keyword = note.get("source_keyword", "")
-    if discovery == "auto" and source_keyword:
-        if source_keyword not in active_keywords:
-            # Check if there's a wikilink to any active keyword in the body
-            has_keyword_link = False
-            for kw in active_keywords:
-                if f"[[{kw}]]" in body or f"[[{_slugify(kw)}]]" in body:
-                    has_keyword_link = True
-                    break
-            if not has_keyword_link:
-                return True, "orphaned-discovery-no-keyword-link"
-            # Has wikilink to active keyword — not junk
+    if source_keyword not in active_keywords:
+        # Check if body links to its own source_keyword
+        own_link = f"[[{source_keyword}]]" if source_keyword else ""
+        own_link_slug = f"[[{_slugify(source_keyword)}]]" if source_keyword else ""
+        has_own_link = (own_link in body or own_link_slug in body) if source_keyword else False
+
+        # Check if body links to any active keyword
+        has_keyword_link = False
+        for kw in active_keywords:
+            if f"[[{kw}]]" in body or f"[[{_slugify(kw)}]]" in body:
+                has_keyword_link = True
+                break
+
+        if not has_own_link and not has_keyword_link:
+            return True, "orphaned-no-keyword-link"
+        # Has wikilink to own source or any active keyword — not junk
 
     # Sparse — raw_text < 200 chars
     if len(raw_text) < 200:
@@ -134,7 +140,7 @@ def run_vault_doctor(active_keywords: list[str]) -> dict[str, list[str]]:
                 results["untitled"].append(str(md_path))
             elif reason == "sparse":
                 results["sparse"].append(str(md_path))
-            elif reason in ("orphaned-discovery", "orphaned-discovery-no-keyword-link"):
+            elif reason in ("orphaned-discovery", "orphaned-no-keyword-link"):
                 results["orphaned"].append(str(md_path))
             elif reason == "video-no-content":
                 results["video-no-content"].append(str(md_path))
