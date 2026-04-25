@@ -212,6 +212,26 @@ def _has_english_cues(vtt_text: str) -> bool:
     return _is_english_text(sample)
 
 
+def _get_video_metadata(url: str, proxy: str | None = None) -> dict | None:
+    """Get video title and description via yt-dlp --dump-json."""
+    cmd = ["yt-dlp", "--dump-json", "--quiet", "--no-download", url]
+    if proxy:
+        cmd.insert(1, "--proxy")
+        cmd.insert(2, proxy)
+    try:
+        result = subprocess.run(cmd, capture_output=True, timeout=15)
+        if result.returncode != 0:
+            return None
+        import json
+        data = json.loads(result.stdout.decode("utf-8", errors="replace"))
+        return {
+            "title": data.get("title", ""),
+            "description": data.get("description", ""),
+        }
+    except Exception:
+        return None
+
+
 def _try_subtitle_tiers(url: str, tmpdir: str, proxy: str | None = None) -> str | None:
     """Try each subtitle tier. Returns transcript text or None."""
     for tier in _SUBTITLE_TIERS:
@@ -250,6 +270,18 @@ def extract_youtube(url: str) -> Document:
         whisper_transcript = _try_whisper_transcription(url, proxy)
         if whisper_transcript:
             return Document(raw_text=whisper_transcript, content_type="video")
+
+    # Final fallback: use video title + description as raw text
+    meta = _get_video_metadata(url, proxy)
+    if meta and (meta.get("title") or meta.get("description")):
+        parts = []
+        if meta.get("title"):
+            parts.append(f"Title: {meta['title']}")
+        if meta.get("description"):
+            desc = meta["description"][:2000]
+            parts.append(f"Description: {desc}")
+        if parts:
+            return Document(raw_text="\n\n".join(parts), content_type="video")
 
     return Document(raw_text=f"[NO_TRANSCRIPT] {url}", content_type="video")
 

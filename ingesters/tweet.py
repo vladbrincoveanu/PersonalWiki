@@ -19,6 +19,18 @@ _NITTER_INSTANCES = [
     "https://vxitter.nl",
     "https://nitter.1d4.us",
     "https://nitter.cat",
+    # Additional instances (2024-2025 working)
+    "https://nitter.privacy.com",
+    "https://nitter.winside.services",
+    "https://nitter.lacontrepasser.tk",
+    "https://nitter.privacy.tordmn.nl",
+    "https://nitter.koyu.space",
+    "https://nitter.skypenguin.com",
+    "https://nitter.lunar.quest",
+    "https://nitter.bcow.website",
+    "https://nitter.nameid.tk",
+    "https://nitterdump.com",
+    "https://nitter.privacyplatform.eu",
 ]
 
 # Updated CSS/content regex — more permissive extraction
