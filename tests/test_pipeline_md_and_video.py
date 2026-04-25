@@ -68,7 +68,7 @@ async def test_pipeline_md_file_creates_note():
         original_write_note = pipeline_module.write_note
         original_enrich = pipeline_module.enrich
 
-        def mock_write_note(note, source, images=(), entity_statuses=(), is_discovery=False, source_keyword=None):
+        def mock_write_note(note, source, images=(), entity_statuses=(), is_discovery=False, source_keyword=None, keywords=None):
             from vault.writer import slugify
             slug = slugify(note.get("title", "untitled"))
             filepath = notes_dir / f"{slug}.md"

@@ -107,7 +107,7 @@ async def test_pipeline_pdf_url_passes_images_to_writer(tmp_path):
 
     written_images = []
 
-    def capture_write_note(note, source, images=(), entity_statuses=(), is_discovery=False, source_keyword=None):
+    def capture_write_note(note, source, images=(), entity_statuses=(), is_discovery=False, source_keyword=None, keywords=None):
         written_images.extend(images)
         return "/vault/notes/paper.md"
 
@@ -379,7 +379,7 @@ async def test_pipeline_passes_source_keyword_to_write_note():
 
     captured_kwargs = {}
 
-    def capture_write_note(note, source, images=(), entity_statuses=(), is_discovery=False, source_keyword=None):
+    def capture_write_note(note, source, images=(), entity_statuses=(), is_discovery=False, source_keyword=None, keywords=None):
         captured_kwargs.update({"source_keyword": source_keyword})
         return "/vault/notes/test-note.md"
 
