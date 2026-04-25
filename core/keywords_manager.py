@@ -1,6 +1,15 @@
 """Keywords manager for manual keyword persistence."""
 
+import logging
+import re
 from pathlib import Path
+
+try:
+    import frontmatter as fm
+except ImportError:
+    fm = None  # type: ignore
+
+_logger = logging.getLogger(__name__)
 
 
 def _suppressed_path(path: Path) -> Path:
@@ -93,29 +102,33 @@ def _cascade_delete_by_source_keyword(keyword: str, vault_path: Path) -> list[st
 
     Returns list of deleted file paths.
     """
-    import frontmatter as fm
     from core.vector_store import get_store
 
-    deleted = []
+    deleted: list[str] = []
+    store = None
     try:
         store = get_store()
-    except Exception:
-        store = None
+    except Exception as e:
+        _logger.debug("Could not get vector store for cascade delete: %s", e)
 
     for md_file in vault_path.rglob("*.md"):
         try:
             content = md_file.read_text(encoding="utf-8")
+            if fm is None:
+                _logger.debug("frontmatter module not available, skipping %s", md_file)
+                continue
             parsed = fm.parse(content)
             metadata, _ = parsed
             if metadata.get("source_keyword") == keyword:
                 md_file.unlink()
+                deleted.append(str(md_file))
                 if store:
                     try:
                         store.delete(str(md_file))
-                    except Exception:
-                        pass
-                deleted.append(str(md_file))
-        except Exception:
+                    except Exception as e:
+                        _logger.debug("Failed to delete %s from vector store: %s", md_file, e)
+        except Exception as e:
+            _logger.debug("Error processing %s during cascade delete: %s", md_file, e)
             continue
 
     return deleted
@@ -130,10 +143,15 @@ def purge_keyword(keyword: str, vault_path: Path) -> list[str]:
 
     Returns list of deleted file paths.
     """
-    import re
+    from core.vector_store import get_store
 
     wikilink_pattern = re.compile(rf"\[\[{re.escape(keyword)}\]\]", re.IGNORECASE)
-    deleted = []
+    deleted: list[str] = []
+    store = None
+    try:
+        store = get_store()
+    except Exception as e:
+        _logger.debug("Could not get vector store for purge: %s", e)
 
     for md_file in vault_path.rglob("*.md"):
         try:
@@ -141,25 +159,23 @@ def purge_keyword(keyword: str, vault_path: Path) -> list[str]:
             has_wikilink = bool(wikilink_pattern.search(raw))
 
             # Detect orphan stub: file whose filename (stem) exactly matches the keyword
-            # This catches stubs created when pipeline saves a file with no body content
             is_title_orphan = md_file.stem.lower() == keyword.lower()
 
             if not has_wikilink and not is_title_orphan:
                 continue
 
-            # Separate frontmatter from body
-            fm = ""
-            body = raw
-            if body.startswith("---"):
-                fm_end = body.find("\n---", 3)
-                if fm_end != -1:
-                    fm = body[: fm_end + 4]
-                    body = body[fm_end + 4 :]
+            # Use frontmatter library for consistent parsing
+            if fm is None:
+                _logger.debug("frontmatter module not available, skipping %s", md_file)
+                continue
+
+            parsed = fm.parse(raw)
+            metadata, body = parsed
 
             # Strip H1 title line if it's just # keyword
             first_line = body.split("\n", 1)[0] if body else ""
             if first_line.strip().lower() == f"# {keyword}".lower():
-                body = body[len(first_line) :]
+                body = body[len(first_line):]
 
             if has_wikilink:
                 # Replace [[keyword]] with keyword, then remove entirely-empty lines
@@ -184,12 +200,24 @@ def purge_keyword(keyword: str, vault_path: Path) -> list[str]:
             if is_orphan:
                 md_file.unlink()
                 deleted.append(str(md_file))
+                if store:
+                    try:
+                        store.delete(str(md_file))
+                    except Exception as e:
+                        _logger.debug("Failed to delete %s from vector store: %s", md_file, e)
             else:
-                if fm:
-                    md_file.write_text(fm + "\n" + new_body + "\n", encoding="utf-8")
+                # Reconstruct with frontmatter preserved
+                if metadata:
+                    import io
+                    dump_buffer = io.StringIO()
+                    fm.dump(metadata, dump_buffer)
+                    fm_text = dump_buffer.getvalue()
+                    new_content = fm_text + new_body + "\n"
                 else:
-                    md_file.write_text(new_body + "\n", encoding="utf-8")
-        except Exception:
+                    new_content = new_body + "\n"
+                md_file.write_text(new_content, encoding="utf-8")
+        except Exception as e:
+            _logger.debug("Error processing %s during purge: %s", md_file, e)
             continue
 
     return deleted
