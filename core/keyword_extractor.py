@@ -4,6 +4,7 @@ Extract candidate keywords from a newly written note.
 Uses MiniMax to analyze note content and suggest 3-5 new search keywords.
 """
 import logging
+from pathlib import Path
 import requests
 from config import MINIMAX_API_KEY, MINIMAX_MODEL, MINIMAX_API_URL
 
@@ -20,6 +21,31 @@ Rules:
 - Return as a JSON array of strings: ["keyword1", "keyword2", "keyword3"]
 
 Return ONLY the JSON array, nothing else."""
+
+
+def _load_keywords(path: Path) -> set[str]:
+    from core.keywords_manager import load_manual_keywords
+    return set(load_manual_keywords(path))
+
+
+def extract_and_classify(
+    raw_text: str,
+    title: str,
+    keywords_path: Path,
+) -> dict:
+    """Extract candidate keywords from text and classify as existing vs new."""
+    candidates = extract_keywords_from_note(title, raw_text)
+    if not candidates:
+        return {"existing": [], "new": []}
+    existing_keywords = _load_keywords(keywords_path)
+    existing = []
+    new = []
+    for kw in candidates:
+        if kw in existing_keywords:
+            existing.append(kw)
+        else:
+            new.append(kw)
+    return {"existing": existing, "new": new}
 
 
 def extract_keywords_from_note(title: str, raw_text: str) -> list[str]:

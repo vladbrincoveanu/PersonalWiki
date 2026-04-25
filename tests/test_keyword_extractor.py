@@ -34,6 +34,40 @@ def test_returns_empty_for_short_content():
         assert result == []
 
 
+def test_extract_and_classify_all_existing(tmp_path):
+    from core.keyword_extractor import extract_and_classify, extract_keywords_from_note
+    kws_file = tmp_path / "_keywords"
+    kws_file.write_text("python\nmachine-learning\napi\n")
+    text = "Python is a programming language. Machine learning uses Python APIs."
+    with patch("core.keyword_extractor.extract_keywords_from_note") as mock:
+        mock.return_value = ["python", "machine-learning"]
+        result = extract_and_classify(text, "Test", kws_file)
+    assert result == {"existing": ["python", "machine-learning"], "new": []}
+
+
+def test_extract_and_classify_some_new(tmp_path):
+    from core.keyword_extractor import extract_and_classify
+    kws_file = tmp_path / "_keywords"
+    kws_file.write_text("python\n")
+    text = "Python is great for deep learning and neural networks."
+    with patch("core.keyword_extractor.extract_keywords_from_note") as mock:
+        mock.return_value = ["python", "deep-learning", "neural-networks"]
+        result = extract_and_classify(text, "Test", kws_file)
+    assert result["existing"] == ["python"]
+    assert "deep-learning" in result["new"]
+    assert "neural-networks" in result["new"]
+
+
+def test_extract_and_classify_empty_text(tmp_path):
+    from core.keyword_extractor import extract_and_classify
+    kws_file = tmp_path / "_keywords"
+    kws_file.write_text("python\n")
+    with patch("core.keyword_extractor.extract_keywords_from_note") as mock:
+        mock.return_value = []
+        result = extract_and_classify("", "Empty", kws_file)
+    assert result == {"existing": [], "new": []}
+
+
 def test_handles_malformed_json():
     from core.keyword_extractor import extract_keywords_from_note
     with patch("core.keyword_extractor.MINIMAX_API_KEY", "fake"):
