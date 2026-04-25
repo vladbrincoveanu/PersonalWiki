@@ -43,15 +43,10 @@ def add_keyword(keyword: str, path: Path) -> None:
     save_manual_keywords(existing, path)
 
 
-def remove_keyword(keyword: str, path: Path, vault_path: Path | None = None) -> list[str]:
-    """Remove keyword from _keywords file and cascade delete source_keyword matches.
+def remove_keyword(keyword: str, path: Path, vault_path: Path | None = None) -> dict:
+    """Remove keyword from _keywords file and cascade.
 
-    Args:
-        keyword: keyword to remove
-        path: path to _keywords file
-        vault_path: path to vault for cascade delete (optional for backwards compat)
-
-    Returns list of deleted file paths from cascade.
+    Returns dict with { deleted: [...], stripped: [...] }.
     Raises KeyError if keyword not found.
     """
     existing = load_manual_keywords(path)
@@ -60,44 +55,97 @@ def remove_keyword(keyword: str, path: Path, vault_path: Path | None = None) -> 
     existing.remove(keyword)
     save_manual_keywords(existing, path)
 
-    cascade_deleted = []
+    result = {"deleted": [], "stripped": []}
+
     if vault_path and vault_path.exists():
-        cascade_deleted = _cascade_delete_by_source_keyword(keyword, vault_path)
+        impact = _check_keyword_impact(keyword, vault_path)
+        result["deleted"] = impact["delete"]
+        result["stripped"] = impact["remove_keyword_only"]
 
-    return cascade_deleted
+        try:
+            from core.vector_store import get_store
+            store = get_store()
+        except Exception:
+            store = None
+
+        for filepath in impact["delete"]:
+            md_path = Path(filepath)
+            md_path.unlink()
+            if store:
+                try:
+                    store.delete(filepath)
+                except Exception:
+                    pass
+
+        for filepath in impact["remove_keyword_only"]:
+            md_path = Path(filepath)
+            try:
+                _strip_keyword_from_file(keyword, md_path)
+            except Exception:
+                continue
+
+        purge_keyword(keyword, vault_path)
+
+    return result
 
 
-def _cascade_delete_by_source_keyword(keyword: str, vault_path: Path) -> list[str]:
-    """Delete all notes where source_keyword frontmatter equals keyword.
+def _check_keyword_impact(keyword: str, vault_path: Path) -> dict:
+    """Scan vault for notes affected by keyword deletion.
 
-    Returns list of deleted file paths.
+    Returns dict with:
+      delete: [paths to delete entirely]
+      remove_keyword_only: [paths to strip keyword from but keep]
     """
     import frontmatter as fm
-    from core.vector_store import get_store
 
-    deleted = []
-    try:
-        store = get_store()
-    except Exception:
-        store = None
+    delete = []
+    remove_keyword_only = []
 
     for md_file in vault_path.rglob("*.md"):
         try:
-            content = md_file.read_text(encoding="utf-8")
-            parsed = fm.parse(content)
+            parsed = fm.parse(md_file.read_text(encoding="utf-8"))
             metadata, _ = parsed
-            if metadata.get("source_keyword") == keyword:
-                md_file.unlink()
-                if store:
-                    try:
-                        store.delete(str(md_file))
-                    except Exception:
-                        pass
-                deleted.append(str(md_file))
+            file_kws = metadata.get("keywords", [])
+            source_kw = metadata.get("source_keyword")
+
+            has_kw = keyword in file_kws or source_kw == keyword
+            if not has_kw:
+                continue
+
+            other_kws = [k for k in file_kws if k != keyword]
+            has_other = bool(other_kws) or (source_kw and source_kw != keyword)
+
+            if has_other:
+                remove_keyword_only.append(str(md_file))
+            else:
+                delete.append(str(md_file))
         except Exception:
             continue
 
-    return deleted
+    return {"delete": delete, "remove_keyword_only": remove_keyword_only}
+
+
+def _strip_keyword_from_file(keyword: str, filepath: Path) -> None:
+    """Remove keyword from frontmatter keywords list and strip [[wikilinks]]."""
+    import frontmatter as fm
+    import re
+
+    raw = filepath.read_text(encoding="utf-8")
+    parsed = fm.parse(raw)
+    metadata, body = parsed
+
+    kws = metadata.get("keywords", [])
+    if keyword in kws:
+        kws = [k for k in kws if k != keyword]
+        metadata["keywords"] = kws
+
+    post = fm.Post(body, **metadata)
+    filepath.write_text(fm.dumps(post), encoding="utf-8")
+
+    raw = filepath.read_text(encoding="utf-8")
+    wikilink_pattern = re.compile(rf"\[\[{re.escape(keyword)}\]\]", re.IGNORECASE)
+    new_raw = wikilink_pattern.sub(keyword, raw)
+    filepath.write_text(new_raw, encoding="utf-8")
 
 
 def purge_keyword(keyword: str, vault_path: Path) -> list[str]:
