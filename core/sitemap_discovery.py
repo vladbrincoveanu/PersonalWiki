@@ -5,13 +5,69 @@ Uses crawl4ai's AsyncWebCrawler to probe a domain for sitemap XML files,
 then parses and filters entries.
 """
 
+import ipaddress
 import re
 from typing import Optional
+from urllib.parse import urlparse
 
 try:
     from crawl4ai import AsyncWebCrawler
 except ImportError:
     AsyncWebCrawler = None  # type: ignore
+
+# SSRF protection: block internal/private IP ranges and localhost
+_BLOCKED_HOSTS = frozenset({
+    "localhost",
+    "127.0.0.1",
+    "0.0.0.0",
+    "::1",
+    "::",
+    "metadata.google.internal",  # GCP metadata
+    "169.254.169.254",           # Link-local/cloud metadata
+    "[fd00::]",                  # IPv6 private
+})
+
+_BLOCKED_NETWORKS = [
+    ipaddress.ip_network("10.0.0.0/8"),
+    ipaddress.ip_network("172.16.0.0/12"),
+    ipaddress.ip_network("192.168.0.0/16"),
+    ipaddress.ip_network("127.0.0.0/8"),
+    ipaddress.ip_network("169.254.0.0/16"),
+    ipaddress.ip_network("fc00::/7"),   # IPv6 unique local
+    ipaddress.ip_network("fe80::/10"),  # IPv6 link-local
+]
+
+
+def _is_blocked_url(url: str) -> bool:
+    """Check if URL targets an internal/private IP or localhost (SSRF protection)."""
+    try:
+        parsed = urlparse(url)
+        host = parsed.hostname
+        if not host:
+            return True
+
+        host_lower = host.lower()
+        if host_lower in _BLOCKED_HOSTS:
+            return True
+
+        # Check for metadata endpoints with IP in path/query (GCP-style)
+        if "metadata.google.internal" in host_lower or "169.254.169.254" in host_lower:
+            return True
+
+        # Check if hostname resolves to a private IP
+        try:
+            addr = ipaddress.ip_address(host)
+            for network in _BLOCKED_NETWORKS:
+                if addr in network:
+                    return True
+        except ValueError:
+            # Hostname is not an IP address, that's fine
+            pass
+
+        return False
+    except Exception:
+        # Conservative: block on any parse error
+        return True
 
 _SITEMAP_PATHS = ["sitemap.xml", "sitemap-index.xml", "sitemap1.xml", "sitemap_news.xml", "sitemap_images.xml"]
 
@@ -106,7 +162,12 @@ async def _fetch_one_sitemap(sitemap_url: str) -> list[dict]:
     """
     Fetch and parse a single sitemap URL (urlset only).
     Returns list of entries with url/lastmod/priority.
+
+    SSRF protection: blocks internal/private IPs and localhost.
     """
+    if _is_blocked_url(sitemap_url):
+        return []
+
     try:
         async with AsyncWebCrawler() as crawler:
             result = await crawler.araw_get(sitemap_url)

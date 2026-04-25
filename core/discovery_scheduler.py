@@ -28,6 +28,7 @@ from core.keywords_manager import (
     purge_keyword as _km_purge,
     suppress_keyword as _km_suppress,
     load_suppressed_keywords as _load_suppressed,
+    _cascade_delete_by_source_keyword,
 )
 from ingesters.web import extract_url
 from pathlib import Path
@@ -224,7 +225,8 @@ class DiscoveryScheduler:
                 from core.vector_store import get_store
                 store = get_store()
                 if store.exists(url):
-                    self._site_registry.add_url(domain, url)
+                    # Async save to avoid blocking event loop
+                    asyncio.create_task(self._site_registry.add_url_async(domain, url))
                     self._seen_urls.add(url)
                     self._persist_seen_urls()
                     continue
@@ -262,13 +264,17 @@ class DiscoveryScheduler:
         _logger.info("Discovery: added manual keyword %r", keyword)
 
     def remove_keyword(self, keyword: str) -> list[str]:
-        """Remove keyword from _keywords; purge from vault via purge_keyword."""
+        """Remove keyword from _keywords; cascade delete by source_keyword, then purge wikilinks."""
         _km_remove(keyword, KEYWORDS_FILE)
         if keyword in self._keywords:
             self._keywords.remove(keyword)
-        deleted = _km_purge(keyword, Path(VAULT_PATH))
-        _logger.info("Discovery: removed manual keyword %r, purged %d files", keyword, len(deleted))
-        return deleted
+        # First: cascade delete by source_keyword frontmatter
+        cascade_deleted = _cascade_delete_by_source_keyword(keyword, Path(VAULT_PATH))
+        # Second: remove wikilinks and delete orphan stubs
+        wikilink_deleted = _km_purge(keyword, Path(VAULT_PATH))
+        _logger.info("Discovery: removed manual keyword %r, cascade-deleted %d files, purged %d files",
+                      keyword, len(cascade_deleted), len(wikilink_deleted))
+        return cascade_deleted + wikilink_deleted
 
     def suppress_keyword(self, keyword: str) -> list[str]:
         """Suppress a graph keyword: add to blocklist and purge matching vault files."""
@@ -720,7 +726,8 @@ class DiscoveryScheduler:
                     self._seen_urls.add(url)
                     self._persist_seen_urls()
                     domain = urlparse(url).netloc
-                    self._site_registry.add_url(domain, url)
+                    # Async save to avoid blocking event loop
+                    asyncio.create_task(self._site_registry.add_url_async(domain, url))
                 except Exception as e:
                     self._update_keyword_score(last_keyword, -2)
                     _logger.error("Discovery: failed to queue sitemap result %s: %s", url, e)

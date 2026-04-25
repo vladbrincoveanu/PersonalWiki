@@ -88,6 +88,39 @@ def suppress_keyword(keyword: str, path: Path) -> None:
     suppressed_file.write_text("\n".join(suppressed) + "\n", encoding="utf-8")
 
 
+def _cascade_delete_by_source_keyword(keyword: str, vault_path: Path) -> list[str]:
+    """Delete all notes where source_keyword frontmatter equals keyword.
+
+    Returns list of deleted file paths.
+    """
+    import frontmatter as fm
+    from core.vector_store import get_store
+
+    deleted = []
+    try:
+        store = get_store()
+    except Exception:
+        store = None
+
+    for md_file in vault_path.rglob("*.md"):
+        try:
+            content = md_file.read_text(encoding="utf-8")
+            parsed = fm.parse(content)
+            metadata, _ = parsed
+            if metadata.get("source_keyword") == keyword:
+                md_file.unlink()
+                if store:
+                    try:
+                        store.delete(str(md_file))
+                    except Exception:
+                        pass
+                deleted.append(str(md_file))
+        except Exception:
+            continue
+
+    return deleted
+
+
 def purge_keyword(keyword: str, vault_path: Path) -> list[str]:
     """Remove [[wikilink]] references to keyword from vault .md files.
 
