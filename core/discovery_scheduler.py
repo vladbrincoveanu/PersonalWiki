@@ -25,7 +25,6 @@ from core.keywords_manager import (
     add_keyword as _km_add,
     remove_keyword as _km_remove,
     purge_keyword as _km_purge,
-    _cascade_delete_by_source_keyword,
 )
 from ingesters.web import extract_url
 from pathlib import Path
@@ -207,18 +206,22 @@ class DiscoveryScheduler:
                 self._keywords.append(keyword)
         _logger.info("Discovery: added manual keyword %r", keyword)
 
-    def remove_keyword(self, keyword: str) -> list[str]:
-        """Remove keyword from _keywords; cascade delete source_keyword notes + wikilinks."""
-        _km_remove(keyword, KEYWORDS_FILE)
+    def remove_keyword(self, keyword: str) -> dict:
+        """Remove keyword; cascade delete handled by keywords_manager."""
+        result = _km_remove(keyword, KEYWORDS_FILE, vault_path=Path(VAULT_PATH))
         with self._keywords_lock:
             if keyword in self._keywords:
                 self._keywords.remove(keyword)
-        # Cascade delete by source_keyword frontmatter first
-        cascade_deleted = _cascade_delete_by_source_keyword(keyword, Path(VAULT_PATH))
-        # Then remove wikilinks from remaining files
-        wikilink_deleted = _km_purge(keyword, Path(VAULT_PATH))
-        _logger.info("Discovery: removed manual keyword %r, cascade-deleted %d files, purged %d wikilinks", keyword, len(cascade_deleted), len(wikilink_deleted))
-        return cascade_deleted + wikilink_deleted
+        _logger.info("Discovery: removed manual keyword %r, deleted %d files, stripped %d files", keyword, len(result["deleted"]), len(result["stripped"]))
+        return result
+
+    async def trigger_cycle(self) -> None:
+        """Trigger a single discovery cycle immediately (from UI)."""
+        if not self._running:
+            _logger.warning("Discovery: trigger ignored — scheduler not running")
+            raise RuntimeError("Discovery scheduler is not running")
+        _logger.info("Discovery: manual trigger — running one cycle")
+        await self._run_discovery_cycle()
 
     async def _amplify_from_note(self, note: dict):
         """Amplification disabled — keywords are user-owned only."""
@@ -718,7 +721,10 @@ class DiscoveryScheduler:
         dl_logger = get_discovery_logger()
         try:
             from pipeline import run_pipeline
-            async for _ in run_pipeline(url=url, is_discovery=True, source_keyword=keyword):
+            async for _ in run_pipeline(
+                url=url, is_discovery=True, source_keyword=keyword,
+                keywords=[keyword] if keyword else None,
+            ):
                 pass
             dl_logger.update_status(url, "ingested")
         except Exception as e:
