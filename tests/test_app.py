@@ -212,6 +212,90 @@ def test_ingest_docx_file_returns_job_json():
         app_module._scheduler = prior_scheduler
 
 
+def test_ingest_preview_returns_keywords():
+    """POST /ingest/preview returns extracted keywords with existing vs new classification."""
+    import app as app_module
+
+    prior_scheduler = app_module._scheduler
+    app_module._scheduler = None
+    app_module._scheduler_lock = None
+    app_module._preview_cache.clear()
+
+    try:
+        client = make_client()
+        with patch("core.keyword_extractor.extract_and_classify", return_value={"existing": ["python"], "new": ["deep-learning"]}):
+            with patch("ingesters.router.extract", new_callable=AsyncMock) as mock_extract:
+                mock_extract.return_value = MagicMock(
+                    title="Test Article",
+                    raw_text="Python and deep learning content.",
+                    content_type="article",
+                )
+                resp = client.post("/ingest/preview", data={"url": "https://example.com"})
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "preview_id" in data
+        assert data["keywords"]["existing"] == ["python"]
+        assert data["keywords"]["new"] == ["deep-learning"]
+    finally:
+        app_module._preview_cache.clear()
+        app_module._scheduler = prior_scheduler
+
+
+def test_ingest_run_returns_job_id():
+    """POST /ingest/run returns a job_id for the confirmed keywords pipeline."""
+    import app as app_module
+
+    prior_scheduler = app_module._scheduler
+    app_module._scheduler = None
+    app_module._scheduler_lock = None
+    app_module._preview_cache.clear()
+    app_module._ingest_run_queues.clear()
+
+    async def fake_pipeline(**kwargs):
+        yield "Done"
+
+    try:
+        client = make_client()
+        with patch("app.run_pipeline", fake_pipeline):
+            with patch("app.load_manual_keywords", return_value=["python"]):
+                resp = client.post("/ingest/run", json={
+                    "preview_id": "test-preview-123",
+                    "accepted_keywords": ["python", "new-kw"],
+                    "url": "https://example.com",
+                })
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "job_id" in data
+    finally:
+        app_module._preview_cache.clear()
+        app_module._ingest_run_queues.clear()
+        app_module._scheduler = prior_scheduler
+
+
+def test_trigger_discovery_returns_triggered():
+    """POST /discovery/trigger starts a discovery cycle."""
+    import app as app_module
+
+    mock_scheduler = MagicMock()
+    mock_scheduler.trigger_cycle = AsyncMock()
+    prior_scheduler = app_module._scheduler
+    app_module._scheduler = mock_scheduler
+
+    async def mock_get_scheduler():
+        return mock_scheduler
+
+    try:
+        with patch.object(app_module, "_get_scheduler", mock_get_scheduler):
+            client = make_client()
+            resp = client.post("/discovery/trigger")
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "triggered"
+    finally:
+        app_module._scheduler = prior_scheduler
+
+
 def test_ingest_docx_routes_to_correct_extractor():
     """DOCX file with .docx extension should route to extract_docx via docx_path."""
     import app as app_module

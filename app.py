@@ -1,5 +1,7 @@
 # app.py
 import asyncio
+import json
+import time
 import uuid
 import tempfile
 import os
@@ -12,10 +14,13 @@ from sse_starlette.sse import EventSourceResponse
 from pipeline import run_pipeline
 from vault.scanner import scan_vault
 from core.discovery_scheduler import DiscoveryScheduler, KEYWORDS_FILE
-from core.keywords_manager import load_manual_keywords
+from core.keywords_manager import load_manual_keywords, add_keyword as _add_keyword
 from core.doctor_scheduler import DoctorScheduler
 
 _job_queues: dict[str, tuple[asyncio.Queue, asyncio.Event]] = {}
+_ingest_run_queues: dict[str, tuple[asyncio.Queue, asyncio.Event]] = {}
+_preview_cache: dict[str, dict] = {}
+_PREVIEW_TTL = 300
 _scheduler: DiscoveryScheduler | None = None
 _doctor_scheduler: DoctorScheduler | None = None
 _scheduler_lock = asyncio.Lock()
@@ -117,7 +122,7 @@ async def ingest(
 @app.get("/stream/{job_id}")
 async def stream(job_id: str):
     async def generate():
-        entry = _job_queues.get(job_id)
+        entry = _job_queues.get(job_id) or _ingest_run_queues.get(job_id)
         if not entry:
             return
         queue, done_event = entry
@@ -181,10 +186,10 @@ async def remove_keyword(request: Request):
     keyword = body.get("keyword", "")
     scheduler = await _get_scheduler()
     try:
-        purged = scheduler.remove_keyword(keyword)
+        result = scheduler.remove_keyword(keyword)
     except (KeyError, ValueError):
         raise HTTPException(status_code=404, detail=f"Keyword '{keyword}' not found")
-    return {"removed": keyword, "purged": purged, "purged_count": len(purged)}
+    return {"removed": keyword, "deleted": result["deleted"], "stripped": result["stripped"], "total_deleted": len(result["deleted"]), "total_stripped": len(result["stripped"])}
 
 
 @app.get("/api/discovery/activity")
@@ -196,6 +201,128 @@ async def get_discovery_activity():
         "stats": logger.stats(),
         "events": [dict(e) for e in logger.today()],
     }
+
+
+@app.post("/discovery/trigger")
+async def trigger_discovery():
+    """Trigger one discovery cycle immediately."""
+    scheduler = await _get_scheduler()
+    try:
+        asyncio.create_task(scheduler.trigger_cycle())
+        return {"status": "triggered"}
+    except RuntimeError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/ingest/preview")
+async def ingest_preview(
+    url: str = Form(None),
+    file: UploadFile = None,
+):
+    """Phase 1: extract content and return keyword classification."""
+    if not url and not file:
+        raise HTTPException(400, "No url or file provided")
+
+    tmp_path = None
+    if file and file.filename:
+        content = await file.read()
+        ext = Path(file.filename.lower()).suffix
+        with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
+            tmp.write(content)
+            tmp_path = tmp.name
+
+    try:
+        if url:
+            from ingesters.router import extract
+            doc = await extract(url)
+        elif tmp_path:
+            from ingesters.router import extract_pdf, extract_docx, extract_markdown
+            if ext == ".pdf":
+                doc = await asyncio.to_thread(extract_pdf, tmp_path)
+            elif ext == ".docx":
+                doc = await asyncio.to_thread(extract_docx, tmp_path)
+            else:
+                doc = await asyncio.to_thread(extract_markdown, tmp_path)
+        else:
+            raise HTTPException(400, "No url or file provided")
+
+        title = doc.title or Path(url or "").stem or "Untitled"
+        raw_text = doc.raw_text
+
+        from core.keyword_extractor import extract_and_classify
+        keywords = await asyncio.to_thread(
+            extract_and_classify, raw_text, title, KEYWORDS_FILE
+        )
+
+        preview_id = str(uuid.uuid4())
+        _preview_cache[preview_id] = {
+            "url": url,
+            "tmp_path": tmp_path,
+            "source": url or tmp_path or "",
+            "created_at": time.time(),
+        }
+
+        return {
+            "preview_id": preview_id,
+            "title": title,
+            "keywords": keywords,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        if tmp_path:
+            os.unlink(tmp_path)
+        raise HTTPException(500, f"Preview failed: {e}")
+
+
+@app.post("/ingest/run")
+async def ingest_run(request: Request):
+    """Phase 2: run full pipeline with confirmed keywords."""
+    body = await request.json()
+    preview_id = body.get("preview_id")
+    accepted_keywords = list(body.get("accepted_keywords", []))
+    source_url = body.get("url")
+
+    cached = _preview_cache.pop(preview_id, None) if preview_id else None
+
+    job_id = str(uuid.uuid4())
+    queue: asyncio.Queue = asyncio.Queue()
+    done_event = asyncio.Event()
+    _ingest_run_queues[job_id] = (queue, done_event)
+
+    existing_keywords = await asyncio.to_thread(
+        load_manual_keywords, KEYWORDS_FILE
+    )
+
+    async def _run():
+        try:
+            for kw in accepted_keywords:
+                if kw not in existing_keywords:
+                    try:
+                        _add_keyword(kw, KEYWORDS_FILE)
+                        await queue.put(f"<p>Keyword added: {kw}</p>")
+                    except ValueError:
+                        pass
+
+            kwargs = {"keywords": accepted_keywords}
+            if cached and cached.get("url"):
+                kwargs["url"] = cached["url"]
+            elif source_url:
+                kwargs["url"] = source_url
+
+            async for msg in run_pipeline(**kwargs):
+                await queue.put(f"<p>{msg}</p>")
+        except Exception as e:
+            await queue.put(f"<p>Error: {e}</p>")
+        finally:
+            await queue.put(None)
+            done_event.set()
+            _ingest_run_queues.pop(job_id, None)
+            if cached and cached.get("tmp_path"):
+                os.unlink(cached["tmp_path"])
+
+    asyncio.create_task(_run())
+    return {"job_id": job_id}
 
 
 if __name__ == "__main__":
