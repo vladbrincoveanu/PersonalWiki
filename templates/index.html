@@ -625,7 +625,7 @@
             </svg>
             <span class="card-title">Ingest</span>
         </div>
-        <form id="ingest-form" action="/ingest" method="post" enctype="multipart/form-data">
+        <form id="ingest-form" action="/ingest/preview" method="post" enctype="multipart/form-data">
             <div class="url-row">
                 <input
                     type="url"
@@ -657,6 +657,23 @@
             </label>
             <input type="file" id="file-input" name="file" accept=".pdf,.docx,.md,.txt" style="display:none" />
         </form>
+    </div>
+
+    <!-- Discovery Panel -->
+    <div id="discovery-panel" class="discovery-panel">
+      <div class="discovery-header">
+        <h3>Discovery</h3>
+        <div>
+          <button onclick="triggerDiscovery()" class="refresh-btn" title="Run discovery now" style="margin-right:0.5rem;">▶ Run</button>
+          <button onclick="loadDiscoveryActivity()" class="refresh-btn" title="Refresh">↻</button>
+        </div>
+      </div>
+      <div id="discovery-stats" class="discovery-stats">
+        <span>—</span>
+      </div>
+      <div id="discovery-feed" class="discovery-feed">
+        <div class="discovery-empty">No discovery activity today.</div>
+      </div>
     </div>
 
     <!-- Keyword Preview (two-phase ingest phase 1) -->
@@ -726,23 +743,6 @@
                 <div class="no-jobs">No jobs yet — ingest something</div>
             </div>
         </div>
-    </div>
-
-    <!-- Discovery Panel (moved up) -->
-    <div id="discovery-panel" class="discovery-panel">
-      <div class="discovery-header">
-        <h3>Discovery</h3>
-        <div>
-          <button onclick="triggerDiscovery()" class="refresh-btn" title="Run discovery now" style="margin-right:0.5rem;">▶ Run</button>
-          <button onclick="loadDiscoveryActivity()" class="refresh-btn" title="Refresh">↻</button>
-        </div>
-      </div>
-      <div id="discovery-stats" class="discovery-stats">
-        <span>—</span>
-      </div>
-      <div id="discovery-feed" class="discovery-feed">
-        <div class="discovery-empty">No discovery activity today.</div>
-      </div>
     </div>
 </div>
 
@@ -969,7 +969,7 @@
         const payload = {
             preview_id: previewId,
             accepted_keywords: acceptedKeywords,
-            url: _previewData.keywords && _previewData.keywords.new ? _previewData.keywords.new.length > 0 ? null : _previewData.url : _previewData.url
+            url: _previewData.url || null,
         };
 
         document.getElementById('keyword-preview').classList.remove('visible');
