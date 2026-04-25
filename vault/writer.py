@@ -7,17 +7,6 @@ from config import NOTES_DIR, VAULT_PATH
 from vault.entity_status import _build_prose
 
 
-_VALID_TAG_RE = re.compile(r"^[a-z0-9_-]{2,30}$")
-
-
-def _clean_tag(tag: str) -> str | None:
-    """Return a valid Obsidian tag string, or None if the tag is invalid."""
-    tag = tag.strip().lower().lstrip("#")
-    if _VALID_TAG_RE.match(tag):
-        return tag
-    return None
-
-
 def _inject_keywords_section(body: str, keywords: list[str]) -> str:
     """Add a ## Keywords section with [[wikilink]] references."""
     links = " · ".join(f"[[{kw}]]" for kw in keywords if kw.strip())
