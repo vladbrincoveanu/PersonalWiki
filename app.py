@@ -213,6 +213,26 @@ async def trigger_discovery():
         raise HTTPException(status_code=400, detail=str(e))
 
 
+def _guess_title(doc, url: str) -> str:
+    """Extract a title from the document or fall back to URL stem."""
+    raw = getattr(doc, "raw_text", "") or ""
+    for line in raw.split("\n"):
+        stripped = line.strip().strip("#").strip()
+        if not stripped or len(stripped) < 10:
+            continue
+        if stripped.startswith("Skip to") or stripped.startswith("[Skip to"):
+            continue
+        return stripped[:120]
+    try:
+        from urllib.parse import urlparse
+        stem = Path(urlparse(url).path).stem or Path(url).stem
+        if stem and stem != "index":
+            return stem.replace("-", " ").replace("_", " ").title()[:120]
+    except Exception:
+        pass
+    return "Untitled"
+
+
 @app.post("/ingest/preview")
 async def ingest_preview(
     url: str = Form(None),
@@ -245,7 +265,7 @@ async def ingest_preview(
         else:
             raise HTTPException(400, "No url or file provided")
 
-        title = doc.title or Path(url or "").stem or "Untitled"
+        title = _guess_title(doc, url or "")
         raw_text = doc.raw_text
 
         from core.keyword_extractor import extract_and_classify
