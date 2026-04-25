@@ -1,5 +1,4 @@
 import asyncio
-import os
 from pathlib import Path
 from typing import AsyncGenerator
 from config import TOP_K_SIMILAR, MAX_EMBED_CHARS

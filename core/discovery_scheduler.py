@@ -24,7 +24,6 @@ from core.keywords_manager import (
     load_manual_keywords as _load_manual_keywords,
     add_keyword as _km_add,
     remove_keyword as _km_remove,
-    purge_keyword as _km_purge,
 )
 from ingesters.web import extract_url
 from pathlib import Path
@@ -361,7 +360,10 @@ class DiscoveryScheduler:
         """Search arXiv API for keyword."""
         import urllib.parse
 
-        query = urllib.parse.quote(f"all:{keyword}")
+        if " " in keyword:
+            query = urllib.parse.quote(f'all:"{keyword}"')
+        else:
+            query = urllib.parse.quote(f"all:{keyword}")
         url = f"http://export.arxiv.org/api/query?search_query={query}&max_results={max_results}"
         with urllib.request.urlopen(url, timeout=10) as resp:
             data = resp.read().decode("utf-8")
