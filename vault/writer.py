@@ -18,6 +18,33 @@ def _clean_tag(tag: str) -> str | None:
     return None
 
 
+def _inject_keywords_section(body: str, keywords: list[str]) -> str:
+    """Add a ## Keywords section with [[wikilink]] references."""
+    links = " · ".join(f"[[{kw}]]" for kw in keywords if kw.strip())
+    if not links:
+        return body
+    kw_section = f"\n## Keywords\n{links}\n"
+
+    if re.search(r"^## Keywords\s*$", body, re.MULTILINE):
+        return re.sub(
+            r"^## Keywords\s*$(\n(?:\[\[.*\]\]\s*(?:·\s*)?)*)?",
+            kw_section.strip(),
+            body,
+            flags=re.MULTILINE,
+        )
+
+    lines = body.split("\n")
+    insert_at = None
+    for i, line in enumerate(lines):
+        if line.startswith("## ") and not line.startswith("###"):
+            insert_at = i + 1
+            break
+    if insert_at is not None:
+        lines.insert(insert_at, kw_section.strip())
+        return "\n".join(lines)
+    return body + kw_section
+
+
 def slugify(title: str) -> str:
     slug = title.lower()
     slug = re.sub(r"[^a-z0-9\s-]", "", slug)
@@ -278,6 +305,7 @@ def write_note(
     entity_statuses: list[dict] = (),
     is_discovery: bool = False,
     source_keyword: str | None = None,
+    keywords: list[str] | None = None,
 ) -> str:
     # Discovered notes go to notes/discovered/, others to notes/
     if is_discovery:
@@ -302,7 +330,7 @@ def write_note(
         "title": title,
         "source": source,
         "type": note.get("type", "article"),
-        "tags": [t for raw in (note.get("tags") or []) if (t := _clean_tag(raw))],
+        "keywords": keywords or [],
         "ingested": ingested_date,
     }
     if is_discovery:
@@ -319,6 +347,8 @@ def write_note(
         )
 
     body = _build_body(note, entity_statuses=entity_statuses)
+    if keywords:
+        body = _inject_keywords_section(body, keywords)
     if is_discovery:
         body = body.rstrip() + "\n\n#auto-discovery\n"
 
