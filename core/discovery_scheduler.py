@@ -308,7 +308,7 @@ class DiscoveryScheduler:
             _logger.warning("Discovery: arXiv search failed for %s: %s", keyword, e)
 
         try:
-            results.extend(self._search_hn(keyword))
+            results.extend(await self._search_hn(keyword))
         except Exception as e:
             _logger.warning("Discovery: HN search failed for %s: %s", keyword, e)
 
