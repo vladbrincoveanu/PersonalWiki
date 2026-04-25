@@ -513,51 +513,53 @@
         }
 
         .discovery-feed {
-          max-height: 300px;
+          max-height: 350px;
           overflow-y: auto;
         }
 
-        .discovery-item {
-          display: flex;
-          align-items: flex-start;
-          gap: 0.5rem;
-          padding: 0.4rem 0;
+        .discovery-table {
+          width: 100%;
+          border-collapse: collapse;
+          font-size: 0.75rem;
+        }
+
+        .discovery-table th {
+          text-align: left;
+          padding: 0.35rem 0.5rem;
+          color: var(--text-dim);
+          font-weight: 500;
+          border-bottom: 1px solid var(--border);
+          position: sticky;
+          top: 0;
+          background: var(--surface);
+        }
+
+        .discovery-table td {
+          padding: 0.35rem 0.5rem;
           border-bottom: 1px solid var(--surface-2);
-          font-size: 0.8rem;
+          vertical-align: middle;
+        }
+
+        .discovery-table tr:hover td {
+          background: rgba(255,255,255,0.02);
+        }
+
+        .discovery-table .col-status { width: 28px; text-align: center; }
+        .discovery-table .col-title { }
+        .discovery-table .col-source { width: 80px; color: var(--text-dim); }
+        .discovery-table .col-time { width: 50px; color: var(--text-dim); text-align: right; }
+
+        .discovery-table a {
+          color: var(--text);
+          text-decoration: none;
+        }
+
+        .discovery-table a:hover {
+          color: var(--accent);
         }
 
         .discovery-item:last-child {
           border-bottom: none;
-        }
-
-        .discovery-badge {
-          flex-shrink: 0;
-          font-size: 0.7rem;
-          padding: 0.1rem 0.3rem;
-          border-radius: 4px;
-          font-weight: 600;
-        }
-
-        .badge-ingested { background: var(--accent-dim); color: var(--accent); }
-        .badge-failed { background: var(--danger-dim); color: var(--danger); }
-        .badge-pending { background: var(--surface-3); color: var(--text-muted); }
-
-        .discovery-item-content {
-          flex: 1;
-          min-width: 0;
-        }
-
-        .discovery-item-title {
-          color: var(--text);
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-          display: block;
-        }
-
-        .discovery-item-domain {
-          color: var(--text-dim);
-          font-size: 0.7rem;
         }
 
         .discovery-empty {
@@ -615,6 +617,24 @@
         </div>
     </header>
 
+    <!-- Discovery Panel (top) -->
+    <div id="discovery-panel" class="discovery-panel">
+      <div class="discovery-header">
+        <h3>Discovery</h3>
+        <div>
+          <button onclick="triggerDiscovery()" class="refresh-btn" title="Run discovery now" style="margin-right:0.5rem;">▶ Run</button>
+          <button onclick="clearDiscoveryActivity()" class="refresh-btn" title="Clear activity log" style="margin-right:0.5rem;">✕</button>
+          <button onclick="loadDiscoveryActivity()" class="refresh-btn" title="Refresh">↻</button>
+        </div>
+      </div>
+      <div id="discovery-stats" class="discovery-stats">
+        <span>—</span>
+      </div>
+      <div id="discovery-feed" class="discovery-feed">
+        <div class="discovery-empty">No discovery activity today.</div>
+      </div>
+    </div>
+
     <!-- Ingest Form -->
     <div class="card ingest-card">
         <div class="card-header">
@@ -657,23 +677,6 @@
             </label>
             <input type="file" id="file-input" name="file" accept=".pdf,.docx,.md,.txt" style="display:none" />
         </form>
-    </div>
-
-    <!-- Discovery Panel -->
-    <div id="discovery-panel" class="discovery-panel">
-      <div class="discovery-header">
-        <h3>Discovery</h3>
-        <div>
-          <button onclick="triggerDiscovery()" class="refresh-btn" title="Run discovery now" style="margin-right:0.5rem;">▶ Run</button>
-          <button onclick="loadDiscoveryActivity()" class="refresh-btn" title="Refresh">↻</button>
-        </div>
-      </div>
-      <div id="discovery-stats" class="discovery-stats">
-        <span>—</span>
-      </div>
-      <div id="discovery-feed" class="discovery-feed">
-        <div class="discovery-empty">No discovery activity today.</div>
-      </div>
     </div>
 
     <!-- Keyword Preview (two-phase ingest phase 1) -->
@@ -1074,6 +1077,17 @@
         }
     }
 
+    async function clearDiscoveryActivity() {
+        try {
+            const res = await fetch('/discovery/clear', { method: 'POST' });
+            if (res.ok) {
+                loadDiscoveryActivity();
+            }
+        } catch(e) {
+            console.warn('Discovery clear failed:', e);
+        }
+    }
+
     // ── Discovery ─────────────────────────────────────────────
     async function loadDiscoveryActivity() {
       try {
@@ -1128,7 +1142,7 @@
         statsEl.appendChild(s3);
       }
 
-      // Render feed using DOM methods (no innerHTML with user data)
+      // Render feed as a table
       const feedEl = document.getElementById('discovery-feed');
       if (!feedEl) return;
 
@@ -1141,45 +1155,52 @@
         return;
       }
 
+      const table = document.createElement('table');
+      table.className = 'discovery-table';
+
+      const thead = document.createElement('thead');
+      thead.innerHTML = '<tr><th class="col-status"></th><th class="col-title">Title</th><th class="col-source">Source</th><th class="col-time">Time</th></tr>';
+      table.appendChild(thead);
+
+      const tbody = document.createElement('tbody');
       const reversed = events.slice().reverse();
       reversed.forEach(function(event) {
-        const item = document.createElement('div');
-        item.className = 'discovery-item';
+        const row = document.createElement('tr');
 
-        const badge = document.createElement('span');
-        badge.className = 'discovery-badge';
-        if (event.status === 'ingested') {
-          badge.classList.add('badge-ingested');
-          badge.textContent = '✅';
-        } else if (event.status === 'failed') {
-          badge.classList.add('badge-failed');
-          badge.textContent = '❌';
-        } else {
-          badge.classList.add('badge-pending');
-          badge.textContent = '⏳';
-        }
+        const statusTd = document.createElement('td');
+        statusTd.className = 'col-status';
+        statusTd.textContent = event.status === 'ingested' ? '\u2705' : event.status === 'failed' ? '\u274c' : '\u23f3';
 
-        const content = document.createElement('div');
-        content.className = 'discovery-item-content';
-
+        const titleTd = document.createElement('td');
+        titleTd.className = 'col-title';
         const link = document.createElement('a');
         link.href = event.url || '#';
         link.target = '_blank';
-        link.className = 'discovery-item-title';
         link.title = event.url || '';
         link.textContent = event.title || event.url || '';
+        titleTd.appendChild(link);
 
-        const domain = document.createElement('span');
-        domain.className = 'discovery-item-domain';
+        const sourceTd = document.createElement('td');
+        sourceTd.className = 'col-source';
         const sourceParts = (event.source || '').split(': ');
-        domain.textContent = sourceParts[sourceParts.length - 1] || '';
+        sourceTd.textContent = sourceParts[sourceParts.length - 1] || '';
 
-        content.appendChild(link);
-        content.appendChild(domain);
-        item.appendChild(badge);
-        item.appendChild(content);
-        feedEl.appendChild(item);
+        const timeTd = document.createElement('td');
+        timeTd.className = 'col-time';
+        try {
+          const dt = event.discovered_at || event.ingested_at;
+          if (dt) timeTd.textContent = new Date(dt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        } catch (e) {}
+
+        row.appendChild(statusTd);
+        row.appendChild(titleTd);
+        row.appendChild(sourceTd);
+        row.appendChild(timeTd);
+        tbody.appendChild(row);
       });
+
+      table.appendChild(tbody);
+      feedEl.appendChild(table);
     }
 
     // ── Init ─────────────────────────────────────────────────

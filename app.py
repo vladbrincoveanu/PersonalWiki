@@ -13,6 +13,7 @@ from sse_starlette.sse import EventSourceResponse
 from pipeline import run_pipeline
 from vault.scanner import scan_vault
 from core.discovery_scheduler import DiscoveryScheduler, KEYWORDS_FILE
+from core.discovery_logger import get_discovery_logger as _get_dl_logger
 from core.keywords_manager import load_manual_keywords, add_keyword as _add_keyword
 from core.doctor_scheduler import DoctorScheduler
 
@@ -211,6 +212,13 @@ async def trigger_discovery():
         return {"status": "triggered"}
     except RuntimeError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/discovery/clear")
+async def clear_discovery_activity():
+    """Clear all discovery activity events from memory and disk."""
+    _get_dl_logger().clear()
+    return {"status": "cleared"}
 
 
 def _guess_title(doc, url: str) -> str:

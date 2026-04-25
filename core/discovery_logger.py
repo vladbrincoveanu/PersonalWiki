@@ -171,6 +171,15 @@ class DiscoveryLogger:
             "last_cycle_at": events[-1]["discovered_at"] if events else None,
         }
 
+    def clear(self) -> None:
+        """Clear all events from memory and disk."""
+        with self._lock:
+            self._events.clear()
+            try:
+                _LOG_FILE.write_text("[]", encoding="utf-8")
+            except Exception:
+                pass
+
 
 # Singleton instance
 _logger: DiscoveryLogger | None = None
