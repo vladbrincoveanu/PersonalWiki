@@ -111,8 +111,12 @@ class DiscoveryLogger:
         status: EventStatus,
         error: str | None = None,
     ) -> None:
-        """Record a new discovery event."""
+        """Record a new discovery event. Skips if URL already has a pending event."""
         with self._lock:
+            if status == "enqueued":
+                for e in reversed(self._events):
+                    if e.get("url") == url and e.get("status") == "enqueued":
+                        return
             event = DiscoveryEvent(
                 url=url,
                 title=title,
