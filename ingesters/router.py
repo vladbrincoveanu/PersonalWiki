@@ -1,7 +1,6 @@
 import asyncio
 import re
 import urllib.request
-from pathlib import Path
 from ingesters import Document
 
 

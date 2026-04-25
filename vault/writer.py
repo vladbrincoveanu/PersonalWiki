@@ -1,7 +1,6 @@
 import re
 from collections.abc import Sequence
 from datetime import date
-from pathlib import Path
 import frontmatter
 from config import NOTES_DIR, VAULT_PATH
 from vault.entity_status import _build_prose

@@ -1,5 +1,4 @@
 import re
-from pathlib import Path
 import frontmatter
 from config import NOTES_DIR
 from core.embeddings import embed

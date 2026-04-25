@@ -3,7 +3,6 @@
 Vault junk cleaner — removes video notes with no transcript content.
 """
 import logging
-from pathlib import Path
 import frontmatter
 from config import NOTES_DIR
 
