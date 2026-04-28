@@ -4,7 +4,7 @@ from core.embeddings import embed
 def test_embed_returns_list_of_floats():
     result = embed("PagedAttention uses virtual memory for KV cache.")
     assert isinstance(result, list)
-    assert len(result) == 384
+    assert len(result) == 1024
     assert all(isinstance(v, float) for v in result)
 
 

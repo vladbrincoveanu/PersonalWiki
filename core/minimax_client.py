@@ -4,7 +4,7 @@ import re
 import requests
 from dataclasses import dataclass
 from typing import List
-from config import MINIMAX_API_KEY, MINIMAX_MODEL, MINIMAX_API_URL
+from config import MINIMAX_API_KEY, MINIMAX_MODEL, MINIMAX_API_URL, MINIMAX_VISION_MODEL
 
 _logger = logging.getLogger(__name__)
 
@@ -286,6 +286,70 @@ def enrich(raw_text: str, similar_titles: list[str], source: str) -> dict:
     data.setdefault("raw_text", raw_text)
     data.setdefault("error", False)
     return data
+
+
+def _build_vision_messages(prompt: str, images: list[bytes]) -> list[dict]:
+    """Build multi-modal message content with images."""
+    content = []
+    for img_bytes in images:
+        b64 = __import__("base64").b64encode(img_bytes).decode("utf-8")
+        content.append({
+            "type": "image_url",
+            "image_url": {"url": f"data:image/png;base64,{b64}"},
+        })
+    content.insert(0, {"type": "text", "text": prompt})
+    return [{"role": "user", "content": content}]
+
+
+def enrich_with_images(raw_text: str, similar_titles: list[str], source: str, images: list[bytes]) -> dict:
+    """Enrich content using vision model when images are present."""
+    if not MINIMAX_API_KEY:
+        _logger.warning("MINIMAX_API_KEY is not set — returning fallback for source=%s", source)
+        return _make_fallback_note(raw_text)
+    prompt = _build_prompt(raw_text, similar_titles, source)
+    headers = {
+        "Authorization": f"Bearer {MINIMAX_API_KEY}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "model": MINIMAX_VISION_MODEL,
+        "messages": [
+            {"role": "system", "content": _SYSTEM_PROMPT},
+            *_build_vision_messages(prompt, images),
+        ],
+    }
+    try:
+        resp = requests.post(MINIMAX_API_URL, headers=headers, json=payload, timeout=120)
+        resp.raise_for_status()
+        data = resp.json()
+        base_resp = data.get("base_resp", {})
+        if base_resp.get("status_code") and base_resp["status_code"] != 0:
+            _logger.warning("MiniMax Vision API error %s: %s", base_resp["status_code"], base_resp.get("status_msg"))
+            return _make_fallback_note(raw_text)
+        if "choices" not in data or not data["choices"]:
+            _logger.error("Minimax vision response missing choices for source=%s", source)
+            return _make_fallback_note(raw_text)
+        content = data["choices"][0]["message"]["content"]
+    except Exception as e:
+        _logger.warning("Minimax vision enrich failed for source=%s: %s", source, e)
+        return _make_fallback_note(raw_text)
+
+    try:
+        content = content.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+        result = json.loads(content)
+    except (json.JSONDecodeError, AttributeError) as e:
+        _logger.warning("Minimax vision returned invalid JSON for source=%s: %s", source, e)
+        return _make_fallback_note(raw_text)
+
+    result.setdefault("entities", [])
+    result.setdefault("figure_captions", [])
+    result.setdefault("why_saved_hint", "")
+    result.setdefault("chapters", [])
+    result.setdefault("key_quotes", [])
+    result.setdefault("topics_covered", [])
+    result.setdefault("raw_text", raw_text)
+    result.setdefault("error", False)
+    return result
 
 
 _SYNTHESIS_SYSTEM = """You are a knowledge synthesizer. Given analyses of multiple sections of one video, produce one unified research note.

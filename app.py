@@ -336,6 +336,23 @@ async def ingest_run(request: Request):
                 kwargs["url"] = cached["url"]
             elif source_url:
                 kwargs["url"] = source_url
+            elif cached and cached.get("tmp_path"):
+                tmp = cached["tmp_path"]
+                ext = Path(tmp).suffix.lower()
+                if ext == ".pdf":
+                    kwargs["pdf_path"] = tmp
+                elif ext == ".docx":
+                    kwargs["docx_path"] = tmp
+                elif ext in (".md", ".markdown", ".txt"):
+                    kwargs["md_path"] = tmp
+                else:
+                    await queue.put("<p>Error: Unsupported file type</p>")
+                    await queue.put(None)
+                    done_event.set()
+                    _ingest_run_queues.pop(job_id, None)
+                    if tmp:
+                        os.unlink(tmp)
+                    return
 
             async for msg in run_pipeline(**kwargs):
                 await queue.put(f"<p>{msg}</p>")
@@ -354,4 +371,4 @@ async def ingest_run(request: Request):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("app:app", host="127.0.0.1", port=8000, reload=True)
+    uvicorn.run("app:app", host="127.0.0.1", port=8100, reload=True)

@@ -6,7 +6,7 @@ from config import TOP_K_SIMILAR, MAX_EMBED_CHARS
 from core.embeddings import embed
 from core.prose import measure_prose
 from core.vector_store import get_store
-from core.minimax_client import enrich, _MIN_CHUNK_SIZE
+from core.minimax_client import enrich, enrich_with_images, _MIN_CHUNK_SIZE
 from core.entity_extractor import extract_entities
 from core.gap_detector import detect_gaps
 from ingesters.router import extract, extract_pdf, extract_docx, extract_markdown
@@ -181,7 +181,10 @@ async def run_pipeline(
         note = await asyncio.to_thread(enrich, raw_text, similar_titles, source)
     else:
         # Article / paper: direct enrich
-        note = await asyncio.to_thread(enrich, raw_text, similar_titles, source)
+        if images:
+            note = await asyncio.to_thread(enrich_with_images, raw_text, similar_titles, source, images)
+        else:
+            note = await asyncio.to_thread(enrich, raw_text, similar_titles, source)
 
     # Step 3.1: Pre-write content quality gate — reject thin/noise-heavy enriched content
     gate_pass, prose_chars, prose_ratio = _gate_enriched_content(note, raw_text)
