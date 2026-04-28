@@ -19,6 +19,9 @@ MINIMAX_MODEL = os.getenv("MINIMAX_MODEL", "MiniMax-M2.7")
 MINIMAX_API_URL = "https://api.minimax.io/v1/text/chatcompletion_v2"
 
 EMBED_MODEL = "BAAI/bge-small-en-v1.5"
+
+LM_STUDIO_URL = os.getenv("LM_STUDIO_URL", "http://localhost:1234")
+LM_STUDIO_EMBED_MODEL = os.getenv("LM_STUDIO_EMBED_MODEL", "qwen3-embedding-4b-dwq")
 TOP_K_SIMILAR = 3
 MAX_EMBED_CHARS = 2000
 

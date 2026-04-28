@@ -286,19 +286,26 @@ class DiscoveryScheduler:
         return []
 
     async def _fetch_html(self, url: str) -> str:
-        """Fetch raw HTML for a URL (used for link extraction)."""
-        try:
-            resp = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=15)
-            resp.raise_for_status()
-            return resp.text
-        except Exception:
-            return ""
+        """Fetch raw HTML for a URL with exponential backoff retry."""
+        for attempt in range(3):
+            try:
+                resp = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=15)
+                resp.raise_for_status()
+                return resp.text
+            except Exception as e:
+                if attempt == 2:
+                    _logger.debug("Discovery: fetch failed after 3 attempts for %s: %s", url, e)
+                    return ""
+                wait = 2 ** attempt
+                await asyncio.sleep(wait)
+        return ""
 
     async def _search_keyword(self, keyword: str) -> list[dict]:
         """
         Search across sources for a keyword.
         Returns list of {url, title, snippet, source} dicts.
         Snippets are enriched generically for any source that returned empty ones.
+        Skips URLs already processed (exists in LanceDB) for idempotency.
         """
         results = []
 
@@ -322,8 +329,16 @@ class DiscoveryScheduler:
         except Exception as e:
             _logger.warning("Discovery: DespreBursa search failed for %s: %s", keyword, e)
 
+        # Filter out already-processed URLs for idempotency
+        from core.vector_store import get_store
+        store = get_store()
+        filtered = [r for r in results if not store.exists(r["url"])]
+        if len(filtered) < len(results):
+            skipped = len(results) - len(filtered)
+            _logger.debug("Discovery: skipped %d already-processed URLs", skipped)
+
         # Generic snippet enrichment: fetch content for any result with an empty snippet
-        return await self._enrich_snippets(results)
+        return await self._enrich_snippets(filtered)
 
     async def _enrich_snippets(self, results: list[dict]) -> list[dict]:
         """Post-process: fetch article content for any result with an empty snippet.
@@ -725,7 +740,7 @@ class DiscoveryScheduler:
             from pipeline import run_pipeline
             async for _ in run_pipeline(
                 url=url, is_discovery=True, source_keyword=keyword,
-                keywords=[keyword] if keyword else None,
+                keywords=[keyword] if keyword else [],
             ):
                 pass
             dl_logger.update_status(url, "ingested")

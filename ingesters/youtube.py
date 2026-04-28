@@ -142,7 +142,7 @@ def _try_youtube_transcript_api(video_id: str, proxy: str | None = None) -> str 
             return None
 
         snippets = transcript.fetch()
-        text = " ".join(snippet["text"] for snippet in snippets)
+        text = " ".join(snippet.text for snippet in snippets)
         return text.strip() if text.strip() else None
 
     try:
