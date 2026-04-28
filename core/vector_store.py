@@ -4,6 +4,15 @@ import lancedb
 import pyarrow as pa
 
 TABLE_NAME = "notes"
+ENTITIES_TABLE = "personal_entities"
+
+ENTITIES_SCHEMA = pa.schema([
+    pa.field("path", pa.string()),
+    pa.field("entity_type", pa.string()),
+    pa.field("entity_name", pa.string()),
+    pa.field("summary", pa.string()),
+    pa.field("metadata", pa.string()),
+])
 
 
 def _escape_path(p: str) -> str:
@@ -79,6 +88,11 @@ class VectorStore:
         else:
             self._table = self._db.open_table(TABLE_NAME)
 
+        if ENTITIES_TABLE not in self._db.table_names():
+            self._entities_table = self._db.create_table(ENTITIES_TABLE, schema=ENTITIES_SCHEMA)
+        else:
+            self._entities_table = self._db.open_table(ENTITIES_TABLE)
+
     def upsert(self, path: str, text: str, vector: list[float], links: list[str], metadata: dict):
         self._table.delete(f"path = '{_escape_path(path)}'")
         self._table.add([{
@@ -134,6 +148,31 @@ class VectorStore:
             return 0.0
         meta = _parse_metadata(rows[0].get("metadata", "{}"))
         return float(meta.get("_mtime", 0.0))
+
+    def upsert_entity(self, path: str, entity_type: str, entity_name: str, summary: str, metadata: dict):
+        self._entities_table.add([{
+            "path": path,
+            "entity_type": entity_type,
+            "entity_name": entity_name,
+            "summary": summary,
+            "metadata": json.dumps(metadata),
+        }])
+
+    def search_entities(self, query: str, entity_type: str | None = None, top_k: int = 5) -> list[dict]:
+        from core.embeddings import embed
+        query_vector = embed(query)
+        results = self._entities_table.search([float(v) for v in query_vector]).limit(top_k).to_list()
+        return results
+
+    def get_recent(self, top_k: int = 5) -> list[dict]:
+        """Return notes sorted by _indexed_at timestamp descending."""
+        all_rows = self._table.to_list()
+        sorted_rows = sorted(
+            all_rows,
+            key=lambda r: _parse_metadata(r.get("metadata", "{}")).get("_indexed_at", 0),
+            reverse=True
+        )
+        return [{"path": r["path"], "metadata": _parse_metadata(r.get("metadata", "{}"))} for r in sorted_rows[:top_k]]
 
     def hybrid_search(self, query: str, top_k: int = 5, min_score: float = 0.001) -> list[dict]:
         """
