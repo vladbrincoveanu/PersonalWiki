@@ -267,7 +267,7 @@ def test_youtube_transcript_api_manually_created(monkeypatch):
             self.language_code = language_code
             self.is_generated = is_generated
         def fetch(self):
-            return [{"text": s.text} for s in self._snippets]
+            return self._snippets  # Return list of FakeSnippet objects (attribute access)
 
     class FakeTranscriptList:
         def __init__(self, transcripts):
@@ -307,7 +307,7 @@ def test_youtube_transcript_api_auto_generated(monkeypatch):
             self.language_code = language_code
             self.is_generated = is_generated
         def fetch(self):
-            return [{"text": s.text} for s in self._snippets]
+            return self._snippets  # Return list of FakeSnippet objects (attribute access)
 
     class FakeTranscriptList:
         def __init__(self, transcripts):
