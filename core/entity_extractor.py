@@ -2,7 +2,7 @@
 Flexible entity extraction from content. Extracts projects, people, companies,
 investments, and ideas using MiniMax LLM.
 """
-from config import MINIMAX_API_KEY, MINIMAX_API_URL, MINIMAX_MODEL
+from config import MINIMAX_API_KEY, MINIMAX_API_URL, MINIMAX_MODEL, MINIMAX_GROUP_ID
 import requests
 import json
 
@@ -35,7 +35,7 @@ Content (first 3000 chars):
     }
     try:
         resp = requests.post(
-            MINIMAX_API_URL,
+            f"{MINIMAX_API_URL}?GroupId={MINIMAX_GROUP_ID}",
             headers=headers,
             json=payload,
             timeout=30,
