@@ -725,7 +725,7 @@ class DiscoveryScheduler:
             from pipeline import run_pipeline
             async for _ in run_pipeline(
                 url=url, is_discovery=True, source_keyword=keyword,
-                keywords=[keyword] if keyword else None,
+                keywords=[keyword] if keyword else [],
             ):
                 pass
             dl_logger.update_status(url, "ingested")
