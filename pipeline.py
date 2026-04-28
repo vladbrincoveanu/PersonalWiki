@@ -1,4 +1,5 @@
 import asyncio
+import time
 from pathlib import Path
 from typing import AsyncGenerator
 from config import TOP_K_SIMILAR, MAX_EMBED_CHARS
@@ -6,6 +7,7 @@ from core.embeddings import embed
 from core.prose import measure_prose
 from core.vector_store import get_store
 from core.minimax_client import enrich, _MIN_CHUNK_SIZE
+from core.entity_extractor import extract_entities
 from core.gap_detector import detect_gaps
 from ingesters.router import extract, extract_pdf, extract_docx, extract_markdown
 from vault.writer import write_note
@@ -187,6 +189,12 @@ async def run_pipeline(
         yield f"Skipped: Content too thin (prose={prose_chars}, ratio={prose_ratio:.0%}, need ≥300 chars, ≥20%)"
         return
 
+    # Step 3.5: Entity extraction
+    yield "Extracting entities..."
+    note["extracted_entities"] = await asyncio.to_thread(
+        extract_entities, raw_text, doc.content_type
+    )
+
     # Step 3.5a: Check entity status
     yield "Checking entity status..."
     entity_statuses = await asyncio.to_thread(
@@ -215,6 +223,7 @@ async def run_pipeline(
     yield "Indexing..."
     index_meta = {k: v for k, v in note.items() if k != "raw_text"}
     index_meta["_file_path"] = path
+    index_meta["_indexed_at"] = time.time()
     store.upsert(
         path=source,
         text=raw_text,
