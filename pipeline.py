@@ -191,7 +191,7 @@ async def run_pipeline(
 
     # Step 3.5: Entity extraction
     yield "Extracting entities..."
-    note["extracted_entities"] = await asyncio.to_thread(
+    note["entities"] = await asyncio.to_thread(
         extract_entities, raw_text, doc.content_type
     )
 

@@ -150,6 +150,10 @@ class VectorStore:
         return float(meta.get("_mtime", 0.0))
 
     def upsert_entity(self, path: str, entity_type: str, entity_name: str, summary: str, metadata: dict):
+        try:
+            self._entities_table.delete(f"path = '{_escape_path(path)}' AND entity_name = '{entity_name}'")
+        except Exception:
+            pass
         self._entities_table.add([{
             "path": path,
             "entity_type": entity_type,
@@ -161,10 +165,15 @@ class VectorStore:
     def search_entities(self, query: str, entity_type: str | None = None, top_k: int = 5) -> list[dict]:
         from core.embeddings import embed
         query_vector = embed(query)
-        results = self._entities_table.search([float(v) for v in query_vector]).limit(top_k).to_list()
+        if entity_type:
+            results = self._entities_table.search([float(v) for v in query_vector]).where(f"entity_type = '{entity_type}'").limit(top_k).to_list()
+        else:
+            results = self._entities_table.search([float(v) for v in query_vector]).limit(top_k).to_list()
+        for row in results:
+            row["metadata"] = _parse_metadata(row["metadata"])
         return results
 
-    def get_recent(self, top_k: int = 5) -> list[dict]:
+    def get_recent_notes(self, top_k: int = 5) -> list[dict]:
         """Return notes sorted by _indexed_at timestamp descending."""
         all_rows = self._table.to_list()
         sorted_rows = sorted(

@@ -129,7 +129,7 @@ def get_recent(max_results: int = 5) -> str:
     """
     try:
         store = get_store()
-        results = store.get_recent(top_k=max_results)
+        results = store.get_recent_notes(top_k=max_results)
         if not results:
             return "No recent notes found."
         formatted = f"Recent {len(results)} notes:\n\n"

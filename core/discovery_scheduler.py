@@ -297,7 +297,7 @@ class DiscoveryScheduler:
                     _logger.debug("Discovery: fetch failed after 3 attempts for %s: %s", url, e)
                     return ""
                 wait = 2 ** attempt
-                time.sleep(wait)
+                await asyncio.sleep(wait)
         return ""
 
     async def _search_keyword(self, keyword: str) -> list[dict]:
