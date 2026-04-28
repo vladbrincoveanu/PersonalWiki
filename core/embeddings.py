@@ -16,16 +16,17 @@ def _get_fallback_model():
 def embed(text: str) -> list[float]:
     try:
         response = requests.post(
-            f"{LM_STUDIO_URL}/api/v1/embeddings",
+            f"{LM_STUDIO_URL}/api/v1/chat",
             json={
                 "model": LM_STUDIO_EMBED_MODEL,
-                "prompt": text,
+                "system_prompt": "You are an embedding model. Return only the embedding vector.",
+                "input": text,
             },
-            timeout=30,
+            timeout=5,
         )
         response.raise_for_status()
         data = response.json()
-        return data["data"][0]["embedding"]
+        return data["embedding"]
     except Exception:
         model = _get_fallback_model()
         vectors = list(model.embed([text]))
