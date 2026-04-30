@@ -4,7 +4,7 @@
 
 **Goal:** Fix two bugs that break discovery pipeline and vector search — (1) dangling `_update_keyword_score` calls crash the scheduler, (2) `embed()` dimension mismatch (384 vs 1024) causes LanceDB query failures.
 
-**Architecture:** Lock `embed()` to FastEmbed BAAI/bge-small-en-v1.5 (384d) permanently — remove LM Studio path. Remove orphaned method calls. Single commit.
+**Architecture:** Lock `embed()` to FastEmbed BAAI/bge-small-en-v1.5 (384d) permanently — remove LM Studio path. Remove orphaned method calls. **4 separate commits** — each bug fix stands alone.
 
 **Tech Stack:** FastEmbed, LanceDB, Python 3.13
 
@@ -53,6 +53,13 @@
 
 ### Task 1: Rewrite `core/embeddings.py` — FastEmbed only
 
+- [ ] **Step 0: Fix test assertion before running tests**
+
+```bash
+cd /Users/vladbrincoveanu/Desktop/Startup/personalWiki
+sed -i '' 's/assert len(result) == 1024/assert len(result) == 384/' Tests/test_embeddings.py
+```
+
 - [ ] **Step 1: Write new embeddings.py**
 
 ```python
@@ -79,9 +86,11 @@ def embed(text: str) -> list[float]:
 
 ```bash
 cd /Users/vladbrincoveanu/Desktop/Startup/personalWiki && source .venv/bin/activate
-python3 -c "from core.embeddings import embed; print(len(embed('test')))"
+dim=$(python3 -c "from core.embeddings import embed; print(len(embed('test')))")
+if [ "$dim" != "384" ]; then echo "FAIL: dim=$dim"; exit 1; fi
+echo "dim=$dim OK"
 ```
-Expected output: `384`
+Expected output: `dim=384 OK`
 
 - [ ] **Step 3: Commit embeddings.py change**
 
@@ -120,6 +129,13 @@ git commit -m "fix: set SCHEMA vector to 384d to match embed() output"
 ---
 
 ### Task 3: Remove dangling `_update_keyword_score` calls from `discovery_scheduler.py`
+
+- [ ] **Step 0: Confirm line numbers before deleting**
+
+```bash
+grep -n "self._update_keyword_score" core/discovery_scheduler.py
+```
+Expected: exactly 2 matches at lines ~680 and ~692
 
 - [ ] **Step 1: Delete line ~680**
 
