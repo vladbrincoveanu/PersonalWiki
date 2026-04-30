@@ -550,3 +550,26 @@ def test_path_with_single_quote_no_injection():
     assert store.get_title_by_url(path) == "O'Reilly's Notes"
     assert store.get_mtime(path) == 999.0
 
+
+def test_embed_insert_query_real(mock_store):
+    """Real e2e: embed() → upsert() → search() with actual FastEmbed model."""
+    from core.embeddings import embed
+
+    store, tmp_dir = mock_store
+
+    vec1 = embed("attention mechanisms in transformer architectures")
+    vec2 = embed("cooking pasta carbonara with guanciale")
+    vec3 = embed("machine learning optimization techniques")
+
+    assert len(vec1) == 384, f"Expected 384d, got {len(vec1)}"
+
+    store.upsert("notes/attention.md", "attention content", vec1, [], {"title": "Attention"})
+    store.upsert("notes/pasta.md", "pasta content", vec2, [], {"title": "Pasta"})
+    store.upsert("notes/ml.md", "ml content", vec3, [], {"title": "ML"})
+
+    query_vec = embed("transformer attention layer design")
+    results = store.search(query_vec, top_k=1)
+
+    assert len(results) == 1
+    assert results[0]["path"] == "notes/attention.md"
+
