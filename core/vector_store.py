@@ -28,7 +28,7 @@ def _parse_metadata(meta: str | dict) -> dict:
 SCHEMA = pa.schema([
     pa.field("path", pa.string()),
     pa.field("text", pa.string()),
-    pa.field("vector", pa.list_(pa.float32(), 1024)),
+    pa.field("vector", pa.list_(pa.float32(), 384)),
     pa.field("links", pa.list_(pa.string())),
     pa.field("metadata", pa.string()),
 ])
