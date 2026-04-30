@@ -95,6 +95,8 @@ class VectorStore:
 
     def upsert(self, path: str, text: str, vector: list[float], links: list[str], metadata: dict):
         self._table.delete(f"path = '{_escape_path(path)}'")
+        if len(vector) != 384:
+            raise ValueError(f"Vector dimension must be 384, got {len(vector)}")
         self._table.add([{
             "path": path,
             "text": text,
