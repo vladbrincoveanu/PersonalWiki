@@ -1,9 +1,13 @@
 import json
+import logging
+import threading
 from pathlib import Path
 import lancedb
 import pyarrow as pa
 
 TABLE_NAME = "notes"
+
+_logger = logging.getLogger(__name__)
 ENTITIES_TABLE = "personal_entities"
 
 ENTITIES_SCHEMA = pa.schema([
@@ -23,6 +27,13 @@ def _escape_path(p: str) -> str:
 def _parse_metadata(meta: str | dict) -> dict:
     """Parse metadata from JSON string or return as-is if already a dict."""
     return json.loads(meta) if isinstance(meta, str) else meta
+
+
+def _detect_table_dim(table) -> int:
+    """Read the vector field dimension from an open LanceDB table schema."""
+    schema = table.schema
+    vector_field = schema.field("vector")
+    return vector_field.type.list_size
 
 
 SCHEMA = pa.schema([
@@ -81,22 +92,44 @@ def _rrf_merge(
 
 
 class VectorStore:
+    _init_lock = threading.Lock()
+
     def __init__(self, index_path: str | Path):
         self._db = lancedb.connect(str(index_path))
         if TABLE_NAME not in self._db.table_names():
             self._table = self._db.create_table(TABLE_NAME, schema=SCHEMA)
         else:
             self._table = self._db.open_table(TABLE_NAME)
+            self._migrate_if_needed()
 
         if ENTITIES_TABLE not in self._db.table_names():
             self._entities_table = self._db.create_table(ENTITIES_TABLE, schema=ENTITIES_SCHEMA)
         else:
             self._entities_table = self._db.open_table(ENTITIES_TABLE)
 
+    def _migrate_if_needed(self):
+        """Check vector schema dimension; migrate if mismatched with embed()."""
+        from core.embeddings import embed
+        actual_dim = _detect_table_dim(self._table)
+        expected_dim = len(embed("test"))
+        if actual_dim != expected_dim:
+            _logger.warning(
+                f"Vector schema mismatch: table has {actual_dim}d, "
+                f"embed() returns {expected_dim}d. Dropping and recreating table."
+            )
+            with self._init_lock:
+                self._db.drop_table(TABLE_NAME)
+                self._table = self._db.create_table(TABLE_NAME, schema=SCHEMA)
+            _logger.warning(
+                "Index has been cleared. Run `python -m vault.scanner` to rebuild."
+            )
+
     def upsert(self, path: str, text: str, vector: list[float], links: list[str], metadata: dict):
         self._table.delete(f"path = '{_escape_path(path)}'")
-        if len(vector) != 384:
-            raise ValueError(f"Vector dimension must be 384, got {len(vector)}")
+        from core.embeddings import embed
+        expected_dim = len(embed("test"))
+        if len(vector) != expected_dim:
+            raise ValueError(f"Vector dimension must be {expected_dim}, got {len(vector)}")
         self._table.add([{
             "path": path,
             "text": text,
