@@ -677,7 +677,6 @@ class DiscoveryScheduler:
                     if self._pipeline_func:
                         await self._run_pipeline(url, keyword=keyword)
                     ingested += 1
-                    self._update_keyword_score(keyword, +1)  # Successful ingest
                     self._seen_urls.add(url)
 
                     # Recursive link discovery: extract links from the crawled page
@@ -689,7 +688,6 @@ class DiscoveryScheduler:
                     except Exception as e:
                         _logger.debug("Discovery: link extraction failed for %s: %s", url, e)
                 except Exception as e:
-                    self._update_keyword_score(keyword, -2)  # Failed/rejected
                     _logger.error("Discovery: failed to queue %s: %s", url, e)
                 finally:
                     self._in_flight.discard(url)
