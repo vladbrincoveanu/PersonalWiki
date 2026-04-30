@@ -693,6 +693,12 @@
             <span style="color:var(--accent);">●</span> Existing &nbsp;
             <span style="color:var(--info);">●</span> New (check to add)
         </p>
+        <div id="keyword-add-row" style="display:flex;gap:0.5rem;margin-top:0.75rem;align-items:center;">
+            <input type="text" id="keyword-add-input" placeholder="Add existing keyword..." 
+                   style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);padding:0.5rem 0.75rem;color:var(--text);font-size:0.85rem;font-family:'Space Mono',monospace;outline:none;"
+                   onkeydown="if(event.key==='Enter'){event.preventDefault();addExistingKeywordToPreview()}">
+            <button onclick="addExistingKeywordToPreview()" style="background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:0.5rem 1rem;color:var(--text-muted);cursor:pointer;font-size:0.85rem;">Add</button>
+        </div>
         <div style="display:flex;gap:0.5rem;margin-top:1rem;">
             <button id="confirm-btn" class="btn-ingest" onclick="confirmIngest()">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
@@ -780,7 +786,6 @@
     }
 
     async function removeKeyword(kw) {
-        if (!confirm('Remove keyword "' + kw + '"?\n\nThis will delete all discovery articles tagged with this keyword.')) return;
         try {
             const res = await fetch('/keywords/remove', {
                 method: 'POST',
@@ -963,11 +968,49 @@
         });
     }
 
+    function addExistingKeywordToPreview() {
+        const input = document.getElementById('keyword-add-input');
+        const kw = input.value.trim();
+        if (!kw) return;
+        const chips = document.getElementById('keyword-chips');
+        // Check if already exists in chips
+        const existing = chips.querySelectorAll('.kw-chip');
+        for (const chip of existing) {
+            if (chip.textContent.includes(kw)) {
+                input.value = '';
+                return; // already shown
+            }
+        }
+        // Add as a manually-selected chip (grey/purple style)
+        const chip = document.createElement('span');
+        chip.className = 'kw-chip';
+        chip.style.borderColor = 'var(--accent-dim)';
+        chip.style.color = 'var(--text)';
+        chip.dataset.keyword = kw;
+        chip.id = 'manual-kw-' + kw.replace(/\s+/g, '-');
+        const check = document.createElement('span');
+        check.textContent = ' +';
+        check.style.color = 'var(--accent)';
+        check.style.fontSize = '0.65rem';
+        chip.appendChild(check);
+        chip.appendChild(document.createTextNode(' ' + kw));
+        chips.appendChild(chip);
+        input.value = '';
+    }
+
     async function confirmIngest() {
         if (!_previewData) return;
         const previewId = _previewData.preview_id;
         const checkboxes = document.querySelectorAll('#keyword-chips input[type="checkbox"]:checked');
         const acceptedKeywords = Array.from(checkboxes).map(cb => cb.dataset.keyword);
+        // Also collect manually-added keywords (no checkbox, has data-keyword)
+        const manualChips = document.querySelectorAll('#keyword-chips .kw-chip[data-keyword]');
+        manualChips.forEach(chip => {
+            const kw = chip.dataset.keyword;
+            if (kw && !acceptedKeywords.includes(kw)) {
+                acceptedKeywords.push(kw);
+            }
+        });
 
         const payload = {
             preview_id: previewId,
