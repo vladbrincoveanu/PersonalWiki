@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 import lancedb
+import logging
 import pyarrow as pa
 
 TABLE_NAME = "notes"
@@ -24,6 +25,8 @@ def _parse_metadata(meta: str | dict) -> dict:
     """Parse metadata from JSON string or return as-is if already a dict."""
     return json.loads(meta) if isinstance(meta, str) else meta
 
+
+_logger = logging.getLogger(__name__)
 
 SCHEMA = pa.schema([
     pa.field("path", pa.string()),
@@ -99,6 +102,33 @@ class VectorStore:
             self._entities_table = self._db.create_table(ENTITIES_TABLE, schema=ENTITIES_SCHEMA)
         else:
             self._entities_table = self._db.open_table(ENTITIES_TABLE)
+
+        self._migrate_if_needed()
+
+    def _migrate_if_needed(self):
+        from core.embeddings import embed
+        expected_dim = len(embed("test"))
+        for table_name, table, schema in [
+            (TABLE_NAME, self._table, SCHEMA),
+            (ENTITIES_TABLE, self._entities_table, ENTITIES_SCHEMA),
+        ]:
+            try:
+                actual_dim = _detect_table_dim(table)
+                if actual_dim != expected_dim:
+                    _logger.warning(
+                        f"Mismatch in '{table_name}': table={actual_dim}d, embed={expected_dim}d. "
+                        f"Dropping and recreating table."
+                    )
+                    self._db.drop_table(table_name)
+                    if table_name == TABLE_NAME:
+                        self._table = self._db.create_table(table_name, schema=schema)
+                    else:
+                        self._entities_table = self._db.create_table(table_name, schema=schema)
+                    global _store
+                    _store = None
+                    _logger.warning("Index cleared. Run `python -m vault.scanner` to rebuild.")
+            except Exception:
+                pass
 
     def upsert(self, path: str, text: str, vector: list[float], links: list[str], metadata: dict):
         self._table.delete(f"path = '{_escape_path(path)}'")
