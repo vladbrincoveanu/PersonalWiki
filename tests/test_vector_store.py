@@ -573,3 +573,28 @@ def test_embed_insert_query_real(mock_store):
     assert len(results) == 1
     assert results[0]["path"] == "notes/attention.md"
 
+
+def test_migrate_on_dimension_mismatch(mock_store):
+    """Verify VectorStore auto-migrates a wrong-dimension table."""
+    import lancedb
+    import pyarrow as pa
+
+    store, tmp_dir = mock_store
+
+    db = lancedb.connect(str(tmp_dir))
+    wrong_schema = pa.schema([
+        pa.field("path", pa.string()),
+        pa.field("text", pa.string()),
+        pa.field("vector", pa.list_(pa.float32(), 1024)),
+        pa.field("links", pa.list_(pa.string())),
+        pa.field("metadata", pa.string()),
+    ])
+    db.drop_table("notes")
+    db.create_table("notes", schema=wrong_schema)
+
+    store2 = VectorStore(index_path=str(tmp_dir))
+
+    table = store2._table
+    actual_dim = table.schema.field("vector").type.list_size
+    assert actual_dim == 384, f"Expected 384d, got {actual_dim}"
+
