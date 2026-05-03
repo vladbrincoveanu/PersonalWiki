@@ -124,11 +124,12 @@ class VectorStore:
                         self._table = self._db.create_table(table_name, schema=schema)
                     else:
                         self._entities_table = self._db.create_table(table_name, schema=schema)
-                    global _store
-                    _store = None
                     _logger.warning("Index cleared. Run `python -m vault.scanner` to rebuild.")
-            except Exception:
-                pass
+            except Exception as e:
+                _logger.debug(f"Skipping migration check for '{table_name}': {e}")
+
+        global _store
+        _store = None
 
     def upsert(self, path: str, text: str, vector: list[float], links: list[str], metadata: dict):
         self._table.delete(f"path = '{_escape_path(path)}'")
