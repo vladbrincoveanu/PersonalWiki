@@ -80,6 +80,13 @@ def _rrf_merge(
     ]
 
 
+def _detect_table_dim(table) -> int:
+    """Read vector field dimension from an open LanceDB table schema."""
+    schema = table.schema
+    vector_field = schema.field("vector")
+    return vector_field.type.list_size
+
+
 class VectorStore:
     def __init__(self, index_path: str | Path):
         self._db = lancedb.connect(str(index_path))
