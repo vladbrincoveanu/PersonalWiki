@@ -1,3 +1,8 @@
+## Rules
+Follow `~/.claude/rules/12-rule-template.md` for every task in this project unless explicitly overridden below.
+
+---
+
 # CLAUDE.md
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
@@ -185,3 +190,6 @@ Example test structure:
 ```
 
 That's the deal.
+## Codebase Exploration
+
+Default to `graphify query "<question>"` over `grep` for codebase exploration questions. Full rule (with freshness check + fallback conditions): see global `~/.claude/CLAUDE.md` §"Graph-First Codebase Exploration". Build the graph for any project >50 files with `/graphify .` — one-time cost amortized across all future questions.
