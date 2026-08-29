@@ -1,21 +1,46 @@
 name: Hallucination Audit
-on: [push, pull_request]
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hallucination-audit-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   hallucination:
-    runs-on: ubuntu-latest
+    name: Static audit (advisory)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.13'
-      - name: Run hallucination remover
-        run: python scripts/hallucination_remover.py --path . --fix
-      - name: Show diff
-        run: git diff --stat
-      - name: Commit auto-fixes
-        uses: stefanzweifel/git-auto-commit-action@v5
+
+      - name: Run hallucination audit
+        shell: bash
+        run: |
+          set -o pipefail
+          python scripts/hallucination_remover.py --path . \
+            | tee "$RUNNER_TEMP/hallucination-audit.txt"
+          if grep -qv '^No hallucinations found\.$' "$RUNNER_TEMP/hallucination-audit.txt"; then
+            echo '::warning::Audit findings are advisory; see the job log or artifact.'
+          fi
+
+      - name: Upload audit report
+        if: always()
+        uses: actions/upload-artifact@v4
         with:
-          commit_message: "fix: auto-remove hallucinations"
-          auto_push: true
+          name: hallucination-audit-${{ github.run_id }}
+          path: ${{ runner.temp }}/hallucination-audit.txt
+          if-no-files-found: ignore

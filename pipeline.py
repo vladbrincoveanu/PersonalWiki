@@ -235,5 +235,19 @@ async def run_pipeline(
         metadata=index_meta,
     )
 
+    for entity in note.get("entities") or []:
+        if not isinstance(entity, dict):
+            continue
+        entity_name = entity.get("entity_name") or entity.get("name")
+        if not entity_name:
+            continue
+        store.upsert_entity(
+            path=path,
+            entity_type=entity.get("entity_type") or entity.get("type") or "other",
+            entity_name=str(entity_name),
+            summary=str(entity.get("summary") or ""),
+            metadata=entity.get("metadata") if isinstance(entity.get("metadata"), dict) else {},
+        )
+
     stem = Path(path).name
     yield f"Saved -> notes/{stem}"

@@ -943,6 +943,7 @@
         allKeywords.forEach(({ kw, existing }) => {
             const chip = document.createElement('span');
             chip.className = 'kw-chip' + (existing ? ' existing' : ' new');
+            chip.dataset.keyword = kw;
 
             if (!existing) {
                 const checkbox = document.createElement('input');

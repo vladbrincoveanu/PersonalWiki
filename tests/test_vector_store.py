@@ -55,6 +55,33 @@ def test_search_metadata_is_dict():
     assert results[0]["metadata"]["title"] == "T"
 
 
+def test_entity_search_uses_entity_fields_without_vectors():
+    store = make_store()
+    store.upsert_entity(
+        "notes/personalwiki.md",
+        "project",
+        "PersonalWiki",
+        "A personal knowledge and memory bank.",
+        {"owner": "Vlad"},
+    )
+
+    results = store.search_entities("PersonalWiki", entity_type="project")
+
+    assert len(results) == 1
+    assert results[0]["entity_name"] == "PersonalWiki"
+    assert results[0]["metadata"] == {"owner": "Vlad"}
+
+
+def test_wrong_vector_dimension_does_not_delete_existing_note():
+    store = make_store()
+    store.upsert("notes/t.md", "original", [0.1] * _embed_dim(), [], {"title": "Original"})
+
+    with pytest.raises(ValueError):
+        store.upsert("notes/t.md", "replacement", [0.1], [], {"title": "Replacement"})
+
+    assert store.exists("notes/t.md")
+
+
 # --- Tests for _get_links_for_paths ---
 
 def test_get_links_for_paths_returns_correct_links():
@@ -338,11 +365,9 @@ def test_hybrid_search_returns_correct_shape(mock_store, sample_notes):
         store.upsert(note["path"], note["text"], note["vector"], note["links"], note["metadata"])
 
     with patch("core.embeddings.embed") as mock_embed, \
-         patch("core.bm25_index.ensure_index") as mock_ensure, \
          patch("core.bm25_index.bm25_search") as mock_bm25:
 
         mock_embed.return_value = [0.1] * _embed_dim()
-        mock_ensure.return_value = (MagicMock(), [], [])
         mock_bm25.return_value = [
             {"path": "notes/a.md", "score": 0.9, "rank": 1},
             {"path": "notes/b.md", "score": 0.8, "rank": 2},
@@ -364,7 +389,6 @@ def test_hybrid_search_calls_all_three_streams(mock_store, sample_notes):
         store.upsert(note["path"], note["text"], note["vector"], note["links"], note["metadata"])
 
     with patch("core.embeddings.embed") as mock_embed, \
-         patch("core.bm25_index.ensure_index") as mock_ensure, \
          patch("core.bm25_index.bm25_search") as mock_bm25, \
          patch.object(store, "search") as mock_vector_search, \
          patch.object(store, "_graph_hop") as mock_graph_hop:
@@ -374,7 +398,6 @@ def test_hybrid_search_calls_all_three_streams(mock_store, sample_notes):
             {"path": "notes/a.md", "score": 0.9, "rank": 1, "metadata": {}},
             {"path": "notes/b.md", "score": 0.8, "rank": 2, "metadata": {}},
         ]
-        mock_ensure.return_value = (MagicMock(), [], [])
         mock_bm25.return_value = [
             {"path": "notes/a.md", "score": 0.9, "rank": 1},
             {"path": "notes/b.md", "score": 0.8, "rank": 2},
@@ -386,8 +409,7 @@ def test_hybrid_search_calls_all_three_streams(mock_store, sample_notes):
         store.hybrid_search("test query", top_k=5)
 
         mock_embed.assert_called_once_with("test query")
-        mock_ensure.assert_called_once()
-        mock_bm25.assert_called_once()
+        mock_bm25.assert_called_once_with("test query", top_k=10, include_body=True)
         mock_graph_hop.assert_called_once()
         # graph_hop should be called with vector search paths
         call_paths = mock_graph_hop.call_args[0][0]
@@ -401,7 +423,6 @@ def test_hybrid_search_uses_correct_weights(mock_store, sample_notes):
         store.upsert(note["path"], note["text"], note["vector"], note["links"], note["metadata"])
 
     with patch("core.embeddings.embed") as mock_embed, \
-         patch("core.bm25_index.ensure_index") as mock_ensure, \
          patch("core.bm25_index.bm25_search") as mock_bm25, \
          patch.object(store, "search") as mock_vector_search, \
          patch.object(store, "_graph_hop") as mock_graph_hop, \
@@ -409,7 +430,6 @@ def test_hybrid_search_uses_correct_weights(mock_store, sample_notes):
 
         mock_embed.return_value = [0.1] * _embed_dim()
         mock_vector_search.return_value = [{"path": "a.md", "score": 0.9, "rank": 1, "metadata": {}}]
-        mock_ensure.return_value = (MagicMock(), [], [])
         mock_bm25.return_value = [{"path": "a.md", "score": 0.9, "rank": 1}]
         mock_graph_hop.return_value = [{"path": "a.md", "hop_weight": 0.5}]
         mock_rrf.return_value = [{"path": "a.md", "score": 0.1, "rank": 1}]
@@ -430,14 +450,12 @@ def test_hybrid_search_merges_with_rrf(mock_store, sample_notes):
         store.upsert(note["path"], note["text"], note["vector"], note["links"], note["metadata"])
 
     with patch("core.embeddings.embed") as mock_embed, \
-         patch("core.bm25_index.ensure_index") as mock_ensure, \
          patch("core.bm25_index.bm25_search") as mock_bm25, \
          patch.object(store, "search") as mock_vector_search, \
          patch.object(store, "_graph_hop") as mock_graph_hop:
 
         mock_embed.return_value = [0.1] * _embed_dim()
         mock_vector_search.return_value = [{"path": "a.md", "score": 0.9, "rank": 1, "metadata": {"title": "A"}}]
-        mock_ensure.return_value = (MagicMock(), [], [])
         mock_bm25.return_value = [{"path": "a.md", "score": 0.9, "rank": 1}]
         mock_graph_hop.return_value = [{"path": "a.md", "hop_weight": 0.5}]
 
@@ -455,7 +473,6 @@ def test_hybrid_search_min_score_threshold(mock_store, sample_notes):
         store.upsert(note["path"], note["text"], note["vector"], note["links"], note["metadata"])
 
     with patch("core.embeddings.embed") as mock_embed, \
-         patch("core.bm25_index.ensure_index"), \
          patch("core.bm25_index.bm25_search") as mock_bm25, \
          patch.object(store, "search") as mock_vec, \
          patch.object(store, "_graph_hop") as mock_hop:
@@ -479,7 +496,6 @@ def test_hybrid_search_above_threshold(mock_store, sample_notes):
         store.upsert(note["path"], note["text"], note["vector"], note["links"], note["metadata"])
 
     with patch("core.embeddings.embed") as mock_embed, \
-         patch("core.bm25_index.ensure_index"), \
          patch("core.bm25_index.bm25_search") as mock_bm25, \
          patch.object(store, "search") as mock_vec, \
          patch.object(store, "_graph_hop") as mock_hop:
@@ -606,4 +622,3 @@ def test_migrate_on_dimension_mismatch(mock_store):
     table = store2._table
     actual_dim = table.schema.field("vector").type.list_size
     assert actual_dim == 384, f"Expected 384d, got {actual_dim}"
-

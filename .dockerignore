@@ -8,3 +8,22 @@
 # vault/ removed - it's the Python package, not the Obsidian vault notes
 *.md
 !README.md
+.git
+.github
+.claude
+.codex
+.venv
+__pycache__
+*.py[cod]
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.coverage
+htmlcov
+tests
+docs
+app.log
+.vke_index
+dist
+build
+*.egg-info

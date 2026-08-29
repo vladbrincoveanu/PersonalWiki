@@ -12,7 +12,7 @@ _logger = logging.getLogger(__name__)
 
 _KEY_FIELDS = (
     "title", "source", "type", "ticker", "company",
-    "author", "date", "keywords", "tags",
+    "author", "date", "ingested", "keywords", "tags",
 )
 
 
@@ -27,7 +27,11 @@ _INDEX_TTL_SECONDS = 300  # 5 minutes
 _index: BM25Okapi | None = None
 _paths: list[str] = []
 _corpus: list[str] = []
+_content_index: BM25Okapi | None = None
+_content_paths: list[str] = []
+_content_corpus: list[str] = []
 _last_built: float = 0.0
+_content_last_built: float = 0.0
 
 
 def _key_document(metadata: dict) -> str:
@@ -44,8 +48,8 @@ def _key_document(metadata: dict) -> str:
     return " ".join(parts)
 
 
-def _build_index() -> tuple[BM25Okapi, list[str], list[str]]:
-    """Walk NOTES_DIR recursively and index frontmatter keys only."""
+def _build_index(*, include_body: bool = False) -> tuple[BM25Okapi, list[str], list[str]]:
+    """Walk NOTES_DIR recursively and build a keys or content index."""
     paths = []
     corpus = []
     if NOTES_DIR.exists():
@@ -60,10 +64,17 @@ def _build_index() -> tuple[BM25Okapi, list[str], list[str]]:
                     exc,
                 )
                 continue
+            if include_body:
+                document = f"{document}\n{post.content}"
+            if not document.strip():
+                continue
             paths.append(str(md_file))
             corpus.append(document)
     tokenized = [_simple_tokenizer(doc) for doc in corpus]
-    index = BM25Okapi(tokenized)
+    # rank_bm25 cannot construct an index for an empty corpus. Keep a
+    # harmless sentinel index while returning empty paths so searches remain
+    # a normal no-results operation for a fresh or metadata-free vault.
+    index = BM25Okapi(tokenized or [["__empty__"]])
     return index, paths, corpus
 
 
@@ -72,12 +83,22 @@ def ensure_index() -> tuple[BM25Okapi, list[str], list[str]]:
     global _index, _paths, _corpus, _last_built
     now = time.monotonic()
     if _index is None or (now - _last_built) > _INDEX_TTL_SECONDS:
-        _index, _paths, _corpus = _build_index()
+        _index, _paths, _corpus = _build_index(include_body=False)
         _last_built = now
     return _index, _paths, _corpus
 
 
-def bm25_search(query: str, top_k: int = 5) -> list[dict]:
+def ensure_content_index() -> tuple[BM25Okapi, list[str], list[str]]:
+    """Return a content index for hybrid retrieval, rebuilding as needed."""
+    global _content_index, _content_paths, _content_corpus, _content_last_built
+    now = time.monotonic()
+    if _content_index is None or (now - _content_last_built) > _INDEX_TTL_SECONDS:
+        _content_index, _content_paths, _content_corpus = _build_index(include_body=True)
+        _content_last_built = now
+    return _content_index, _content_paths, _content_corpus
+
+
+def bm25_search(query: str, top_k: int = 5, *, include_body: bool = False) -> list[dict]:
     """
     Search the BM25 index.
     Returns list of {path, score, rank} sorted by BM25 descending.
@@ -86,7 +107,9 @@ def bm25_search(query: str, top_k: int = 5) -> list[dict]:
     zero in a small corpus while excluding documents with no query tokens.
     """
     try:
-        index, paths, corpus = ensure_index()
+        index, paths, corpus = (
+            ensure_content_index() if include_body else ensure_index()
+        )
     except Exception as e:
         _logger.warning("BM25 search failed to build index: %s", e)
         return []
@@ -111,7 +134,12 @@ def bm25_search(query: str, top_k: int = 5) -> list[dict]:
 def invalidate_index() -> None:
     """Force next search to rebuild the index."""
     global _index, _paths, _corpus, _last_built
+    global _content_index, _content_paths, _content_corpus, _content_last_built
     _index = None
     _paths = []
     _corpus = []
     _last_built = 0.0
+    _content_index = None
+    _content_paths = []
+    _content_corpus = []
+    _content_last_built = 0.0

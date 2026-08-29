@@ -13,6 +13,8 @@ def extract_entities(text: str, content_type: str = "web") -> list[dict]:
     """
     if not text or len(text) < 100:
         return []
+    if not MINIMAX_API_KEY:
+        return []
 
     prompt = f"""Extract entities from this {content_type} content.
 For each entity, identify:

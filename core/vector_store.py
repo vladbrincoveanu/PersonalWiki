@@ -132,11 +132,11 @@ class VectorStore:
         _store = None
 
     def upsert(self, path: str, text: str, vector: list[float], links: list[str], metadata: dict):
-        self._table.delete(f"path = '{_escape_path(path)}'")
         from core.embeddings import embed
         expected_dim = len(embed("test"))
         if len(vector) != expected_dim:
             raise ValueError(f"Vector dimension must be {expected_dim}, got {len(vector)}")
+        self._table.delete(f"path = '{_escape_path(path)}'")
         self._table.add([{
             "path": path,
             "text": text,
@@ -193,7 +193,10 @@ class VectorStore:
 
     def upsert_entity(self, path: str, entity_type: str, entity_name: str, summary: str, metadata: dict):
         try:
-            self._entities_table.delete(f"path = '{_escape_path(path)}' AND entity_name = '{entity_name}'")
+            self._entities_table.delete(
+                f"path = '{_escape_path(path)}' AND "
+                f"entity_name = '{_escape_path(entity_name)}'"
+            )
         except Exception:
             pass
         self._entities_table.add([{
@@ -205,15 +208,32 @@ class VectorStore:
         }])
 
     def search_entities(self, query: str, entity_type: str | None = None, top_k: int = 5) -> list[dict]:
-        from core.embeddings import embed
-        query_vector = embed(query)
-        if entity_type:
-            results = self._entities_table.search([float(v) for v in query_vector]).where(f"entity_type = '{entity_type}'").limit(top_k).to_list()
-        else:
-            results = self._entities_table.search([float(v) for v in query_vector]).limit(top_k).to_list()
-        for row in results:
-            row["metadata"] = _parse_metadata(row["metadata"])
-        return results
+        """Search entity names and summaries without requiring an embedding column."""
+        query_tokens = set(query.lower().split())
+        if not query_tokens:
+            return []
+
+        scored: list[tuple[int, dict]] = []
+        for row in self._entities_table.search().to_list():
+            if entity_type and row.get("entity_type") != entity_type:
+                continue
+            metadata = _parse_metadata(row.get("metadata", "{}"))
+            name_tokens = set(str(row.get("entity_name", "")).lower().split())
+            searchable = " ".join([
+                str(row.get("entity_name", "")),
+                str(row.get("summary", "")),
+                json.dumps(metadata),
+            ]).lower()
+            searchable_tokens = set(searchable.split())
+            overlap = query_tokens.intersection(searchable_tokens)
+            if not overlap:
+                continue
+            score = sum(2 if token in name_tokens else 1 for token in overlap)
+            row["metadata"] = metadata
+            scored.append((score, row))
+
+        scored.sort(key=lambda item: (-item[0], item[1].get("entity_name", "")))
+        return [row for _, row in scored[:top_k]]
 
     def get_recent_notes(self, top_k: int = 5) -> list[dict]:
         """Return notes sorted by _indexed_at timestamp descending."""
@@ -231,15 +251,14 @@ class VectorStore:
         Returns list of {path, score, rank, metadata} sorted by RRF score descending.
         """
         from core.embeddings import embed
-        from core.bm25_index import ensure_index, bm25_search
+        from core.bm25_index import bm25_search
 
         # Vector stream: embed + search with doubled top_k for headroom
         query_vector = embed(query)
         vector_results = self.search(query_vector, top_k=top_k * 2)
 
         # BM25 stream
-        ensure_index()
-        bm25_results = bm25_search(query, top_k=top_k * 2)
+        bm25_results = bm25_search(query, top_k=top_k * 2, include_body=True)
 
         # Graph hops from vector results
         vector_paths = [r["path"] for r in vector_results]

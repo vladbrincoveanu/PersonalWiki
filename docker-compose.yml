@@ -6,7 +6,8 @@ services:
     volumes:
       - ${VAULT_PATH:-/Users/vladbrincoveanu/Library/Mobile Documents/iCloud~md~obsidian/Documents/PersonalWiki}:/vault
     env_file:
-      - .env
+      - path: .env
+        required: false
     environment:
       - VAULT_PATH=/vault
       - INDEX_PATH=/app/.vke_index
