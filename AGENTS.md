@@ -4,7 +4,7 @@
 
 ```bash
 # Required environment variables for MiniMax API
-export ANTHROPIC_AUTH_TOKEN=sk-cp-47dYVe9QJIj732X68hINusCgJhqXz6_XFcy1WIGQpl5N6cPL28EjF4dLl9Iqu3BR5NKNBw1WhiNn1oh-Gsk4MNLq_dN2AlmLDojSShq7RFwsNtMPuYCMzgk
+export ANTHROPIC_AUTH_TOKEN=<your-token>
 export ANTHROPIC_BASE_URL=https://api.minimax.io/anthropic
 export ANTHROPIC_MODEL=MiniMax-M2.7
 ```

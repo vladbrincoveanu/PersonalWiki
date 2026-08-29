@@ -71,6 +71,22 @@ def test_entity_search_uses_entity_fields_without_vectors():
     assert results[0]["metadata"] == {"owner": "Vlad"}
 
 
+def test_entity_search_preserves_punctuation_in_query_tokens():
+    store = make_store()
+    store.upsert_entity(
+        "notes/cpp.md",
+        "language",
+        "C++",
+        "A compiled systems programming language.",
+        {},
+    )
+
+    results = store.search_entities("C++", entity_type="language")
+
+    assert len(results) == 1
+    assert results[0]["entity_name"] == "C++"
+
+
 def test_wrong_vector_dimension_does_not_delete_existing_note():
     store = make_store()
     store.upsert("notes/t.md", "original", [0.1] * _embed_dim(), [], {"title": "Original"})

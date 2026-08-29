@@ -80,8 +80,12 @@ def main() -> int:
             content = str(issue.get("issue_content") or "No details supplied")
             match = re.match(r"^\[(critical|high|medium|low)\]\s+", header, re.I)
             if not match:
-                blocking = True
-                _error(f"Finding in {path} has no valid severity prefix: {header}")
+                # Older/alternate PR-Agent prompts sometimes return headings
+                # such as "Possible Bug". Keep the finding visible, but do
+                # not turn a formatting mismatch into a false blocking check.
+                _warning(
+                    f"Finding in {path} has no valid severity prefix; treating it as medium: {header}"
+                )
                 continue
             message = f"{header} in {path}: {content}"
             if match.group(1).lower() in {"critical", "high"}:

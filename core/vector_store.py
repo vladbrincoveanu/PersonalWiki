@@ -29,6 +29,23 @@ def _parse_metadata(meta: str | dict) -> dict:
 
 _logger = logging.getLogger(__name__)
 
+_SEARCH_TOKEN_RE = re.compile(r"[^\W]+(?:[-'_/+.#:][^\W]+)*[-+'#]*")
+
+
+def _search_tokens(text: str) -> set[str]:
+    """Tokenize entity text consistently for coarse and exact matching."""
+    return set(_SEARCH_TOKEN_RE.findall(text.casefold()))
+
+
+def _escape_like(value: str) -> str:
+    """Escape SQL LIKE wildcards while retaining literal punctuation."""
+    return (
+        _escape_path(value)
+        .replace("\\", "\\\\")
+        .replace("%", "\\%")
+        .replace("_", "\\_")
+    )
+
 # The configured BGE-small model and LanceDB schema both use 384 dimensions.
 # Keep startup and unit tests independent from a network model download; a model
 # change must update this contract and trigger the migration path explicitly.
@@ -215,22 +232,19 @@ class VectorStore:
 
     def search_entities(self, query: str, entity_type: str | None = None, top_k: int = 5) -> list[dict]:
         """Search entity names and summaries without requiring an embedding column."""
-        query_tokens = set(query.lower().split())
+        query_tokens = _search_tokens(query)
         if not query_tokens:
             return []
 
         # Push coarse matching into LanceDB and cap candidates before Python
         # scoring so a large entity table is never fully materialized.
-        safe_tokens = {
-            re.sub(r"[^a-z0-9]", "", token)
-            for token in query_tokens
-        }
-        safe_tokens.discard("")
-        if not safe_tokens:
-            return []
+        safe_tokens = sorted(query_tokens)
         token_clauses = [
-            "(lower(entity_name) LIKE '%{0}%' OR "
-            "lower(summary) LIKE '%{0}%' OR lower(metadata) LIKE '%{0}%')".format(token)
+            "(lower(entity_name) LIKE '%{0}%' ESCAPE '\\' OR "
+            "lower(summary) LIKE '%{0}%' ESCAPE '\\' OR "
+            "lower(metadata) LIKE '%{0}%' ESCAPE '\\')".format(
+                _escape_like(token)
+            )
             for token in safe_tokens
         ]
         where = " OR ".join(token_clauses)
@@ -241,13 +255,13 @@ class VectorStore:
         scored: list[tuple[int, dict]] = []
         for row in self._entities_table.search().where(where).limit(candidate_limit).to_list():
             metadata = _parse_metadata(row.get("metadata", "{}"))
-            name_tokens = set(str(row.get("entity_name", "")).lower().split())
+            name_tokens = _search_tokens(str(row.get("entity_name", "")))
             searchable = " ".join([
                 str(row.get("entity_name", "")),
                 str(row.get("summary", "")),
                 json.dumps(metadata),
-            ]).lower()
-            searchable_tokens = set(searchable.split())
+            ])
+            searchable_tokens = _search_tokens(searchable)
             overlap = query_tokens.intersection(searchable_tokens)
             if not overlap:
                 continue

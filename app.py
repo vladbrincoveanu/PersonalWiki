@@ -184,7 +184,10 @@ async def ingest(
             _job_queues.pop(job_id, None)
             _remove_temp_file(tmp_path)
 
-    asyncio.create_task(_run())
+    run_task = asyncio.create_task(_run())
+    # A task cancelled before its first scheduling turn may not enter the
+    # coroutine body, so keep cleanup reliable in that edge case too.
+    run_task.add_done_callback(lambda _task: _remove_temp_file(tmp_path))
 
     return {"job_id": job_id}
 
@@ -423,8 +426,6 @@ async def ingest_run(request: Request):
                     await queue.put(None)
                     done_event.set()
                     _ingest_run_queues.pop(job_id, None)
-                    if tmp:
-                        os.unlink(tmp)
                     return
 
             async for msg in run_pipeline(**kwargs):
@@ -438,7 +439,10 @@ async def ingest_run(request: Request):
             if cached:
                 _remove_temp_file(cached.get("tmp_path"))
 
-    asyncio.create_task(_run())
+    run_task = asyncio.create_task(_run())
+    run_task.add_done_callback(
+        lambda _task: _remove_temp_file(cached.get("tmp_path") if cached else None)
+    )
     return {"job_id": job_id}
 
 

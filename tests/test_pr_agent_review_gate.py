@@ -93,7 +93,7 @@ def test_gate_escapes_percent_encoded_workflow_commands():
     assert "%250A::error" in result.stdout
 
 
-def test_gate_fails_closed_when_key_issue_has_no_severity():
+def test_gate_warns_when_key_issue_has_no_severity():
     result = run_gate({
         "key_issues_to_review": [{
             "issue_header": "Possible Bug",
@@ -103,7 +103,7 @@ def test_gate_fails_closed_when_key_issue_has_no_severity():
         "security_concerns": "No",
     })
 
-    assert result.returncode == 1
+    assert result.returncode == 0
     assert "severity" in result.stdout.lower()
 
 

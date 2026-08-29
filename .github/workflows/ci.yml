@@ -10,6 +10,10 @@ on:
 permissions:
   contents: read
 
+env:
+  VAULT_PATH: ${{ github.workspace }}/.ci-vault
+  INDEX_PATH: ${{ github.workspace }}/.ci-index
+
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -40,6 +44,9 @@ jobs:
       - name: Compile Python sources
         run: python -m compileall -q app.py pipeline.py config.py core ingesters vault scripts
 
+      - name: Prepare test vault
+        run: mkdir -p "$VAULT_PATH"
+
       - name: Run deterministic test suite
         run: python -m pytest -q --disable-warnings -m "not integration and not slow" tests
 
@@ -65,6 +72,9 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt
+
+      - name: Prepare test vault
+        run: mkdir -p "$VAULT_PATH"
 
       - name: Run extended test suite
         run: python -m pytest -q --disable-warnings tests

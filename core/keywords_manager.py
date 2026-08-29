@@ -84,7 +84,11 @@ def remove_keyword(keyword: str, path: Path, vault_path: Path | None = None) -> 
             except Exception:
                 continue
 
-        purge_keyword(keyword, vault_path)
+        purge_keyword(
+            keyword,
+            vault_path,
+            exclude_paths={str(Path(filepath).resolve()) for filepath in impact["remove_keyword_only"]},
+        )
 
     return result
 
@@ -148,21 +152,31 @@ def _strip_keyword_from_file(keyword: str, filepath: Path) -> None:
     filepath.write_text(new_raw, encoding="utf-8")
 
 
-def purge_keyword(keyword: str, vault_path: Path) -> list[str]:
+def purge_keyword(
+    keyword: str,
+    vault_path: Path,
+    exclude_paths: set[str] | None = None,
+) -> list[str]:
     """Remove [[wikilink]] references to keyword from vault .md files.
 
     Orphan stubs (files that are essentially just the keyword as a title with
     no meaningful body content) are deleted. Files with real content are kept
     but have their [[keyword]] wikilinks stripped.
 
+    ``exclude_paths`` contains files already classified as keep-and-strip by
+    ``remove_keyword``; those files must not be reconsidered as orphan stubs.
+
     Returns list of deleted file paths.
     """
     import re
 
     wikilink_pattern = re.compile(rf"\[\[{re.escape(keyword)}\]\]", re.IGNORECASE)
+    excluded = {str(Path(path).resolve()) for path in (exclude_paths or set())}
     deleted = []
 
     for md_file in vault_path.rglob("*.md"):
+        if str(md_file.resolve()) in excluded:
+            continue
         try:
             raw = md_file.read_text(encoding="utf-8")
             has_wikilink = bool(wikilink_pattern.search(raw))

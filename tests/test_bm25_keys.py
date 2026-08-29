@@ -38,6 +38,12 @@ def test_matches_on_company_key(vault):
     assert results and results[0]["path"].endswith("vic/AAPL/note.md")
 
 
+def test_normalizes_punctuation_in_metadata_values(vault):
+    _write(vault, "vic/ACME/note.md", 'company: "Acme, Inc."')
+    results = bm25.bm25_search('company: "Acme, Inc."', top_k=5)
+    assert results and results[0]["path"].endswith("vic/ACME/note.md")
+
+
 def test_matches_on_author_key(vault):
     _write(vault, "vic/AAPL/note.md", 'ticker: "AAPL"\nauthor: "someuser"')
     results = bm25.bm25_search("someuser", top_k=5)

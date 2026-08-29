@@ -3,6 +3,7 @@ Lazy-built in-memory BM25 index of all vault notes.
 Refreshes automatically every 5 minutes.
 """
 import logging
+import re
 import time
 import frontmatter
 from rank_bm25 import BM25Okapi
@@ -17,8 +18,8 @@ _KEY_FIELDS = (
 
 
 def _simple_tokenizer(text: str) -> list[str]:
-    """Split on whitespace and lowercase."""
-    return text.lower().split()
+    """Normalize punctuation while preserving meaningful metadata values."""
+    return re.findall(r"[^\W]+(?:[-'_/+.#:][^\W]+)*[-+'#]*", text.casefold())
 
 
 _INDEX_TTL_SECONDS = 300  # 5 minutes

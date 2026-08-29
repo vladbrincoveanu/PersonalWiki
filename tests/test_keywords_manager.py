@@ -156,6 +156,25 @@ class TestCascadeDelete:
         assert "[[machine-learning]]" not in content, "wikilink should be stripped"
         assert "machine-learning" in content, "keyword should remain as plain text"
 
+    def test_remove_keyword_does_not_delete_multi_keyword_note_during_purge(self, tmp_path):
+        """A note kept for another keyword must survive the follow-up purge."""
+        vault = tmp_path / "vault"
+        vault.mkdir()
+        keywords_file = tmp_path / "_keywords"
+        keywords_file.write_text("python\nrust\n")
+
+        note = vault / "python.md"
+        note.write_text("---\nkeywords: [python, rust]\n---\n[[python]]\n")
+
+        result = remove_keyword("python", keywords_file, vault_path=vault)
+
+        assert note.exists()
+        assert str(note) in result["stripped"]
+        content = note.read_text()
+        assert "- rust" in content
+        assert "python" in content
+        assert "[[python]]" not in content
+
     def test_remove_keyword_calls_vector_store_delete(self, tmp_path):
         """Remove keyword should also delete from vector store for fully-deleted files."""
         from unittest.mock import MagicMock, patch
