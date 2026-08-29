@@ -7,20 +7,11 @@ from ingesters import Document
 _TWEET_RE = re.compile(r"https?://(?:twitter\.com|x\.com)/[^/]+/status/\d+")
 _YOUTUBE_RE = re.compile(r"https?://(?:www\.)?youtube\.com/watch\?")
 _ARXIV_RE = re.compile(r"https?://arxiv\.org/(?:abs|pdf)/\d+\.\d+")
-_PDF_EXT_RE = re.compile(r"\.pdf(?:\?.*)?$", re.IGNORECASE)
 
 
 def _is_pdf_url(url: str) -> bool:
-    """Return True if the URL serves a PDF (by extension or Content-Type)."""
-    if _PDF_EXT_RE.search(url.split("?")[0]):
-        return True
-    try:
-        req = urllib.request.Request(url, method="HEAD")
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            ct = resp.headers.get("Content-Type", "")
-            return "application/pdf" in ct
-    except Exception:
-        return False
+    """Return True for URLs whose path explicitly identifies a PDF."""
+    return url.partition("?")[0].lower().endswith(".pdf")
 
 
 def route_url(url: str) -> str:
