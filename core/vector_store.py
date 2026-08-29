@@ -1,4 +1,5 @@
 import json
+import re
 from pathlib import Path
 import lancedb
 import logging
@@ -96,6 +97,7 @@ def _detect_table_dim(table) -> int:
 
 class VectorStore:
     def __init__(self, index_path: str | Path):
+        self._migration_required = False
         self._db = lancedb.connect(str(index_path))
         if TABLE_NAME not in self._db.table_names():
             self._table = self._db.create_table(TABLE_NAME, schema=SCHEMA)
@@ -110,34 +112,35 @@ class VectorStore:
         self._migrate_if_needed()
 
     def _migrate_if_needed(self):
-        expected_dim = EMBEDDING_DIMENSION
-        for table_name, table, schema in [
-            (TABLE_NAME, self._table, SCHEMA),
-            (ENTITIES_TABLE, self._entities_table, ENTITIES_SCHEMA),
-        ]:
-            try:
-                actual_dim = _detect_table_dim(table)
-                if actual_dim != expected_dim:
-                    _logger.warning(
-                        f"Mismatch in '{table_name}': table={actual_dim}d, embed={expected_dim}d. "
-                        f"Dropping and recreating table."
-                    )
-                    self._db.drop_table(table_name)
-                    if table_name == TABLE_NAME:
-                        self._table = self._db.create_table(table_name, schema=schema)
-                    else:
-                        self._entities_table = self._db.create_table(table_name, schema=schema)
-                    _logger.warning("Index cleared. Run `python -m vault.scanner` to rebuild.")
-            except Exception as e:
-                _logger.debug(f"Skipping migration check for '{table_name}': {e}")
+        try:
+            actual_dim = _detect_table_dim(self._table)
+        except Exception as e:
+            self._migration_required = True
+            _logger.error("Cannot validate the notes index schema; refusing writes: %s", e)
+            return
 
-        global _store
-        _store = None
+        if actual_dim != EMBEDDING_DIMENSION:
+            self._migration_required = True
+            _logger.error(
+                "Notes index is %sd but the current embedding contract is %sd; "
+                "leaving the existing table intact. Rebuild the index explicitly "
+                "from the source notes before writing new vectors.",
+                actual_dim,
+                EMBEDDING_DIMENSION,
+            )
+
+    def _require_current_schema(self) -> None:
+        if getattr(self, "_migration_required", False):
+            raise RuntimeError(
+                "The notes index schema does not match the embedding contract; "
+                "rebuild the index explicitly before searching or writing."
+            )
 
     def upsert(self, path: str, text: str, vector: list[float], links: list[str], metadata: dict):
         expected_dim = EMBEDDING_DIMENSION
         if len(vector) != expected_dim:
             raise ValueError(f"Vector dimension must be {expected_dim}, got {len(vector)}")
+        self._require_current_schema()
         self._table.delete(f"path = '{_escape_path(path)}'")
         self._table.add([{
             "path": path,
@@ -156,6 +159,7 @@ class VectorStore:
             return False
 
     def search(self, vector: list[float], top_k: int = 3) -> list[dict]:
+        self._require_current_schema()
         rows = self._table.search([float(v) for v in vector]).limit(top_k).to_list()
         results = []
         for row in rows:
@@ -215,10 +219,27 @@ class VectorStore:
         if not query_tokens:
             return []
 
+        # Push coarse matching into LanceDB and cap candidates before Python
+        # scoring so a large entity table is never fully materialized.
+        safe_tokens = {
+            re.sub(r"[^a-z0-9]", "", token)
+            for token in query_tokens
+        }
+        safe_tokens.discard("")
+        if not safe_tokens:
+            return []
+        token_clauses = [
+            "(lower(entity_name) LIKE '%{0}%' OR "
+            "lower(summary) LIKE '%{0}%' OR lower(metadata) LIKE '%{0}%')".format(token)
+            for token in safe_tokens
+        ]
+        where = " OR ".join(token_clauses)
+        if entity_type:
+            where = f"entity_type = '{_escape_path(entity_type)}' AND ({where})"
+        candidate_limit = max(top_k * 20, 100)
+
         scored: list[tuple[int, dict]] = []
-        for row in self._entities_table.search().to_list():
-            if entity_type and row.get("entity_type") != entity_type:
-                continue
+        for row in self._entities_table.search().where(where).limit(candidate_limit).to_list():
             metadata = _parse_metadata(row.get("metadata", "{}"))
             name_tokens = set(str(row.get("entity_name", "")).lower().split())
             searchable = " ".join([

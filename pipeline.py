@@ -117,6 +117,9 @@ async def run_pipeline(
 ) -> AsyncGenerator[str, None]:
     import logging
     _logger = logging.getLogger(__name__)
+    if not any((url, pdf_path, docx_path, md_path, txt_path)):
+        raise ValueError("A content source is required (url or file path).")
+
     store = get_store()
     source = url or pdf_path or docx_path or md_path or txt_path
 

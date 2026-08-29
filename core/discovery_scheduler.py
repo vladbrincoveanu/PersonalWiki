@@ -292,6 +292,8 @@ class DiscoveryScheduler:
                 resp = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=15)
                 resp.raise_for_status()
                 return resp.text
+            except asyncio.CancelledError:
+                raise
             except Exception as e:
                 if attempt == 2:
                     _logger.debug("Discovery: fetch failed after 3 attempts for %s: %s", url, e)

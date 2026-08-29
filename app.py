@@ -21,9 +21,72 @@ _job_queues: dict[str, tuple[asyncio.Queue, asyncio.Event]] = {}
 _ingest_run_queues: dict[str, tuple[asyncio.Queue, asyncio.Event]] = {}
 _preview_cache: dict[str, dict] = {}
 _PREVIEW_TTL = 300
+_MAX_UPLOAD_BYTES = 25 * 1024 * 1024
+_UPLOAD_CHUNK_SIZE = 1024 * 1024
 _scheduler: DiscoveryScheduler | None = None
 _doctor_scheduler: DoctorScheduler | None = None
 _scheduler_lock = asyncio.Lock()
+
+
+def _remove_temp_file(path: str | None) -> None:
+    """Remove a temporary upload if it still exists."""
+    if not path:
+        return
+    try:
+        os.unlink(path)
+    except FileNotFoundError:
+        pass
+
+
+async def _save_upload(file: UploadFile) -> tuple[str, str]:
+    """Stream an upload to disk and reject files above the application limit."""
+    ext = Path(file.filename.lower()).suffix if file.filename else ""
+    tmp = tempfile.NamedTemporaryFile(suffix=ext, delete=False)
+    total = 0
+    try:
+        while True:
+            chunk = await file.read(_UPLOAD_CHUNK_SIZE)
+            if not chunk:
+                break
+            total += len(chunk)
+            if total > _MAX_UPLOAD_BYTES:
+                raise HTTPException(
+                    status_code=413,
+                    detail=f"Uploaded file exceeds the {_MAX_UPLOAD_BYTES // (1024 * 1024)} MiB limit",
+                )
+            tmp.write(chunk)
+    except BaseException:
+        tmp.close()
+        _remove_temp_file(tmp.name)
+        raise
+    tmp.close()
+    return tmp.name, ext
+
+
+def _purge_expired_previews(now: float | None = None) -> int:
+    """Delete expired preview entries and their temporary files."""
+    current_time = time.time() if now is None else now
+    removed = 0
+    for preview_id, preview in list(_preview_cache.items()):
+        try:
+            expired = current_time - float(preview.get("created_at", 0)) >= _PREVIEW_TTL
+        except (TypeError, ValueError):
+            expired = True
+        if expired and _preview_cache.pop(preview_id, None) is not None:
+            _remove_temp_file(preview.get("tmp_path"))
+            removed += 1
+    return removed
+
+
+async def _preview_cleanup_loop() -> None:
+    """Enforce preview TTL even when no new preview request arrives."""
+    try:
+        while True:
+            await asyncio.sleep(_PREVIEW_TTL)
+            _purge_expired_previews()
+    except asyncio.CancelledError:
+        raise
+
 
 async def _get_scheduler() -> DiscoveryScheduler:
     global _scheduler
@@ -41,6 +104,7 @@ async def _get_scheduler() -> DiscoveryScheduler:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    preview_cleanup_task = asyncio.create_task(_preview_cleanup_loop())
     try:
         try:
             count = await asyncio.to_thread(scan_vault)
@@ -50,6 +114,12 @@ async def lifespan(app: FastAPI):
             print(f"Startup: scan_vault failed ({e}), starting without vault index.")
         yield
     finally:
+        preview_cleanup_task.cancel()
+        try:
+            await preview_cleanup_task
+        except asyncio.CancelledError:
+            pass
+        _purge_expired_previews()
         if _doctor_scheduler:
             _doctor_scheduler.stop()
 
@@ -73,11 +143,11 @@ async def ingest(
 
     tmp_path = None
     if file and file.filename:
-        content = await file.read()
-        ext = Path(file.filename.lower()).suffix
-        with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
-            tmp.write(content)
-            tmp_path = tmp.name
+        try:
+            tmp_path, ext = await _save_upload(file)
+        except BaseException:
+            _job_queues.pop(job_id, None)
+            raise
 
     async def _run():
         kwargs = {}
@@ -112,8 +182,7 @@ async def ingest(
             await queue.put(None)  # Sentinel
             done_event.set()  # Signal stream() to exit and allow cleanup
             _job_queues.pop(job_id, None)
-            if tmp_path:
-                os.unlink(tmp_path)
+            _remove_temp_file(tmp_path)
 
     asyncio.create_task(_run())
 
@@ -247,16 +316,13 @@ async def ingest_preview(
     file: UploadFile = None,
 ):
     """Phase 1: extract content and return keyword classification."""
+    _purge_expired_previews()
     if not url and not file:
         raise HTTPException(400, "No url or file provided")
 
     tmp_path = None
     if file and file.filename:
-        content = await file.read()
-        ext = Path(file.filename.lower()).suffix
-        with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
-            tmp.write(content)
-            tmp_path = tmp.name
+        tmp_path, ext = await _save_upload(file)
 
     try:
         if url:
@@ -295,22 +361,29 @@ async def ingest_preview(
             "keywords": keywords,
         }
     except HTTPException:
+        _remove_temp_file(tmp_path)
+        raise
+    except asyncio.CancelledError:
+        _remove_temp_file(tmp_path)
         raise
     except Exception as e:
-        if tmp_path:
-            os.unlink(tmp_path)
+        _remove_temp_file(tmp_path)
         raise HTTPException(500, f"Preview failed: {e}")
 
 
 @app.post("/ingest/run")
 async def ingest_run(request: Request):
     """Phase 2: run full pipeline with confirmed keywords."""
+    _purge_expired_previews()
     body = await request.json()
     preview_id = body.get("preview_id")
     accepted_keywords = list(body.get("accepted_keywords", []))
     source_url = body.get("url")
 
     cached = _preview_cache.pop(preview_id, None) if preview_id else None
+
+    if not source_url and not (cached and (cached.get("url") or cached.get("tmp_path"))):
+        raise HTTPException(400, "Preview expired or no content source provided")
 
     job_id = str(uuid.uuid4())
     queue: asyncio.Queue = asyncio.Queue()
@@ -362,8 +435,8 @@ async def ingest_run(request: Request):
             await queue.put(None)
             done_event.set()
             _ingest_run_queues.pop(job_id, None)
-            if cached and cached.get("tmp_path"):
-                os.unlink(cached["tmp_path"])
+            if cached:
+                _remove_temp_file(cached.get("tmp_path"))
 
     asyncio.create_task(_run())
     return {"job_id": job_id}

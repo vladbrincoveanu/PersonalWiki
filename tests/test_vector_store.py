@@ -608,7 +608,7 @@ def test_embed_insert_query_real(mock_store):
 
 
 def test_migrate_on_dimension_mismatch(mock_store):
-    """Verify VectorStore auto-migrates a wrong-dimension table."""
+    """Wrong-dimension tables remain intact until an explicit rebuild."""
     import lancedb
     import pyarrow as pa
 
@@ -623,10 +623,21 @@ def test_migrate_on_dimension_mismatch(mock_store):
         pa.field("metadata", pa.string()),
     ])
     db.drop_table("notes")
-    db.create_table("notes", schema=wrong_schema)
+    wrong_table = db.create_table("notes", schema=wrong_schema)
+    wrong_table.add([{
+        "path": "notes/legacy.md",
+        "text": "legacy content",
+        "vector": [0.1] * 1024,
+        "links": [],
+        "metadata": '{"title": "Legacy"}',
+    }])
 
     store2 = VectorStore(index_path=str(tmp_dir))
 
     table = store2._table
     actual_dim = table.schema.field("vector").type.list_size
-    assert actual_dim == 384, f"Expected 384d, got {actual_dim}"
+    assert actual_dim == 1024, "Migration must not destroy the legacy table"
+    assert table.search().limit(1).to_list()[0]["path"] == "notes/legacy.md"
+    assert store2._migration_required is True
+    with pytest.raises(RuntimeError, match="schema does not match"):
+        store2.upsert("notes/new.md", "new", [0.1] * 384, [], {})
