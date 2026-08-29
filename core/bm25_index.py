@@ -3,7 +3,6 @@ Lazy-built in-memory BM25 index of all vault notes.
 Refreshes automatically every 5 minutes.
 """
 import logging
-import re
 import time
 import frontmatter
 from rank_bm25 import BM25Okapi
@@ -11,11 +10,10 @@ from config import NOTES_DIR
 
 _logger = logging.getLogger(__name__)
 
-# Pre-compiled regex patterns for markdown stripping
-_RE_HEADER = re.compile(r'#{1,6}\s+')
-_RE_LINK = re.compile(r'\[([^\]]+)\]\([^\)]+\)')
-_RE_EMPHASIS = re.compile(r'[*_]{1,2}([^*_]+)[*_]{1,2}')
-_RE_IMAGE = re.compile(r'!\[[^\]]*\]\([^\)]+\)')
+_KEY_FIELDS = (
+    "title", "source", "type", "ticker", "company",
+    "author", "date", "keywords", "tags",
+)
 
 
 def _simple_tokenizer(text: str) -> list[str]:
@@ -32,29 +30,34 @@ _corpus: list[str] = []
 _last_built: float = 0.0
 
 
-def _strip_markdown(text: str) -> str:
-    """Lightweight markdown strip — remove headers, links, emphasis."""
-    text = _RE_HEADER.sub('', text)
-    text = _RE_LINK.sub(r'\1', text)
-    text = _RE_EMPHASIS.sub(r'\1', text)
-    text = _RE_IMAGE.sub('', text)
-    return text
+def _key_document(metadata: dict) -> str:
+    """Flatten indexable frontmatter keys into one searchable string."""
+    parts = []
+    for field in _KEY_FIELDS:
+        value = metadata.get(field)
+        if value is None:
+            continue
+        if isinstance(value, (list, tuple)):
+            parts.extend(str(entry) for entry in value)
+        else:
+            parts.append(str(value))
+    return " ".join(parts)
 
 
 def _build_index() -> tuple[BM25Okapi, list[str], list[str]]:
-    """Walk NOTES_DIR, strip frontmatter, build BM25 index."""
+    """Walk NOTES_DIR recursively and index frontmatter keys only."""
     paths = []
     corpus = []
     if NOTES_DIR.exists():
-        for md_file in sorted(NOTES_DIR.glob("*.md")):
+        for md_file in sorted(NOTES_DIR.rglob("*.md")):
             try:
                 post = frontmatter.load(md_file)
-                body = _strip_markdown(post.content)
+                document = _key_document(post.metadata)
             except Exception:
-                _logger.warning("Could not parse frontmatter for %s, using raw text", md_file)
-                body = md_file.read_text(encoding="utf-8")
+                _logger.warning("Could not parse frontmatter for %s, skipping", md_file)
+                continue
             paths.append(str(md_file))
-            corpus.append(body)
+            corpus.append(document)
     tokenized = [_simple_tokenizer(doc) for doc in corpus]
     index = BM25Okapi(tokenized)
     return index, paths, corpus
@@ -87,7 +90,12 @@ def bm25_search(query: str, top_k: int = 5) -> list[dict]:
     # Pair paths with scores, sort descending
     scored = sorted(zip(paths, scores), key=lambda x: x[1], reverse=True)
     results = []
-    for rank, (path, score) in enumerate(scored[:top_k], start=1):
+    for path, score in scored:
+        if score == 0.0:
+            continue
+        if len(results) >= top_k:
+            break
+        rank = len(results) + 1
         results.append({"path": path, "score": float(score), "rank": rank})
     return results
 
