@@ -29,16 +29,19 @@ def test_keeps_a_zero_idf_key_match(vault):
     _write(vault, "msft.md", 'ticker: "MSFT"')
     results = bm25.bm25_search("AAPL", top_k=5)
     assert results and results[0]["path"].endswith("aapl.md")
+    assert all(not result["path"].endswith("msft.md") for result in results)
 
 
 def test_matches_on_company_key(vault):
     _write(vault, "vic/AAPL/note.md", 'ticker: "AAPL"\ncompany: "Apple Inc."')
-    assert bm25.bm25_search("Apple", top_k=5)
+    results = bm25.bm25_search("Apple", top_k=5)
+    assert results and results[0]["path"].endswith("vic/AAPL/note.md")
 
 
 def test_matches_on_author_key(vault):
     _write(vault, "vic/AAPL/note.md", 'ticker: "AAPL"\nauthor: "someuser"')
-    assert bm25.bm25_search("someuser", top_k=5)
+    results = bm25.bm25_search("someuser", top_k=5)
+    assert results and results[0]["path"].endswith("vic/AAPL/note.md")
 
 
 def test_body_text_is_not_indexed(vault):
@@ -48,9 +51,11 @@ def test_body_text_is_not_indexed(vault):
 
 def test_indexes_top_level_notes_too(vault):
     _write(vault, "plain.md", 'title: "Llama 2"\ntype: "paper"')
-    assert bm25.bm25_search("Llama", top_k=5)
+    results = bm25.bm25_search("Llama", top_k=5)
+    assert results and results[0]["path"].endswith("plain.md")
 
 
 def test_list_valued_keys_are_indexed(vault):
     _write(vault, "plain.md", 'title: "X"\nkeywords:\n  - retrieval\n  - agents')
-    assert bm25.bm25_search("retrieval", top_k=5)
+    results = bm25.bm25_search("retrieval", top_k=5)
+    assert results and results[0]["path"].endswith("plain.md")
