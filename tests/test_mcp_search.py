@@ -1,4 +1,8 @@
+import os
 import pytest
+import subprocess
+import sys
+from pathlib import Path
 
 import core.bm25_index as bm25
 import core.mcp_server as mcp
@@ -34,3 +38,20 @@ def test_search_does_not_embed(vault, monkeypatch):
 
     monkeypatch.setattr("core.embeddings.embed", boom)
     assert "Apple Inc." in mcp.search_vault_notes("AAPL", limit=5)
+
+
+def test_import_does_not_load_vector_store():
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(Path(__file__).parents[1])
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import sys; import core.mcp_server; assert 'core.vector_store' not in sys.modules",
+        ],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr

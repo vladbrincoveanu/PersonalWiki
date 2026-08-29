@@ -1,5 +1,6 @@
 import sys
 import os
+import logging
 from pathlib import Path
 
 # Ensure the parent directory is in sys.path so we can import from personalWiki modules
@@ -12,6 +13,7 @@ from config import VAULT_PATH
 from core.keywords_manager import load_manual_keywords
 from pathlib import Path
 
+_logger = logging.getLogger(__name__)
 _KEYWORDS_FILE = Path(VAULT_PATH) / "_keywords"
 
 # Create an MCP server named "personalWiki"
@@ -37,7 +39,8 @@ def search_vault_notes(query: str, limit: int = 5) -> str:
             path = r["path"]
             try:
                 metadata = frontmatter.load(path).metadata
-            except Exception:
+            except Exception as exc:
+                _logger.warning("Could not parse frontmatter for %s: %s", path, exc)
                 metadata = {}
             title = metadata.get("title") or metadata.get("company") or "Untitled"
 

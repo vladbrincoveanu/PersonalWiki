@@ -53,8 +53,12 @@ def _build_index() -> tuple[BM25Okapi, list[str], list[str]]:
             try:
                 post = frontmatter.load(md_file)
                 document = _key_document(post.metadata)
-            except Exception:
-                _logger.warning("Could not parse frontmatter for %s, skipping", md_file)
+            except Exception as exc:
+                _logger.warning(
+                    "Could not parse frontmatter for %s: %s; skipping",
+                    md_file,
+                    exc,
+                )
                 continue
             paths.append(str(md_file))
             corpus.append(document)
