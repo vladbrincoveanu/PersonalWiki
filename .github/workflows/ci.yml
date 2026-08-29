@@ -38,7 +38,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -r requirements.txt
+          python -m pip install -r requirements.txt pytest-cov
           python -m pip check
 
       - name: Compile Python sources
@@ -48,7 +48,49 @@ jobs:
         run: mkdir -p "$VAULT_PATH"
 
       - name: Run deterministic test suite
-        run: python -m pytest -q --disable-warnings -m "not integration and not slow" tests
+        run: |
+          mkdir -p artifacts
+          python -m pytest -q --disable-warnings \
+            --cov=app \
+            --cov=pipeline \
+            --cov=config \
+            --cov=core \
+            --cov=ingesters \
+            --cov=vault \
+            --cov=scripts \
+            --cov-report=term-missing \
+            --cov-report=xml:artifacts/python-coverage.xml \
+            --junitxml=artifacts/python-junit.xml \
+            -m "not integration and not slow" tests
+
+      - name: Upload Python diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: python-test-reports-${{ github.run_id }}
+          path: artifacts
+          if-no-files-found: ignore
+
+  quality:
+    name: Python static checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: '3.13'
+
+      - name: Install Ruff
+        run: python -m pip install ruff==0.16.5
+
+      - name: Check Python correctness
+        run: ruff check app.py pipeline.py config.py core ingesters vault scripts tests --select E9,F63,F7,F82
 
   extended:
     name: Extended model and integration tests
@@ -130,3 +172,24 @@ jobs:
       - name: Stop container
         if: always()
         run: docker compose down --remove-orphans
+
+  summary:
+    name: Required CI summary
+    if: always()
+    needs: [test, quality, docker]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Fail if a required job did not pass
+        env:
+          TEST: ${{ needs.test.result }}
+          QUALITY: ${{ needs.quality.result }}
+          DOCKER: ${{ needs.docker.result }}
+        run: |
+          set -eu
+          printf 'test=%s quality=%s docker=%s\n' "$TEST" "$QUALITY" "$DOCKER"
+          if [ "$TEST" != success ] || \
+             [ "$QUALITY" != success ] || \
+             [ "$DOCKER" != success ]; then
+            echo "::error::At least one required CI job failed or was skipped."
+            exit 1
+          fi

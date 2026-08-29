@@ -17,7 +17,7 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  python-audit:
+  python_audit:
     name: Python dependency audit
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -48,7 +48,7 @@ jobs:
           path: artifacts/pip-audit.json
           if-no-files-found: ignore
 
-  npm-audit:
+  npm_audit:
     name: npm dependency audit
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -76,3 +76,44 @@ jobs:
           name: npm-audit-report
           path: artifacts/npm-audit.json
           if-no-files-found: ignore
+
+  secret_scan:
+    name: Secret scan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Check out full history
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Scan repository for secrets
+        uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+  security_summary:
+    name: Security summary
+    if: always()
+    needs: [python_audit, npm_audit, secret_scan]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Fail if a security job did not pass
+        env:
+          PYTHON_AUDIT: ${{ needs.python_audit.result }}
+          NPM_AUDIT: ${{ needs.npm_audit.result }}
+          SECRET_SCAN: ${{ needs.secret_scan.result }}
+        run: |
+          set -eu
+          printf 'python_audit=%s npm_audit=%s secret_scan=%s\n' \
+            "$PYTHON_AUDIT" "$NPM_AUDIT" "$SECRET_SCAN"
+          if [ "$PYTHON_AUDIT" != success ] || \
+             [ "$NPM_AUDIT" != success ] || \
+             [ "$SECRET_SCAN" != success ]; then
+            echo "::error::At least one required security job failed or was skipped."
+            exit 1
+          fi
