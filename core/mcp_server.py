@@ -21,36 +21,35 @@ mcp = FastMCP("personalWiki")
 @mcp.tool()
 def search_vault_notes(query: str, limit: int = 5) -> str:
     """
-    Search the personalWiki hybrid vector/BM25/Graph knowledge base for notes.
-    Use this to find relevant notes based on semantic meaning or keywords.
+    Search vault note keys — title, ticker, company, author, date, type,
+    keywords and tags. Note bodies are not indexed.
     """
     try:
-        store = get_store()
-        results = store.hybrid_search(query, top_k=limit)
+        import frontmatter
+        from core.bm25_index import bm25_search
+
+        results = bm25_search(query, top_k=limit)
 
         if not results:
             return "No notes found matching the query."
 
-        # Simplify the results so LLM isn't flooded with raw vectors
         formatted_str = f"Found {len(results)} results:\n\n"
         for i, r in enumerate(results, 1):
-            path = r.get("path", "Unknown path")
-            score = r.get("score", 0.0)
-            metadata = r.get("metadata", {})
-            title = metadata.get("title", "Untitled")
+            path = r["path"]
+            try:
+                metadata = frontmatter.load(path).metadata
+            except Exception:
+                metadata = {}
+            title = metadata.get("title") or metadata.get("company") or "Untitled"
 
             formatted_str += f"{i}. {title}\n"
             formatted_str += f"   Path: {path}\n"
-            formatted_str += f"   Score: {score:.3f}\n"
-            if "summary" in metadata:
-                summary = metadata["summary"]
-                # trunc if needed, but since it's a short summary it should be fine
-                formatted_str += f"   Summary: {summary}\n"
+            formatted_str += f"   Score: {r['score']:.3f}\n"
             formatted_str += "\n"
 
         return formatted_str
     except Exception as e:
-        return f"Error during search: {e}"
+        return f"Search failed: {e}"
 
 @mcp.tool()
 def read_note_content(path: str) -> str:
