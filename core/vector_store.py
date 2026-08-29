@@ -28,14 +28,18 @@ def _parse_metadata(meta: str | dict) -> dict:
 
 _logger = logging.getLogger(__name__)
 
+# The configured BGE-small model and LanceDB schema both use 384 dimensions.
+# Keep startup and unit tests independent from a network model download; a model
+# change must update this contract and trigger the migration path explicitly.
+EMBEDDING_DIMENSION = 384
+
 SCHEMA = pa.schema([
     pa.field("path", pa.string()),
     pa.field("text", pa.string()),
-    pa.field("vector", pa.list_(pa.float32(), 384)),
+    pa.field("vector", pa.list_(pa.float32(), EMBEDDING_DIMENSION)),
     pa.field("links", pa.list_(pa.string())),
     pa.field("metadata", pa.string()),
 ])
-
 
 def _rrf_merge(
     ranked_lists: list[list[dict]],
@@ -106,8 +110,7 @@ class VectorStore:
         self._migrate_if_needed()
 
     def _migrate_if_needed(self):
-        from core.embeddings import embed
-        expected_dim = len(embed("test"))
+        expected_dim = EMBEDDING_DIMENSION
         for table_name, table, schema in [
             (TABLE_NAME, self._table, SCHEMA),
             (ENTITIES_TABLE, self._entities_table, ENTITIES_SCHEMA),
@@ -132,8 +135,7 @@ class VectorStore:
         _store = None
 
     def upsert(self, path: str, text: str, vector: list[float], links: list[str], metadata: dict):
-        from core.embeddings import embed
-        expected_dim = len(embed("test"))
+        expected_dim = EMBEDDING_DIMENSION
         if len(vector) != expected_dim:
             raise ValueError(f"Vector dimension must be {expected_dim}, got {len(vector)}")
         self._table.delete(f"path = '{_escape_path(path)}'")

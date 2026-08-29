@@ -1,0 +1,48 @@
+name: Free AI Code Review (DeepInfra)
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  pr_agent_job:
+    name: PR-Agent review
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout quality gate
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Run PR Agent
+        id: pr_agent
+        uses: qodo-ai/pr-agent@43276f98607d03459d40dc92632599faae2078c4 # main
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          DEEPINFRA.KEY: ${{ secrets.DEEPINFRA_TOKEN }}
+          CONFIG.MODEL: "deepinfra/deepseek-ai/DeepSeek-V4-Flash-0731"
+          CONFIG.CUSTOM_MODEL_MAX_TOKENS: "32000"
+          CONFIG.FALLBACK_MODELS: '["deepinfra/deepseek-ai/DeepSeek-V4-Flash-0731"]'
+          CONFIG.PROPAGATE_TOOL_ERRORS: "true"
+          PR_REVIEWER.EXTRA_INSTRUCTIONS: >-
+            Prefix every key_issues_to_review issue_header with exactly one
+            severity token: [critical], [high], [medium], or [low]. Use high or
+            critical only for concrete production risks such as data loss,
+            authentication bypass, secret exposure, remote code execution, or
+            duplicate external side effects. Use medium or low for bounded,
+            recoverable, migration-only, maintainability, or defensive issues.
+            For security_concerns, return exactly "No" when there is no concern;
+            otherwise describe the concern and fail the review.
+          github_action_config.handle_push_trigger: "true"
+          github_action_config.push_commands: '["/review"]'
+          github_action_config.enable_output: "true"
+
+      - name: Enforce PR-Agent findings
+        env:
+          PR_AGENT_REVIEW_JSON: ${{ steps.pr_agent.outputs.review }}
+        run: python scripts/check_pr_agent_review.py

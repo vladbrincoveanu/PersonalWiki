@@ -2,16 +2,15 @@ import json
 import tempfile
 from pathlib import Path
 from unittest.mock import patch
+import pytest
 from core.vector_store import VectorStore
 
-_embed_dim_cached = None
+VECTOR_DIMENSION = 384
+
 
 def _embed_dim():
-    global _embed_dim_cached
-    if _embed_dim_cached is None:
-        from core.embeddings import embed
-        _embed_dim_cached = len(embed("test"))
-    return _embed_dim_cached
+    """Use the schema contract; real model behavior has a dedicated slow test."""
+    return VECTOR_DIMENSION
 
 def make_store():
     tmp = tempfile.mkdtemp()
@@ -515,7 +514,15 @@ def test_hybrid_search_above_threshold(mock_store, sample_notes):
 
 # --- Fixtures ---
 
-import pytest
+
+@pytest.fixture(autouse=True)
+def mock_reranker(monkeypatch):
+    """Keep vector-store tests focused on fusion, not model downloads."""
+    class StubReranker:
+        def rerank(self, query, results, top_k=5):
+            return results[:top_k]
+
+    monkeypatch.setattr("core.reranker.CrossEncoderReranker", StubReranker)
 
 
 @pytest.fixture
@@ -576,6 +583,7 @@ def test_path_with_single_quote_no_injection():
     assert store.get_mtime(path) == 999.0
 
 
+@pytest.mark.slow
 def test_embed_insert_query_real(mock_store):
     """Real e2e: embed() → upsert() → search() with actual FastEmbed model."""
     from core.embeddings import embed

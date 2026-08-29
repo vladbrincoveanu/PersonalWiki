@@ -142,6 +142,7 @@ def test_enrich_handles_unexpected_response_shape(monkeypatch):
                 }
         return FakeResp()
 
+    monkeypatch.setattr("core.minimax_client.MINIMAX_API_KEY", "test-key")
     monkeypatch.setattr("requests.post", mock_post)
     result = enrich("raw text", [], "http://example.com")
     assert result.get("title") == "Test"

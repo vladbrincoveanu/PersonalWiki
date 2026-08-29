@@ -5,7 +5,8 @@ from unittest.mock import patch, MagicMock
 def test_extracts_keywords_from_note():
     from core.keyword_extractor import extract_keywords_from_note
 
-    with patch("core.keyword_extractor.requests.post") as mock_post:
+    with patch("core.keyword_extractor.MINIMAX_API_KEY", "test-key"), \
+         patch("core.keyword_extractor.requests.post") as mock_post:
         mock_post.return_value = MagicMock(
             json=lambda: {
                 "choices": [{
