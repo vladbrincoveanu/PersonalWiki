@@ -81,6 +81,9 @@ def bm25_search(query: str, top_k: int = 5) -> list[dict]:
     """
     Search the BM25 index.
     Returns list of {path, score, rank} sorted by BM25 descending.
+
+    A lexical overlap check keeps valid key matches whose raw BM25 score is
+    zero in a small corpus while excluding documents with no query tokens.
     """
     try:
         index, paths, corpus = ensure_index()

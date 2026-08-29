@@ -23,7 +23,8 @@ mcp = FastMCP("personalWiki")
 def search_vault_notes(query: str, limit: int = 5) -> str:
     """
     Search vault note keys — title, ticker, company, author, date, type,
-    keywords and tags. Note bodies are not indexed.
+    keywords and tags. Note bodies are not indexed. Scores are raw BM25
+    values; small corpora can produce non-positive scores for valid matches.
     """
     try:
         import frontmatter
