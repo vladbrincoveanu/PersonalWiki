@@ -87,6 +87,22 @@ def test_entity_search_preserves_punctuation_in_query_tokens():
     assert results[0]["entity_name"] == "C++"
 
 
+def test_entity_search_handles_apostrophes_in_query_tokens():
+    store = make_store()
+    store.upsert_entity(
+        "notes/oreilly.md",
+        "publisher",
+        "O'Reilly",
+        "Technical books",
+        {},
+    )
+
+    results = store.search_entities("O'Reilly", entity_type="publisher")
+
+    assert len(results) == 1
+    assert results[0]["entity_name"] == "O'Reilly"
+
+
 def test_wrong_vector_dimension_does_not_delete_existing_note():
     store = make_store()
     store.upsert("notes/t.md", "original", [0.1] * _embed_dim(), [], {"title": "Original"})

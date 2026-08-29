@@ -1,4 +1,5 @@
 import asyncio
+import time
 from io import BytesIO
 from unittest.mock import AsyncMock, MagicMock
 
@@ -73,6 +74,49 @@ def test_purge_expired_previews_removes_cached_file(tmp_path):
     finally:
         app._preview_cache.clear()
         app._preview_cache.update(previous)
+
+
+def test_force_purge_previews_removes_fresh_cached_files(tmp_path):
+    import app
+
+    previous = app._preview_cache.copy()
+    try:
+        app._preview_cache.clear()
+        fresh_file = tmp_path / "fresh.pdf"
+        fresh_file.write_bytes(b"fresh")
+        app._preview_cache["fresh"] = {
+            "tmp_path": str(fresh_file),
+            "created_at": time.time(),
+        }
+
+        assert app._purge_expired_previews(force=True) == 1
+        assert not fresh_file.exists()
+        assert app._preview_cache == {}
+    finally:
+        app._preview_cache.clear()
+        app._preview_cache.update(previous)
+
+
+def test_cleanup_queued_job_removes_pre_start_task_resources(tmp_path):
+    import app
+
+    previous = app._ingest_run_queues.copy()
+    try:
+        upload = tmp_path / "pending.pdf"
+        upload.write_bytes(b"pending")
+        app._ingest_run_queues["pending-job"] = (asyncio.Queue(), asyncio.Event())
+
+        app._cleanup_queued_job(
+            app._ingest_run_queues,
+            "pending-job",
+            str(upload),
+        )
+
+        assert "pending-job" not in app._ingest_run_queues
+        assert not upload.exists()
+    finally:
+        app._ingest_run_queues.clear()
+        app._ingest_run_queues.update(previous)
 
 
 @pytest.mark.asyncio

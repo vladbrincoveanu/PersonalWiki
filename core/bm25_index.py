@@ -17,9 +17,19 @@ _KEY_FIELDS = (
 )
 
 
+_TOKEN_RE = re.compile(r"[^\W]+(?:[-'_/+.#:][^\W]+)*[-+'#]*")
+_TOKEN_COMPONENT_RE = re.compile(r"[^\W]+")
+
+
 def _simple_tokenizer(text: str) -> list[str]:
-    """Normalize punctuation while preserving meaningful metadata values."""
-    return re.findall(r"[^\W]+(?:[-'_/+.#:][^\W]+)*[-+'#]*", text.casefold())
+    """Keep meaningful compounds and index their searchable components too."""
+    tokens: list[str] = []
+    for token in _TOKEN_RE.findall(text.casefold()):
+        tokens.append(token)
+        components = _TOKEN_COMPONENT_RE.findall(token)
+        if len(components) > 1:
+            tokens.extend(components)
+    return tokens
 
 
 _INDEX_TTL_SECONDS = 300  # 5 minutes

@@ -63,19 +63,32 @@ async def _save_upload(file: UploadFile) -> tuple[str, str]:
     return tmp.name, ext
 
 
-def _purge_expired_previews(now: float | None = None) -> int:
-    """Delete expired preview entries and their temporary files."""
+def _purge_expired_previews(now: float | None = None, *, force: bool = False) -> int:
+    """Delete expired preview entries, or all entries when force is true."""
     current_time = time.time() if now is None else now
     removed = 0
     for preview_id, preview in list(_preview_cache.items()):
-        try:
-            expired = current_time - float(preview.get("created_at", 0)) >= _PREVIEW_TTL
-        except (TypeError, ValueError):
+        if force:
             expired = True
-        if expired and _preview_cache.pop(preview_id, None) is not None:
+        else:
+            try:
+                expired = current_time - float(preview.get("created_at", 0)) >= _PREVIEW_TTL
+            except (TypeError, ValueError):
+                expired = True
+        if (force or expired) and _preview_cache.pop(preview_id, None) is not None:
             _remove_temp_file(preview.get("tmp_path"))
             removed += 1
     return removed
+
+
+def _cleanup_queued_job(
+    queues: dict[str, tuple[asyncio.Queue, asyncio.Event]],
+    job_id: str,
+    tmp_path: str | None,
+) -> None:
+    """Remove queue and upload resources, including for never-started tasks."""
+    queues.pop(job_id, None)
+    _remove_temp_file(tmp_path)
 
 
 async def _preview_cleanup_loop() -> None:
@@ -119,7 +132,7 @@ async def lifespan(app: FastAPI):
             await preview_cleanup_task
         except asyncio.CancelledError:
             pass
-        _purge_expired_previews()
+        _purge_expired_previews(force=True)
         if _doctor_scheduler:
             _doctor_scheduler.stop()
 
@@ -181,13 +194,14 @@ async def ingest(
         finally:
             await queue.put(None)  # Sentinel
             done_event.set()  # Signal stream() to exit and allow cleanup
-            _job_queues.pop(job_id, None)
-            _remove_temp_file(tmp_path)
+            _cleanup_queued_job(_job_queues, job_id, tmp_path)
 
     run_task = asyncio.create_task(_run())
     # A task cancelled before its first scheduling turn may not enter the
     # coroutine body, so keep cleanup reliable in that edge case too.
-    run_task.add_done_callback(lambda _task: _remove_temp_file(tmp_path))
+    run_task.add_done_callback(
+        lambda _task: _cleanup_queued_job(_job_queues, job_id, tmp_path)
+    )
 
     return {"job_id": job_id}
 
@@ -425,7 +439,7 @@ async def ingest_run(request: Request):
                     await queue.put("<p>Error: Unsupported file type</p>")
                     await queue.put(None)
                     done_event.set()
-                    _ingest_run_queues.pop(job_id, None)
+                    _cleanup_queued_job(_ingest_run_queues, job_id, None)
                     return
 
             async for msg in run_pipeline(**kwargs):
@@ -435,13 +449,19 @@ async def ingest_run(request: Request):
         finally:
             await queue.put(None)
             done_event.set()
-            _ingest_run_queues.pop(job_id, None)
-            if cached:
-                _remove_temp_file(cached.get("tmp_path"))
+            _cleanup_queued_job(
+                _ingest_run_queues,
+                job_id,
+                cached.get("tmp_path") if cached else None,
+            )
 
     run_task = asyncio.create_task(_run())
     run_task.add_done_callback(
-        lambda _task: _remove_temp_file(cached.get("tmp_path") if cached else None)
+        lambda _task: _cleanup_queued_job(
+            _ingest_run_queues,
+            job_id,
+            cached.get("tmp_path") if cached else None,
+        )
     )
     return {"job_id": job_id}
 

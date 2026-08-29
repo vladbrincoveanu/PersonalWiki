@@ -38,12 +38,13 @@ def _search_tokens(text: str) -> set[str]:
 
 
 def _escape_like(value: str) -> str:
-    """Escape SQL LIKE wildcards while retaining literal punctuation."""
+    """Escape a literal SQL LIKE value for LanceDB's string-only filter API."""
     return (
-        _escape_path(value)
+        value
         .replace("\\", "\\\\")
         .replace("%", "\\%")
         .replace("_", "\\_")
+        .replace("'", "''")
     )
 
 # The configured BGE-small model and LanceDB schema both use 384 dimensions.
