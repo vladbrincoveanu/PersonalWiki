@@ -208,7 +208,7 @@ async def trigger_discovery():
     """Trigger one discovery cycle immediately."""
     scheduler = await _get_scheduler()
     try:
-        asyncio.create_task(scheduler.trigger_cycle())
+        await scheduler.trigger_cycle()
         return {"status": "triggered"}
     except RuntimeError as e:
         raise HTTPException(status_code=400, detail=str(e))

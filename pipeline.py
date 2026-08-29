@@ -85,6 +85,26 @@ def _gate_enriched_content(note: dict, raw_text: str) -> tuple[bool, int, float]
     return True, prose_chars, prose_ratio
 
 
+def _merge_entities(*entity_groups: list[dict] | None) -> list[dict]:
+    """Merge entity sources while retaining image-derived entities first."""
+    merged: list[dict] = []
+    seen: set[str] = set()
+    for group in entity_groups:
+        if not isinstance(group, list):
+            continue
+        for entity in group:
+            if not isinstance(entity, dict):
+                continue
+            identity = entity.get("slug") or entity.get("name") or entity.get("entity_name")
+            key = str(identity).strip().casefold() if identity else ""
+            if key and key in seen:
+                continue
+            if key:
+                seen.add(key)
+            merged.append(entity)
+    return merged
+
+
 async def run_pipeline(
     url: str | None = None,
     pdf_path: str | None = None,
@@ -194,9 +214,11 @@ async def run_pipeline(
 
     # Step 3.5: Entity extraction
     yield "Extracting entities..."
-    note["entities"] = await asyncio.to_thread(
+    image_entities = note.get("entities") or []
+    text_entities = await asyncio.to_thread(
         extract_entities, raw_text, doc.content_type
     )
+    note["entities"] = _merge_entities(image_entities, text_entities)
 
     # Step 3.5a: Check entity status
     yield "Checking entity status..."

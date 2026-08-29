@@ -11,26 +11,27 @@ def _inject_keywords_section(body: str, keywords: list[str]) -> str:
     links = " · ".join(f"[[{kw}]]" for kw in keywords if kw.strip())
     if not links:
         return body
-    kw_section = f"\n## Keywords\n{links}\n"
 
-    if re.search(r"^## Keywords\s*$", body, re.MULTILINE):
-        return re.sub(
-            r"^## Keywords\s*$(\n(?:\[\[.*\]\]\s*(?:·\s*)?)*)?",
-            kw_section.strip(),
-            body,
-            flags=re.MULTILINE,
-        )
+    h2_pattern = r"^## (?!#)[^\n]*$"
+    existing = re.search(
+        rf"(?ms)^## Keywords[ \t]*\n.*?(?=^{h2_pattern[1:]}|\Z)",
+        body,
+    )
+    replacement = f"## Keywords\n{links}\n\n"
+    if existing:
+        return body[:existing.start()] + replacement + body[existing.end():]
 
-    lines = body.split("\n")
-    insert_at = None
-    for i, line in enumerate(lines):
-        if line.startswith("## ") and not line.startswith("###"):
-            insert_at = i + 1
-            break
-    if insert_at is not None:
-        lines.insert(insert_at, kw_section.strip())
-        return "\n".join(lines)
-    return body + kw_section
+    headings = list(re.finditer(h2_pattern, body, re.MULTILINE))
+    if headings:
+        # Insert after the first complete section, before the next H2. This
+        # keeps the new section out of the preceding heading's content.
+        insert_at = headings[1].start() if len(headings) > 1 else len(body)
+        before = body[:insert_at].rstrip("\n")
+        after = body[insert_at:].lstrip("\n")
+        suffix = f"\n\n## Keywords\n{links}\n\n"
+        return before + suffix + after
+
+    return body.rstrip("\n") + f"\n\n## Keywords\n{links}\n"
 
 
 def slugify(title: str) -> str:
