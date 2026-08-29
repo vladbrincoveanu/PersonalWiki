@@ -9,7 +9,6 @@ if str(project_root) not in sys.path:
 
 from mcp.server.fastmcp import FastMCP
 from config import VAULT_PATH
-from core.vector_store import get_store
 from core.keywords_manager import load_manual_keywords
 from pathlib import Path
 
@@ -93,6 +92,8 @@ def get_about_vlad() -> str:
     Includes projects, investments, ideas, preferences.
     """
     try:
+        from core.vector_store import get_store
+
         store = get_store()
         results = store.search_entities("Vlad projects investments preferences", top_k=10)
         if not results:
@@ -110,6 +111,8 @@ def get_project_context(project_name: str) -> str:
     Get all knowledge about a specific project by name.
     """
     try:
+        from core.vector_store import get_store
+
         store = get_store()
         results = store.search_entities(project_name, entity_type="project", top_k=5)
         if not results:
@@ -127,6 +130,8 @@ def get_recent(max_results: int = 5) -> str:
     Get recently indexed knowledge from the vault.
     """
     try:
+        from core.vector_store import get_store
+
         store = get_store()
         results = store.get_recent_notes(top_k=max_results)
         if not results:
