@@ -13,6 +13,7 @@
 .claude
 .codex
 .venv
+.ci-vault
 __pycache__
 *.py[cod]
 .pytest_cache

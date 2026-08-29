@@ -53,7 +53,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
-      VAULT_PATH: ${{ runner.temp }}/personalwiki-vault
+      VAULT_PATH: ${{ github.workspace }}/.ci-vault
     steps:
       - uses: actions/checkout@v4
 
