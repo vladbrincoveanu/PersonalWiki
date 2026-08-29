@@ -24,6 +24,13 @@ def test_finds_note_in_a_subdirectory(vault):
     assert results and results[0]["path"].endswith("vic/AAPL/note.md")
 
 
+def test_keeps_a_zero_idf_key_match(vault):
+    _write(vault, "aapl.md", 'ticker: "AAPL"')
+    _write(vault, "msft.md", 'ticker: "MSFT"')
+    results = bm25.bm25_search("AAPL", top_k=5)
+    assert results and results[0]["path"].endswith("aapl.md")
+
+
 def test_matches_on_company_key(vault):
     _write(vault, "vic/AAPL/note.md", 'ticker: "AAPL"\ncompany: "Apple Inc."')
     assert bm25.bm25_search("Apple", top_k=5)

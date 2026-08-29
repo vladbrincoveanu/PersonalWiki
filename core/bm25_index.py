@@ -86,12 +86,13 @@ def bm25_search(query: str, top_k: int = 5) -> list[dict]:
     if not paths:
         return []
     query_tokens = _simple_tokenizer(query)
+    query_token_set = set(query_tokens)
     scores = index.get_scores(query_tokens)
     # Pair paths with scores, sort descending
-    scored = sorted(zip(paths, scores), key=lambda x: x[1], reverse=True)
+    scored = sorted(zip(paths, scores, corpus), key=lambda x: x[1], reverse=True)
     results = []
-    for path, score in scored:
-        if score == 0.0:
+    for path, score, document in scored:
+        if not query_token_set.intersection(_simple_tokenizer(document)):
             continue
         if len(results) >= top_k:
             break
