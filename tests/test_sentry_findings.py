@@ -119,6 +119,22 @@ def test_cleanup_queued_job_removes_pre_start_task_resources(tmp_path):
         app._ingest_run_queues.update(previous)
 
 
+def test_completed_job_callback_retrieves_unexpected_task_exception():
+    import app
+
+    task = MagicMock()
+    task.cancelled.return_value = False
+    task.exception.return_value = RuntimeError("background failure")
+
+    with pytest.MonkeyPatch.context() as monkeypatch:
+        logger = MagicMock()
+        monkeypatch.setattr(app, "_logger", logger)
+        app._finalize_job_task(task, {}, "job-id", None)
+
+    task.exception.assert_called_once()
+    logger.error.assert_called_once()
+
+
 @pytest.mark.asyncio
 async def test_ingest_run_rejects_missing_preview_source():
     import app

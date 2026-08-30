@@ -7,7 +7,6 @@ from core.embeddings import embed
 from core.prose import measure_prose
 from core.vector_store import get_store
 from core.minimax_client import enrich, enrich_with_images, _MIN_CHUNK_SIZE
-from core.entity_extractor import extract_entities
 from core.gap_detector import detect_gaps
 from ingesters.router import extract, extract_pdf, extract_docx, extract_markdown
 from vault.writer import write_note
@@ -215,13 +214,9 @@ async def run_pipeline(
         yield f"Skipped: Content too thin (prose={prose_chars}, ratio={prose_ratio:.0%}, need ≥300 chars, ≥20%)"
         return
 
-    # Step 3.5: Entity extraction
-    yield "Extracting entities..."
-    image_entities = note.get("entities") or []
-    text_entities = await asyncio.to_thread(
-        extract_entities, raw_text, doc.content_type
-    )
-    note["entities"] = _merge_entities(image_entities, text_entities)
+    # Enrichment already extracts entities; normalize them without making a
+    # second LLM call through a separate provider-specific extractor.
+    note["entities"] = _merge_entities(note.get("entities"))
 
     # Step 3.5a: Check entity status
     yield "Checking entity status..."

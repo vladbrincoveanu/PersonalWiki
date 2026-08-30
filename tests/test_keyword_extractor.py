@@ -59,6 +59,17 @@ def test_extract_and_classify_some_new(tmp_path):
     assert "neural-networks" in result["new"]
 
 
+def test_extract_and_classify_is_case_insensitive(tmp_path):
+    from core.keyword_extractor import extract_and_classify
+
+    kws_file = tmp_path / "_keywords"
+    kws_file.write_text("python\n")
+    with patch("core.keyword_extractor.extract_keywords_from_note", return_value=["Python"]):
+        result = extract_and_classify("content", "Test", kws_file)
+
+    assert result == {"existing": ["Python"], "new": []}
+
+
 def test_extract_and_classify_empty_text(tmp_path):
     from core.keyword_extractor import extract_and_classify
     kws_file = tmp_path / "_keywords"

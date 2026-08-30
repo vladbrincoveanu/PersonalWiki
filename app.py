@@ -1,5 +1,6 @@
 # app.py
 import asyncio
+import logging
 import time
 import uuid
 import tempfile
@@ -17,6 +18,7 @@ from core.discovery_logger import get_discovery_logger as _get_dl_logger
 from core.keywords_manager import load_manual_keywords, add_keyword as _add_keyword
 from core.doctor_scheduler import DoctorScheduler
 
+_logger = logging.getLogger(__name__)
 _job_queues: dict[str, tuple[asyncio.Queue, asyncio.Event]] = {}
 _ingest_run_queues: dict[str, tuple[asyncio.Queue, asyncio.Event]] = {}
 _preview_cache: dict[str, dict] = {}
@@ -89,6 +91,25 @@ def _cleanup_queued_job(
     """Remove queue and upload resources, including for never-started tasks."""
     queues.pop(job_id, None)
     _remove_temp_file(tmp_path)
+
+
+def _finalize_job_task(
+    task: asyncio.Task,
+    queues: dict[str, tuple[asyncio.Queue, asyncio.Event]],
+    job_id: str,
+    tmp_path: str | None,
+) -> None:
+    """Clean up a completed job and retrieve unexpected task exceptions."""
+    _cleanup_queued_job(queues, job_id, tmp_path)
+    if task.cancelled():
+        return
+    exception = task.exception()
+    if exception is not None:
+        _logger.error(
+            "Background ingest job %s failed",
+            job_id,
+            exc_info=(type(exception), exception, exception.__traceback__),
+        )
 
 
 async def _preview_cleanup_loop() -> None:
@@ -200,7 +221,7 @@ async def ingest(
     # A task cancelled before its first scheduling turn may not enter the
     # coroutine body, so keep cleanup reliable in that edge case too.
     run_task.add_done_callback(
-        lambda _task: _cleanup_queued_job(_job_queues, job_id, tmp_path)
+        lambda task: _finalize_job_task(task, _job_queues, job_id, tmp_path)
     )
 
     return {"job_id": job_id}
@@ -457,7 +478,8 @@ async def ingest_run(request: Request):
 
     run_task = asyncio.create_task(_run())
     run_task.add_done_callback(
-        lambda _task: _cleanup_queued_job(
+        lambda task: _finalize_job_task(
+            task,
             _ingest_run_queues,
             job_id,
             cached.get("tmp_path") if cached else None,

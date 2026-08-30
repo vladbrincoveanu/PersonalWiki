@@ -88,3 +88,9 @@ def test_list_valued_keys_are_indexed(vault):
     _write(vault, "plain.md", 'title: "X"\nkeywords:\n  - retrieval\n  - agents')
     results = bm25.bm25_search("retrieval", top_k=5)
     assert results and results[0]["path"].endswith("plain.md")
+
+
+def test_custom_frontmatter_values_are_indexed(vault):
+    _write(vault, "custom.md", 'custom_field: "distinctive-value"')
+    results = bm25.bm25_search("distinctive-value", top_k=5)
+    assert results and results[0]["path"].endswith("custom.md")

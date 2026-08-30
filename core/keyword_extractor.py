@@ -37,11 +37,11 @@ def extract_and_classify(
     candidates = extract_keywords_from_note(title, raw_text)
     if not candidates:
         return {"existing": [], "new": []}
-    existing_keywords = _load_keywords(keywords_path)
+    existing_keywords = {keyword.casefold() for keyword in _load_keywords(keywords_path)}
     existing = []
     new = []
     for kw in candidates:
-        if kw in existing_keywords:
+        if kw.casefold() in existing_keywords:
             existing.append(kw)
         else:
             new.append(kw)

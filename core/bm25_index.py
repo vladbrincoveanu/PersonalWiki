@@ -48,7 +48,9 @@ _content_last_built: float = 0.0
 def _key_document(metadata: dict) -> str:
     """Flatten indexable frontmatter keys into one searchable string."""
     parts = []
-    for field in _KEY_FIELDS:
+    fields = list(_KEY_FIELDS)
+    fields.extend(field for field in metadata if field not in _KEY_FIELDS)
+    for field in fields:
         value = metadata.get(field)
         if value is None:
             continue
