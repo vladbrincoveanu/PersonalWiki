@@ -1,6 +1,4 @@
 """Daily discovery digest note writer."""
-from pathlib import Path
-
 from config import VAULT_PATH
 
 DISCOVERY_DIR = VAULT_PATH / "Discovery"

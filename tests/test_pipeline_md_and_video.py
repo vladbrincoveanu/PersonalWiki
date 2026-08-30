@@ -68,7 +68,7 @@ async def test_pipeline_md_file_creates_note():
         original_write_note = pipeline_module.write_note
         original_enrich = pipeline_module.enrich
 
-        def mock_write_note(note, source, images=(), entity_statuses=(), is_discovery=False, source_keyword=None):
+        def mock_write_note(note, source, images=(), entity_statuses=(), is_discovery=False, source_keyword=None, keywords=None):
             from vault.writer import slugify
             slug = slugify(note.get("title", "untitled"))
             filepath = notes_dir / f"{slug}.md"
@@ -188,7 +188,8 @@ async def test_pipeline_video_uses_semantic_chunking():
         with patch.object(pipeline_module, 'get_store', return_value=mock_store), \
              patch.object(pipeline_module, 'embed', return_value=[0.1] * 384), \
              patch.object(minimax_client, 'semantic_chunk', mock_semantic_chunk), \
-             patch.object(minimax_client, 'enrich_video_synthesis', mock_enrich_video_synthesis):
+             patch.object(minimax_client, 'enrich_video_synthesis', mock_enrich_video_synthesis), \
+             patch.object(pipeline_module, 'write_note', return_value='/vault/notes/video-test.md'):
             messages = []
             async for msg in run_pipeline(url="https://youtube.com/watch?v=abc123DEF12"):
                 messages.append(msg)

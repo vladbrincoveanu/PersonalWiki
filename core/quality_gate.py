@@ -5,7 +5,7 @@ import requests
 
 _logger = logging.getLogger(__name__)
 
-_ERROR_SIGNALS = ["[PAYWALLED]", "[PAYWALL]", "[SUBSCRIPTION REQUIRED]", "404", "Page not found", "[BLOCKED]"]
+_ERROR_SIGNALS = ["[PAYWALLED]", "[PAYWALL]", "[SUBSCRIPTION REQUIRED]", "404", "Page not found", "[BLOCKED]", "[NO_TRANSCRIPT]", "[NO_TWEET]"]
 _MIN_ARTICLE_CHARS = 500
 _MIN_VIDEO_WORDS = 200
 

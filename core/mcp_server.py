@@ -1,5 +1,6 @@
 import sys
 import os
+import logging
 from pathlib import Path
 
 # Ensure the parent directory is in sys.path so we can import from personalWiki modules
@@ -9,10 +10,10 @@ if str(project_root) not in sys.path:
 
 from mcp.server.fastmcp import FastMCP
 from config import VAULT_PATH
-from core.vector_store import get_store
 from core.keywords_manager import load_manual_keywords
 from pathlib import Path
 
+_logger = logging.getLogger(__name__)
 _KEYWORDS_FILE = Path(VAULT_PATH) / "_keywords"
 
 # Create an MCP server named "personalWiki"
@@ -21,36 +22,37 @@ mcp = FastMCP("personalWiki")
 @mcp.tool()
 def search_vault_notes(query: str, limit: int = 5) -> str:
     """
-    Search the personalWiki hybrid vector/BM25/Graph knowledge base for notes.
-    Use this to find relevant notes based on semantic meaning or keywords.
+    Search vault note keys — title, ticker, company, author, date, type,
+    keywords and tags. Note bodies are not indexed. Scores are raw BM25
+    values; small corpora can produce non-positive scores for valid matches.
     """
     try:
-        store = get_store()
-        results = store.hybrid_search(query, top_k=limit)
+        import frontmatter
+        from core.bm25_index import bm25_search
+
+        results = bm25_search(query, top_k=limit)
 
         if not results:
             return "No notes found matching the query."
 
-        # Simplify the results so LLM isn't flooded with raw vectors
         formatted_str = f"Found {len(results)} results:\n\n"
         for i, r in enumerate(results, 1):
-            path = r.get("path", "Unknown path")
-            score = r.get("score", 0.0)
-            metadata = r.get("metadata", {})
-            title = metadata.get("title", "Untitled")
+            path = r["path"]
+            try:
+                metadata = frontmatter.load(path).metadata
+            except Exception as exc:
+                _logger.warning("Could not parse frontmatter for %s: %s", path, exc)
+                metadata = {}
+            title = metadata.get("title") or metadata.get("company") or "Untitled"
 
             formatted_str += f"{i}. {title}\n"
             formatted_str += f"   Path: {path}\n"
-            formatted_str += f"   Score: {score:.3f}\n"
-            if "summary" in metadata:
-                summary = metadata["summary"]
-                # trunc if needed, but since it's a short summary it should be fine
-                formatted_str += f"   Summary: {summary}\n"
+            formatted_str += f"   Score: {r['score']:.3f}\n"
             formatted_str += "\n"
 
         return formatted_str
     except Exception as e:
-        return f"Error during search: {e}"
+        return f"Search failed: {e}"
 
 @mcp.tool()
 def read_note_content(path: str) -> str:
@@ -86,6 +88,65 @@ def get_vault_graph_interests() -> str:
         return f"Active keywords:\n{', '.join(keywords)}"
     except Exception as e:
         return f"Error reading keywords: {e}"
+
+@mcp.tool()
+def get_about_vlad() -> str:
+    """
+    Get structured summary of what the LLM knows about Vlad.
+    Includes projects, investments, ideas, preferences.
+    """
+    try:
+        from core.vector_store import get_store
+
+        store = get_store()
+        results = store.search_entities("Vlad projects investments preferences", top_k=10)
+        if not results:
+            return "No personal context found."
+        formatted = "About Vlad:\n\n"
+        for r in results:
+            formatted += f"- [{r.get('entity_type','unknown')}] {r.get('entity_name','?')}: {r.get('summary','')[:200]}\n"
+        return formatted
+    except Exception as e:
+        return f"Error: {e}"
+
+@mcp.tool()
+def get_project_context(project_name: str) -> str:
+    """
+    Get all knowledge about a specific project by name.
+    """
+    try:
+        from core.vector_store import get_store
+
+        store = get_store()
+        results = store.search_entities(project_name, entity_type="project", top_k=5)
+        if not results:
+            return f"No project found matching '{project_name}'."
+        formatted = f"Project: {project_name}\n\n"
+        for r in results:
+            formatted += f"{r.get('summary','')[:500]}\n\n"
+        return formatted
+    except Exception as e:
+        return f"Error: {e}"
+
+@mcp.tool()
+def get_recent(max_results: int = 5) -> str:
+    """
+    Get recently indexed knowledge from the vault.
+    """
+    try:
+        from core.vector_store import get_store
+
+        store = get_store()
+        results = store.get_recent_notes(top_k=max_results)
+        if not results:
+            return "No recent notes found."
+        formatted = f"Recent {len(results)} notes:\n\n"
+        for r in results:
+            title = r.get("metadata", {}).get("title", "Untitled")
+            formatted += f"- {title}\n"
+        return formatted
+    except Exception as e:
+        return f"Error: {e}"
 
 if __name__ == "__main__":
     # Start the MCP server using stdio transport (the default for FastMCP run)

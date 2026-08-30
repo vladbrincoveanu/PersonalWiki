@@ -1,7 +1,7 @@
 from fastembed import TextEmbedding
 from config import EMBED_MODEL
 
-_model: TextEmbedding | None = None
+_model: "TextEmbedding | None" = None
 
 
 def _get_model() -> TextEmbedding:

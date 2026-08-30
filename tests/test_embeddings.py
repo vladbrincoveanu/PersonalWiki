@@ -1,4 +1,9 @@
+import pytest
+
 from core.embeddings import embed
+
+
+pytestmark = pytest.mark.slow
 
 
 def test_embed_returns_list_of_floats():

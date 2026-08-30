@@ -267,7 +267,7 @@ def test_youtube_transcript_api_manually_created(monkeypatch):
             self.language_code = language_code
             self.is_generated = is_generated
         def fetch(self):
-            return [{"text": s.text} for s in self._snippets]
+            return self._snippets  # Return list of FakeSnippet objects (attribute access)
 
     class FakeTranscriptList:
         def __init__(self, transcripts):
@@ -293,6 +293,30 @@ def test_youtube_transcript_api_manually_created(monkeypatch):
     assert fake_api_calls == ["abc123DEF12"]
 
 
+def test_youtube_transcript_api_accepts_dictionary_snippets(monkeypatch):
+    """Pinned youtube-transcript-api versions return dictionaries from fetch()."""
+    import ingesters.youtube as yt
+
+    class FakeTranscript:
+        language_code = "en"
+        is_generated = False
+
+        def fetch(self):
+            return [{"text": "Hello"}, {"text": "from dictionaries"}]
+
+    class FakeTranscriptList:
+        def __iter__(self):
+            return iter([FakeTranscript()])
+
+    class FakeYTT:
+        def list(self, video_id):
+            return FakeTranscriptList()
+
+    monkeypatch.setattr("ingesters.youtube.YouTubeTranscriptApi", FakeYTT)
+
+    assert yt._try_youtube_transcript_api("abc123DEF12") == "Hello from dictionaries"
+
+
 def test_youtube_transcript_api_auto_generated(monkeypatch):
     """No manually-created, falls back to auto-generated."""
     import ingesters.youtube as yt
@@ -307,7 +331,7 @@ def test_youtube_transcript_api_auto_generated(monkeypatch):
             self.language_code = language_code
             self.is_generated = is_generated
         def fetch(self):
-            return [{"text": s.text} for s in self._snippets]
+            return self._snippets  # Return list of FakeSnippet objects (attribute access)
 
     class FakeTranscriptList:
         def __init__(self, transcripts):

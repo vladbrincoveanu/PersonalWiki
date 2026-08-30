@@ -1,9 +1,20 @@
 import json
+import re
 from pathlib import Path
 import lancedb
+import logging
 import pyarrow as pa
 
 TABLE_NAME = "notes"
+ENTITIES_TABLE = "personal_entities"
+
+ENTITIES_SCHEMA = pa.schema([
+    pa.field("path", pa.string()),
+    pa.field("entity_type", pa.string()),
+    pa.field("entity_name", pa.string()),
+    pa.field("summary", pa.string()),
+    pa.field("metadata", pa.string()),
+])
 
 
 def _escape_path(p: str) -> str:
@@ -16,14 +27,38 @@ def _parse_metadata(meta: str | dict) -> dict:
     return json.loads(meta) if isinstance(meta, str) else meta
 
 
+_logger = logging.getLogger(__name__)
+
+_SEARCH_TOKEN_RE = re.compile(r"[^\W]+(?:[-'_/+.#:][^\W]+)*[-+'#]*")
+
+
+def _search_tokens(text: str) -> set[str]:
+    """Tokenize entity text consistently for coarse and exact matching."""
+    return set(_SEARCH_TOKEN_RE.findall(text.casefold()))
+
+
+def _escape_like(value: str) -> str:
+    """Escape a literal SQL LIKE value for LanceDB's string-only filter API."""
+    return (
+        value
+        .replace("\\", "\\\\")
+        .replace("%", "\\%")
+        .replace("_", "\\_")
+        .replace("'", "''")
+    )
+
+# The configured BGE-small model and LanceDB schema both use 384 dimensions.
+# Keep startup and unit tests independent from a network model download; a model
+# change must update this contract and trigger the migration path explicitly.
+EMBEDDING_DIMENSION = 384
+
 SCHEMA = pa.schema([
     pa.field("path", pa.string()),
     pa.field("text", pa.string()),
-    pa.field("vector", pa.list_(pa.float32(), 384)),
+    pa.field("vector", pa.list_(pa.float32(), EMBEDDING_DIMENSION)),
     pa.field("links", pa.list_(pa.string())),
     pa.field("metadata", pa.string()),
 ])
-
 
 def _rrf_merge(
     ranked_lists: list[list[dict]],
@@ -71,15 +106,59 @@ def _rrf_merge(
     ]
 
 
+def _detect_table_dim(table) -> int:
+    """Read vector field dimension from an open LanceDB table schema."""
+    schema = table.schema
+    vector_field = schema.field("vector")
+    return vector_field.type.list_size
+
+
 class VectorStore:
     def __init__(self, index_path: str | Path):
+        self._migration_required = False
         self._db = lancedb.connect(str(index_path))
         if TABLE_NAME not in self._db.table_names():
             self._table = self._db.create_table(TABLE_NAME, schema=SCHEMA)
         else:
             self._table = self._db.open_table(TABLE_NAME)
 
+        if ENTITIES_TABLE not in self._db.table_names():
+            self._entities_table = self._db.create_table(ENTITIES_TABLE, schema=ENTITIES_SCHEMA)
+        else:
+            self._entities_table = self._db.open_table(ENTITIES_TABLE)
+
+        self._migrate_if_needed()
+
+    def _migrate_if_needed(self):
+        try:
+            actual_dim = _detect_table_dim(self._table)
+        except Exception as e:
+            self._migration_required = True
+            _logger.error("Cannot validate the notes index schema; refusing writes: %s", e)
+            return
+
+        if actual_dim != EMBEDDING_DIMENSION:
+            self._migration_required = True
+            _logger.error(
+                "Notes index is %sd but the current embedding contract is %sd; "
+                "leaving the existing table intact. Rebuild the index explicitly "
+                "from the source notes before writing new vectors.",
+                actual_dim,
+                EMBEDDING_DIMENSION,
+            )
+
+    def _require_current_schema(self) -> None:
+        if getattr(self, "_migration_required", False):
+            raise RuntimeError(
+                "The notes index schema does not match the embedding contract; "
+                "rebuild the index explicitly before searching or writing."
+            )
+
     def upsert(self, path: str, text: str, vector: list[float], links: list[str], metadata: dict):
+        expected_dim = EMBEDDING_DIMENSION
+        if len(vector) != expected_dim:
+            raise ValueError(f"Vector dimension must be {expected_dim}, got {len(vector)}")
+        self._require_current_schema()
         self._table.delete(f"path = '{_escape_path(path)}'")
         self._table.add([{
             "path": path,
@@ -98,6 +177,7 @@ class VectorStore:
             return False
 
     def search(self, vector: list[float], top_k: int = 3) -> list[dict]:
+        self._require_current_schema()
         rows = self._table.search([float(v) for v in vector]).limit(top_k).to_list()
         results = []
         for row in rows:
@@ -135,21 +215,88 @@ class VectorStore:
         meta = _parse_metadata(rows[0].get("metadata", "{}"))
         return float(meta.get("_mtime", 0.0))
 
+    def upsert_entity(self, path: str, entity_type: str, entity_name: str, summary: str, metadata: dict):
+        try:
+            self._entities_table.delete(
+                f"path = '{_escape_path(path)}' AND "
+                f"entity_name = '{_escape_path(entity_name)}'"
+            )
+        except Exception:
+            pass
+        self._entities_table.add([{
+            "path": path,
+            "entity_type": entity_type,
+            "entity_name": entity_name,
+            "summary": summary,
+            "metadata": json.dumps(metadata),
+        }])
+
+    def search_entities(self, query: str, entity_type: str | None = None, top_k: int = 5) -> list[dict]:
+        """Search entity names and summaries without requiring an embedding column."""
+        query_tokens = _search_tokens(query)
+        if not query_tokens:
+            return []
+
+        # Push coarse matching into LanceDB and cap candidates before Python
+        # scoring so a large entity table is never fully materialized.
+        safe_tokens = sorted(query_tokens)
+        token_clauses = [
+            "(lower(entity_name) LIKE '%{0}%' ESCAPE '\\' OR "
+            "lower(summary) LIKE '%{0}%' ESCAPE '\\' OR "
+            "lower(metadata) LIKE '%{0}%' ESCAPE '\\')".format(
+                _escape_like(token)
+            )
+            for token in safe_tokens
+        ]
+        where = " OR ".join(token_clauses)
+        if entity_type:
+            where = f"entity_type = '{_escape_path(entity_type)}' AND ({where})"
+        candidate_limit = max(top_k * 20, 100)
+
+        scored: list[tuple[int, dict]] = []
+        for row in self._entities_table.search().where(where).limit(candidate_limit).to_list():
+            metadata = _parse_metadata(row.get("metadata", "{}"))
+            name_tokens = _search_tokens(str(row.get("entity_name", "")))
+            searchable = " ".join([
+                str(row.get("entity_name", "")),
+                str(row.get("summary", "")),
+                json.dumps(metadata),
+            ])
+            searchable_tokens = _search_tokens(searchable)
+            overlap = query_tokens.intersection(searchable_tokens)
+            if not overlap:
+                continue
+            score = sum(2 if token in name_tokens else 1 for token in overlap)
+            row["metadata"] = metadata
+            scored.append((score, row))
+
+        scored.sort(key=lambda item: (-item[0], item[1].get("entity_name", "")))
+        return [row for _, row in scored[:top_k]]
+
+    def get_recent_notes(self, top_k: int = 5) -> list[dict]:
+        """Return notes sorted by _indexed_at timestamp descending."""
+        all_rows = self._table.to_list()
+        sorted_rows = sorted(
+            all_rows,
+            key=lambda r: _parse_metadata(r.get("metadata", "{}")).get("_indexed_at", 0),
+            reverse=True
+        )
+        return [{"path": r["path"], "metadata": _parse_metadata(r.get("metadata", "{}"))} for r in sorted_rows[:top_k]]
+
     def hybrid_search(self, query: str, top_k: int = 5, min_score: float = 0.001) -> list[dict]:
         """
         Unified search across vector, BM25, and graph hop streams via RRF.
         Returns list of {path, score, rank, metadata} sorted by RRF score descending.
         """
         from core.embeddings import embed
-        from core.bm25_index import ensure_index, bm25_search
+        from core.bm25_index import bm25_search
 
         # Vector stream: embed + search with doubled top_k for headroom
         query_vector = embed(query)
         vector_results = self.search(query_vector, top_k=top_k * 2)
 
         # BM25 stream
-        ensure_index()
-        bm25_results = bm25_search(query, top_k=top_k * 2)
+        bm25_results = bm25_search(query, top_k=top_k * 2, include_body=True)
 
         # Graph hops from vector results
         vector_paths = [r["path"] for r in vector_results]

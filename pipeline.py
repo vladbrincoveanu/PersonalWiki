@@ -1,12 +1,12 @@
 import asyncio
-import os
+import time
 from pathlib import Path
 from typing import AsyncGenerator
 from config import TOP_K_SIMILAR, MAX_EMBED_CHARS
 from core.embeddings import embed
 from core.prose import measure_prose
 from core.vector_store import get_store
-from core.minimax_client import enrich, _MIN_CHUNK_SIZE
+from core.minimax_client import enrich, enrich_with_images, _MIN_CHUNK_SIZE
 from core.gap_detector import detect_gaps
 from ingesters.router import extract, extract_pdf, extract_docx, extract_markdown
 from vault.writer import write_note
@@ -84,6 +84,26 @@ def _gate_enriched_content(note: dict, raw_text: str) -> tuple[bool, int, float]
     return True, prose_chars, prose_ratio
 
 
+def _merge_entities(*entity_groups: list[dict] | None) -> list[dict]:
+    """Merge entity sources while retaining image-derived entities first."""
+    merged: list[dict] = []
+    seen: set[str] = set()
+    for group in entity_groups:
+        if not isinstance(group, list):
+            continue
+        for entity in group:
+            if not isinstance(entity, dict):
+                continue
+            identity = entity.get("slug") or entity.get("name") or entity.get("entity_name")
+            key = str(identity).strip().casefold() if identity else ""
+            if key and key in seen:
+                continue
+            if key:
+                seen.add(key)
+            merged.append(entity)
+    return merged
+
+
 async def run_pipeline(
     url: str | None = None,
     pdf_path: str | None = None,
@@ -92,9 +112,13 @@ async def run_pipeline(
     txt_path: str | None = None,
     is_discovery: bool = False,
     source_keyword: str | None = None,
+    keywords: list[str] | None = None,
 ) -> AsyncGenerator[str, None]:
     import logging
     _logger = logging.getLogger(__name__)
+    if not any((url, pdf_path, docx_path, md_path, txt_path)):
+        raise ValueError("A content source is required (url or file path).")
+
     store = get_store()
     source = url or pdf_path or docx_path or md_path or txt_path
 
@@ -179,13 +203,20 @@ async def run_pipeline(
         note = await asyncio.to_thread(enrich, raw_text, similar_titles, source)
     else:
         # Article / paper: direct enrich
-        note = await asyncio.to_thread(enrich, raw_text, similar_titles, source)
+        if images:
+            note = await asyncio.to_thread(enrich_with_images, raw_text, similar_titles, source, images)
+        else:
+            note = await asyncio.to_thread(enrich, raw_text, similar_titles, source)
 
     # Step 3.1: Pre-write content quality gate — reject thin/noise-heavy enriched content
     gate_pass, prose_chars, prose_ratio = _gate_enriched_content(note, raw_text)
     if not gate_pass:
         yield f"Skipped: Content too thin (prose={prose_chars}, ratio={prose_ratio:.0%}, need ≥300 chars, ≥20%)"
         return
+
+    # Enrichment already extracts entities; normalize them without making a
+    # second LLM call through a separate provider-specific extractor.
+    note["entities"] = _merge_entities(note.get("entities"))
 
     # Step 3.5a: Check entity status
     yield "Checking entity status..."
@@ -208,12 +239,14 @@ async def run_pipeline(
     path = write_note(
         note, source=source, images=images, entity_statuses=entity_statuses,
         is_discovery=is_discovery, source_keyword=source_keyword,
+        keywords=keywords,
     )
 
     # Step 5: Index
     yield "Indexing..."
     index_meta = {k: v for k, v in note.items() if k != "raw_text"}
     index_meta["_file_path"] = path
+    index_meta["_indexed_at"] = time.time()
     store.upsert(
         path=source,
         text=raw_text,
@@ -221,6 +254,20 @@ async def run_pipeline(
         links=note.get("cross_links", []),
         metadata=index_meta,
     )
+
+    for entity in note.get("entities") or []:
+        if not isinstance(entity, dict):
+            continue
+        entity_name = entity.get("entity_name") or entity.get("name")
+        if not entity_name:
+            continue
+        store.upsert_entity(
+            path=path,
+            entity_type=entity.get("entity_type") or entity.get("type") or "other",
+            entity_name=str(entity_name),
+            summary=str(entity.get("summary") or ""),
+            metadata=entity.get("metadata") if isinstance(entity.get("metadata"), dict) else {},
+        )
 
     stem = Path(path).name
     yield f"Saved -> notes/{stem}"

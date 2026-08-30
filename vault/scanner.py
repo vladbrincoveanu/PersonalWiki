@@ -1,5 +1,4 @@
 import re
-from pathlib import Path
 import frontmatter
 from config import NOTES_DIR
 from core.embeddings import embed
@@ -26,6 +25,13 @@ def scan_vault() -> int:
 
         post = frontmatter.load(md_file)
         full_text = frontmatter.dumps(post)
+
+        title = post.metadata.get("title", "")
+        if isinstance(title, str) and ("[NO_TRANSCRIPT]" in title or "[NO_TWEET]" in title):
+            continue
+        if "[NO_TRANSCRIPT]" in full_text or "[NO_TWEET]" in full_text:
+            continue
+
         links = parse_wikilinks(full_text)
         metadata = dict(post.metadata)
         metadata["_mtime"] = file_mtime

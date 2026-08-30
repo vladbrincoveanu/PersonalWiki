@@ -1,21 +1,37 @@
 import re
 from collections.abc import Sequence
 from datetime import date
-from pathlib import Path
 import frontmatter
 from config import NOTES_DIR, VAULT_PATH
 from vault.entity_status import _build_prose
 
 
-_VALID_TAG_RE = re.compile(r"^[a-z0-9_-]{2,30}$")
+def _inject_keywords_section(body: str, keywords: list[str]) -> str:
+    """Add a ## Keywords section with [[wikilink]] references."""
+    links = " · ".join(f"[[{kw}]]" for kw in keywords if kw.strip())
+    if not links:
+        return body
 
+    h2_pattern = r"^## (?!#)[^\n]*$"
+    existing = re.search(
+        rf"(?ms)^## Keywords[ \t]*\n.*?(?=^{h2_pattern[1:]}|\Z)",
+        body,
+    )
+    replacement = f"## Keywords\n{links}\n\n"
+    if existing:
+        return body[:existing.start()] + replacement + body[existing.end():]
 
-def _clean_tag(tag: str) -> str | None:
-    """Return a valid Obsidian tag string, or None if the tag is invalid."""
-    tag = tag.strip().lower().lstrip("#")
-    if _VALID_TAG_RE.match(tag):
-        return tag
-    return None
+    headings = list(re.finditer(h2_pattern, body, re.MULTILINE))
+    if headings:
+        # Insert after the first complete section, before the next H2. This
+        # keeps the new section out of the preceding heading's content.
+        insert_at = headings[1].start() if len(headings) > 1 else len(body)
+        before = body[:insert_at].rstrip("\n")
+        after = body[insert_at:].lstrip("\n")
+        suffix = f"\n\n## Keywords\n{links}\n\n"
+        return before + suffix + after
+
+    return body.rstrip("\n") + f"\n\n## Keywords\n{links}\n"
 
 
 def slugify(title: str) -> str:
@@ -278,6 +294,7 @@ def write_note(
     entity_statuses: list[dict] = (),
     is_discovery: bool = False,
     source_keyword: str | None = None,
+    keywords: list[str] | None = None,
 ) -> str:
     # Discovered notes go to notes/discovered/, others to notes/
     if is_discovery:
@@ -302,7 +319,7 @@ def write_note(
         "title": title,
         "source": source,
         "type": note.get("type", "article"),
-        "tags": [t for raw in (note.get("tags") or []) if (t := _clean_tag(raw))],
+        "keywords": keywords or [],
         "ingested": ingested_date,
     }
     if is_discovery:
@@ -319,6 +336,8 @@ def write_note(
         )
 
     body = _build_body(note, entity_statuses=entity_statuses)
+    if keywords:
+        body = _inject_keywords_section(body, keywords)
     if is_discovery:
         body = body.rstrip() + "\n\n#auto-discovery\n"
 

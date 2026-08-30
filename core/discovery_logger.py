@@ -111,8 +111,12 @@ class DiscoveryLogger:
         status: EventStatus,
         error: str | None = None,
     ) -> None:
-        """Record a new discovery event."""
+        """Record a new discovery event. Skips if URL already has a pending event."""
         with self._lock:
+            if status == "enqueued":
+                for e in reversed(self._events):
+                    if e.get("url") == url and e.get("status") == "enqueued":
+                        return
             event = DiscoveryEvent(
                 url=url,
                 title=title,
@@ -166,6 +170,15 @@ class DiscoveryLogger:
             "queue_depth": sum(1 for e in events if get_status(e) == "enqueued"),
             "last_cycle_at": events[-1]["discovered_at"] if events else None,
         }
+
+    def clear(self) -> None:
+        """Clear all events from memory and disk."""
+        with self._lock:
+            self._events.clear()
+            try:
+                _LOG_FILE.write_text("[]", encoding="utf-8")
+            except Exception:
+                pass
 
 
 # Singleton instance

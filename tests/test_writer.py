@@ -44,7 +44,6 @@ def test_write_note_frontmatter_correct():
     note = {
         "title": "Test Article",
         "type": "article",
-        "tags": ["ai"],
         "summary": "Summary here.",
         "key_facts": ["Fact"],
         "cross_links": [],
@@ -56,13 +55,14 @@ def test_write_note_frontmatter_correct():
         notes_dir.mkdir()
         with patch("vault.writer.NOTES_DIR", notes_dir):
             path = write_note(
-                note, source="https://example.com", ingested_date="2026-04-10"
+                note, source="https://example.com", ingested_date="2026-04-10",
+                keywords=["ai"],
             )
 
         post = frontmatter.load(path)
         assert post.metadata["title"] == "Test Article"
         assert post.metadata["type"] == "article"
-        assert "ai" in post.metadata["tags"]
+        assert "ai" in post.metadata["keywords"]
         assert post.metadata["source"] == "https://example.com"
 
 
@@ -487,6 +487,71 @@ def test_write_note_source_keyword_in_frontmatter():
 
         post = frontmatter.load(path)
         assert post.metadata.get("source_keyword") == "machine learning"
+
+
+def test_write_note_injects_keywords_frontmatter():
+    note = {
+        "title": "Test Keywords",
+        "type": "article",
+        "summary": "A test summary.",
+        "key_facts": [],
+        "cross_links": [],
+        "raw_text": "Some content.",
+    }
+    with tempfile.TemporaryDirectory() as tmp:
+        notes_dir = Path(tmp) / "notes"
+        notes_dir.mkdir()
+        with patch("vault.writer.NOTES_DIR", notes_dir):
+            path = write_note(
+                note,
+                source="https://example.com",
+                keywords=["python", "testing"],
+            )
+        post = frontmatter.load(path)
+        assert "python" in post.metadata["keywords"]
+        assert "testing" in post.metadata["keywords"]
+
+
+def test_write_note_injects_keywords_wikilinks():
+    note = {
+        "title": "Wikilink Test",
+        "type": "article",
+        "summary": "A note about things.",
+        "key_facts": [],
+        "cross_links": [],
+        "raw_text": "Some content.",
+    }
+    with tempfile.TemporaryDirectory() as tmp:
+        notes_dir = Path(tmp) / "notes"
+        notes_dir.mkdir()
+        with patch("vault.writer.NOTES_DIR", notes_dir):
+            path = write_note(
+                note,
+                source="https://example.com",
+                keywords=["python", "testing"],
+            )
+        content = Path(path).read_text()
+        assert "[[python]]" in content
+        assert "[[testing]]" in content
+        assert "## Keywords" in content
+
+
+def test_write_note_no_keywords_empty_frontmatter():
+    note = {
+        "title": "No Keywords",
+        "type": "article",
+        "summary": "Just a note.",
+        "key_facts": [],
+        "cross_links": [],
+        "raw_text": "Some content.",
+    }
+    with tempfile.TemporaryDirectory() as tmp:
+        notes_dir = Path(tmp) / "notes"
+        notes_dir.mkdir()
+        with patch("vault.writer.NOTES_DIR", notes_dir):
+            path = write_note(note, source="https://example.com")
+        post = frontmatter.load(path)
+        assert post.metadata["keywords"] == []
 
 
 def test_write_note_source_keyword_omitted_no_frontmatter_key():

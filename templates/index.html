@@ -513,51 +513,53 @@
         }
 
         .discovery-feed {
-          max-height: 300px;
+          max-height: 350px;
           overflow-y: auto;
         }
 
-        .discovery-item {
-          display: flex;
-          align-items: flex-start;
-          gap: 0.5rem;
-          padding: 0.4rem 0;
+        .discovery-table {
+          width: 100%;
+          border-collapse: collapse;
+          font-size: 0.75rem;
+        }
+
+        .discovery-table th {
+          text-align: left;
+          padding: 0.35rem 0.5rem;
+          color: var(--text-dim);
+          font-weight: 500;
+          border-bottom: 1px solid var(--border);
+          position: sticky;
+          top: 0;
+          background: var(--surface);
+        }
+
+        .discovery-table td {
+          padding: 0.35rem 0.5rem;
           border-bottom: 1px solid var(--surface-2);
-          font-size: 0.8rem;
+          vertical-align: middle;
+        }
+
+        .discovery-table tr:hover td {
+          background: rgba(255,255,255,0.02);
+        }
+
+        .discovery-table .col-status { width: 28px; text-align: center; }
+        .discovery-table .col-title { }
+        .discovery-table .col-source { width: 80px; color: var(--text-dim); }
+        .discovery-table .col-time { width: 50px; color: var(--text-dim); text-align: right; }
+
+        .discovery-table a {
+          color: var(--text);
+          text-decoration: none;
+        }
+
+        .discovery-table a:hover {
+          color: var(--accent);
         }
 
         .discovery-item:last-child {
           border-bottom: none;
-        }
-
-        .discovery-badge {
-          flex-shrink: 0;
-          font-size: 0.7rem;
-          padding: 0.1rem 0.3rem;
-          border-radius: 4px;
-          font-weight: 600;
-        }
-
-        .badge-ingested { background: var(--accent-dim); color: var(--accent); }
-        .badge-failed { background: var(--danger-dim); color: var(--danger); }
-        .badge-pending { background: var(--surface-3); color: var(--text-muted); }
-
-        .discovery-item-content {
-          flex: 1;
-          min-width: 0;
-        }
-
-        .discovery-item-title {
-          color: var(--text);
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-          display: block;
-        }
-
-        .discovery-item-domain {
-          color: var(--text-dim);
-          font-size: 0.7rem;
         }
 
         .discovery-empty {
@@ -566,6 +568,30 @@
           text-align: center;
           padding: 1rem;
         }
+
+        /* ── Keyword Preview ── */
+        #keyword-preview {
+          display: none;
+          margin-bottom: 1rem;
+        }
+        #keyword-preview.visible { display: block; }
+        #keyword-chips {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 0.4rem;
+          min-height: 2rem;
+          margin-top: 0.75rem;
+        }
+        .kw-chip.existing {
+          border-color: var(--accent-dim);
+          color: var(--accent);
+          background: rgba(34, 197, 94, 0.06);
+        }
+        .kw-chip.new {
+          border-color: var(--info-dim);
+          background: rgba(56, 189, 248, 0.06);
+        }
+        #confirm-btn { flex: 1; }
     </style>
 </head>
 <body>
@@ -591,6 +617,24 @@
         </div>
     </header>
 
+    <!-- Discovery Panel (top) -->
+    <div id="discovery-panel" class="discovery-panel">
+      <div class="discovery-header">
+        <h3>Discovery</h3>
+        <div>
+          <button onclick="triggerDiscovery()" class="refresh-btn" title="Run discovery now" style="margin-right:0.5rem;">▶ Run</button>
+          <button onclick="clearDiscoveryActivity()" class="refresh-btn" title="Clear activity log" style="margin-right:0.5rem;">✕</button>
+          <button onclick="loadDiscoveryActivity()" class="refresh-btn" title="Refresh">↻</button>
+        </div>
+      </div>
+      <div id="discovery-stats" class="discovery-stats">
+        <span>—</span>
+      </div>
+      <div id="discovery-feed" class="discovery-feed">
+        <div class="discovery-empty">No discovery activity today.</div>
+      </div>
+    </div>
+
     <!-- Ingest Form -->
     <div class="card ingest-card">
         <div class="card-header">
@@ -601,7 +645,7 @@
             </svg>
             <span class="card-title">Ingest</span>
         </div>
-        <form id="ingest-form" action="/ingest" method="post" enctype="multipart/form-data">
+        <form id="ingest-form" action="/ingest/preview" method="post" enctype="multipart/form-data">
             <div class="url-row">
                 <input
                     type="url"
@@ -633,6 +677,39 @@
             </label>
             <input type="file" id="file-input" name="file" accept=".pdf,.docx,.md,.txt" style="display:none" />
         </form>
+    </div>
+
+    <!-- Keyword Preview (two-phase ingest phase 1) -->
+    <div id="keyword-preview" class="card">
+        <div class="card-header">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/>
+                <line x1="7" y1="7" x2="7.01" y2="7"/>
+            </svg>
+            <span class="card-title">Extracted Keywords</span>
+        </div>
+        <div id="keyword-chips"></div>
+        <p style="font-size:0.75rem;color:var(--text-dim);margin-top:0.5rem;">
+            <span style="color:var(--accent);">●</span> Existing &nbsp;
+            <span style="color:var(--info);">●</span> New (check to add)
+        </p>
+        <div id="keyword-add-row" style="display:flex;gap:0.5rem;margin-top:0.75rem;align-items:center;">
+            <input type="text" id="keyword-add-input" placeholder="Add existing keyword..." 
+                   style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);padding:0.5rem 0.75rem;color:var(--text);font-size:0.85rem;font-family:'Space Mono',monospace;outline:none;"
+                   onkeydown="if(event.key==='Enter'){event.preventDefault();addExistingKeywordToPreview()}">
+            <button onclick="addExistingKeywordToPreview()" style="background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:0.5rem 1rem;color:var(--text-muted);cursor:pointer;font-size:0.85rem;">Add</button>
+        </div>
+        <div style="display:flex;gap:0.5rem;margin-top:1rem;">
+            <button id="confirm-btn" class="btn-ingest" onclick="confirmIngest()">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M5 12h14M12 5l7 7-7 7"/>
+                </svg>
+                Confirm & Save
+            </button>
+            <button id="cancel-btn" onclick="cancelIngest()" style="background:var(--surface-2);color:var(--text-muted);border:1px solid var(--border);border-radius:var(--radius-sm);padding:0.75rem 1.5rem;cursor:pointer;">
+                Cancel
+            </button>
+        </div>
     </div>
 
     <!-- Progress -->
@@ -676,20 +753,6 @@
             </div>
         </div>
     </div>
-
-    <!-- Discovery Panel -->
-    <div id="discovery-panel" class="discovery-panel">
-      <div class="discovery-header">
-        <h3>🔍 Discovery</h3>
-        <button onclick="loadDiscoveryActivity()" class="refresh-btn" title="Refresh">↻</button>
-      </div>
-      <div id="discovery-stats" class="discovery-stats">
-        <span>—</span>
-      </div>
-      <div id="discovery-feed" class="discovery-feed">
-        <div class="discovery-empty">No discovery activity today.</div>
-      </div>
-    </div>
 </div>
 
 <script>
@@ -723,7 +786,6 @@
     }
 
     async function removeKeyword(kw) {
-        if (!confirm('Remove keyword "' + kw + '"?\n\nThis will delete all discovery articles tagged with this keyword.')) return;
         try {
             const res = await fetch('/keywords/remove', {
                 method: 'POST',
@@ -810,110 +872,267 @@
     document.getElementById('ingest-form').addEventListener('submit', async (e) => {
         e.preventDefault();
         const btn = document.getElementById('ingest-btn');
-        btn.disabled = true;
         const box = document.getElementById('progress-box');
         const progressCard = document.getElementById('progress-card');
-        progressCard.classList.add('active');
         const preview = document.getElementById('note-preview');
         preview.style.display = 'none';
         preview.innerHTML = '';
-        box.innerHTML = '<p>Starting...</p>';
 
         const urlInput = document.querySelector('input[name="url"]');
         const fileInput = document.querySelector('input[name="file"]');
 
+        let sourceType = 'url';
+        let sourceLabel = '';
         if (urlInput && urlInput.value.trim()) {
             try {
                 const u = new URL(urlInput.value.trim());
-                const domain = u.hostname.replace('www.', '');
-                setSourceBadge('url', domain);
+                sourceLabel = u.hostname.replace('www.', '');
             } catch {
-                setSourceBadge('url', urlInput.value.trim().substring(0, 35));
+                sourceLabel = urlInput.value.trim().substring(0, 35);
             }
         } else if (fileInput && fileInput.files.length > 0) {
             const fname = fileInput.files[0].name.toLowerCase();
-            if (fname.endsWith('.pdf')) setSourceBadge('pdf', 'PDF document');
-            else if (fname.endsWith('.docx') || fname.endsWith('.doc')) setSourceBadge('docx', 'Word document');
-            else if (fname.endsWith('.md') || fname.endsWith('.markdown')) setSourceBadge('md', 'Markdown');
-            else if (fname.endsWith('.txt')) setSourceBadge('txt', 'Text file');
-            else setSourceBadge('txt', fileInput.files[0].name);
+            if (fname.endsWith('.pdf')) { sourceType = 'pdf'; sourceLabel = 'PDF document'; }
+            else if (fname.endsWith('.docx') || fname.endsWith('.doc')) { sourceType = 'docx'; sourceLabel = 'Word document'; }
+            else if (fname.endsWith('.md') || fname.endsWith('.markdown')) { sourceType = 'md'; sourceLabel = 'Markdown'; }
+            else { sourceType = 'txt'; sourceLabel = 'Text file'; }
         }
 
-        if (activeSource) { activeSource.close(); activeSource = null; }
+        btn.disabled = true;
+        btn.innerHTML = 'Extracting...';
 
-        const form = e.target;
-        const formData = new FormData(form);
+        const formData = new FormData(e.target);
         try {
-            const res = await fetch(form.action, { method: 'POST', body: formData });
-            const data = await res.json();
-            if (!data.job_id) {
-                box.innerHTML = '<p class="err">Failed to start job</p>';
+            const res = await fetch('/ingest/preview', { method: 'POST', body: formData });
+            if (!res.ok) {
+                const err = await res.text();
+                progressCard.classList.add('active');
+                box.innerHTML = '<p class="err">Preview failed: ' + err + '</p>';
                 btn.disabled = false;
-                clearSourceBadge();
+                btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg> Ingest';
                 return;
             }
-            const jobId = data.job_id;
-
-            activeSource = new EventSource('/stream/' + jobId);
-            activeSource.onmessage = (evt) => {
-                if (evt.data === '[FINAL]') {
-                    activeSource.close();
-                    activeSource = null;
-                    btn.disabled = false;
-                    // Try to show saved note content
-                    const savedLine = Array.from(box.querySelectorAll('p')).find(p => p.textContent.includes('Saved ->'));
-                    if (savedLine) {
-                        const match = savedLine.textContent.match(/Saved -> notes\/(.+)/);
-                        if (match) {
-                            const slug = match[1];
-                            fetch('/note/' + slug)
-                                .then(r => r.json())
-                                .then(data => {
-                                    const preview = document.getElementById('note-preview');
-                                    preview.innerHTML = '<div style="color:var(--accent);font-weight:600;margin-bottom:0.5rem;">Saved Note</div>' + data.content.replace(/\n/g, '<br>');
-                                    preview.style.display = 'block';
-                                })
-                                .catch(() => {});
-                        }
-                    }
-                    if (!box.textContent.includes('Saved ->')) {
-                        box.innerHTML += '<p class="warn">Finished (check vault)</p>';
-                    } else {
-                        box.innerHTML += '<p class="success">Done!</p>';
-                    }
-                    setTimeout(clearSourceBadge, 3000);
-                    return;
-                }
-                // Parse for ping lines
-                if (evt.data.includes('ping -')) {
-                    // Don't add ping lines to progress box
-                    return;
-                }
-                // Handle warning/error/success styling
-                let data = evt.data;
-                if (data.includes('Warning:') || data.includes('warning:')) {
-                    data = data.replace(/<p>/, '<p class="warn">');
-                } else if (data.includes('Error:') || data.includes('error:') || data.includes('Skipped:')) {
-                    data = data.replace(/<p>/, '<p class="err">');
-                } else if (data.includes('Saved ->')) {
-                    data = data.replace(/<p>/, '<p class="success">');
-                }
-                box.innerHTML += data;
-                box.scrollTop = box.scrollHeight;
-            };
-            activeSource.onerror = () => {
-                activeSource.close();
-                activeSource = null;
-                btn.disabled = false;
-                box.innerHTML += '<p class="err">Connection lost</p>';
-                setTimeout(clearSourceBadge, 2000);
-            };
+            const data = await res.json();
+            showKeywordPreview(data);
+            setSourceBadge(sourceType, sourceLabel);
         } catch(err) {
+            progressCard.classList.add('active');
             box.innerHTML = '<p class="err">Error: ' + err.message + '</p>';
             btn.disabled = false;
-            clearSourceBadge();
+            btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg> Ingest';
         }
     });
+
+    let _previewData = null;
+
+    function showKeywordPreview(data) {
+        _previewData = data;
+        const container = document.getElementById('keyword-preview');
+        const chips = document.getElementById('keyword-chips');
+        chips.innerHTML = '';
+        container.classList.add('visible');
+        container.scrollIntoView({ behavior: 'smooth' });
+
+        document.getElementById('ingest-btn').style.display = 'none';
+
+        const allKeywords = [
+            ...(data.keywords.existing || []).map(k => ({ kw: k, existing: true })),
+            ...(data.keywords.new || []).map(k => ({ kw: k, existing: false })),
+        ];
+
+        allKeywords.forEach(({ kw, existing }) => {
+            const chip = document.createElement('span');
+            chip.className = 'kw-chip' + (existing ? ' existing' : ' new');
+            chip.dataset.keyword = kw;
+
+            if (!existing) {
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.checked = true;
+                checkbox.dataset.keyword = kw;
+                checkbox.style.marginRight = '0.25rem';
+                checkbox.style.accentColor = 'var(--info)';
+                chip.appendChild(checkbox);
+            } else {
+                const check = document.createElement('span');
+                check.textContent = ' ✓';
+                check.style.color = 'var(--accent)';
+                check.style.fontSize = '0.65rem';
+                chip.appendChild(check);
+                const space = document.createTextNode(' ');
+                chip.appendChild(space);
+            }
+
+            const txt = document.createTextNode(kw);
+            chip.appendChild(txt);
+            chips.appendChild(chip);
+        });
+    }
+
+    function addExistingKeywordToPreview() {
+        const input = document.getElementById('keyword-add-input');
+        const kw = input.value.trim();
+        if (!kw) return;
+        const chips = document.getElementById('keyword-chips');
+        // Check if already exists in chips
+        const existing = chips.querySelectorAll('.kw-chip');
+        for (const chip of existing) {
+            if (chip.textContent.includes(kw)) {
+                input.value = '';
+                return; // already shown
+            }
+        }
+        // Add as a manually-selected chip (grey/purple style)
+        const chip = document.createElement('span');
+        chip.className = 'kw-chip';
+        chip.style.borderColor = 'var(--accent-dim)';
+        chip.style.color = 'var(--text)';
+        chip.dataset.keyword = kw;
+        chip.id = 'manual-kw-' + kw.replace(/\s+/g, '-');
+        const check = document.createElement('span');
+        check.textContent = ' +';
+        check.style.color = 'var(--accent)';
+        check.style.fontSize = '0.65rem';
+        chip.appendChild(check);
+        chip.appendChild(document.createTextNode(' ' + kw));
+        chips.appendChild(chip);
+        input.value = '';
+    }
+
+    async function confirmIngest() {
+        if (!_previewData) return;
+        const previewId = _previewData.preview_id;
+        const checkboxes = document.querySelectorAll('#keyword-chips input[type="checkbox"]:checked');
+        const acceptedKeywords = Array.from(checkboxes).map(cb => cb.dataset.keyword);
+        // Also collect manually-added keywords (no checkbox, has data-keyword)
+        const manualChips = document.querySelectorAll(
+            '#keyword-chips .kw-chip:not(.new):not(.existing)[data-keyword]'
+        );
+        manualChips.forEach(chip => {
+            const kw = chip.dataset.keyword;
+            if (kw && !acceptedKeywords.includes(kw)) {
+                acceptedKeywords.push(kw);
+            }
+        });
+
+        const payload = {
+            preview_id: previewId,
+            accepted_keywords: acceptedKeywords,
+            url: _previewData.url || null,
+        };
+
+        document.getElementById('keyword-preview').classList.remove('visible');
+        const progressCard = document.getElementById('progress-card');
+        const box = document.getElementById('progress-box');
+        progressCard.classList.add('active');
+        box.innerHTML = '<p>Starting pipeline...</p>';
+
+        try {
+            const res = await fetch('/ingest/run', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            });
+            const data = await res.json();
+            if (!data.job_id) throw new Error('No job_id');
+            startSSEStream(data.job_id, box);
+        } catch(err) {
+            box.innerHTML = '<p class="err">Error: ' + err.message + '</p>';
+            resetIngestUI();
+        }
+    }
+
+    function cancelIngest() {
+        _previewData = null;
+        document.getElementById('keyword-preview').classList.remove('visible');
+        resetIngestUI();
+    }
+
+    function resetIngestUI() {
+        const btn = document.getElementById('ingest-btn');
+        if (btn) {
+            btn.disabled = false;
+            btn.style.display = '';
+            btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg> Ingest';
+        }
+    }
+
+    function startSSEStream(jobId, box) {
+        if (activeSource) { activeSource.close(); activeSource = null; }
+        activeSource = new EventSource('/stream/' + jobId);
+        activeSource.onmessage = (evt) => {
+            if (evt.data === '[FINAL]') {
+                activeSource.close();
+                activeSource = null;
+                handleStreamComplete(box);
+                return;
+            }
+            if (evt.data.includes('ping -')) return;
+            let data = evt.data;
+            if (data.includes('Warning:') || data.includes('warning:')) {
+                data = data.replace(/<p>/, '<p class="warn">');
+            } else if (data.includes('Error:') || data.includes('error:') || data.includes('Skipped:')) {
+                data = data.replace(/<p>/, '<p class="err">');
+            } else if (data.includes('Saved ->')) {
+                data = data.replace(/<p>/, '<p class="success">');
+            }
+            box.innerHTML += data;
+            box.scrollTop = box.scrollHeight;
+        };
+        activeSource.onerror = () => {
+            activeSource.close();
+            activeSource = null;
+            resetIngestUI();
+            box.innerHTML += '<p class="err">Connection lost</p>';
+        };
+    }
+
+    function handleStreamComplete(box) {
+        const savedLine = Array.from(box.querySelectorAll('p')).find(p => p.textContent.includes('Saved ->'));
+        if (savedLine) {
+            const match = savedLine.textContent.match(/Saved -> notes\/(.+)/);
+            if (match) {
+                const slug = match[1];
+                fetch('/note/' + slug)
+                    .then(r => r.json())
+                    .then(data => {
+                        const preview = document.getElementById('note-preview');
+                        preview.innerHTML = '<div style="color:var(--accent);font-weight:600;margin-bottom:0.5rem;">Saved Note</div>' + data.content.replace(/\n/g, '<br>');
+                        preview.style.display = 'block';
+                    })
+                    .catch(() => {});
+            }
+        }
+        if (!box.textContent.includes('Saved ->')) {
+            box.innerHTML += '<p class="warn">Finished (check vault)</p>';
+        } else {
+            box.innerHTML += '<p class="success">Done!</p>';
+        }
+        resetIngestUI();
+        setTimeout(clearSourceBadge, 3000);
+    }
+
+    async function triggerDiscovery() {
+        try {
+            const res = await fetch('/discovery/trigger', { method: 'POST' });
+            if (res.ok) {
+                setTimeout(loadDiscoveryActivity, 2000);
+            }
+        } catch(e) {
+            console.warn('Discovery trigger failed:', e);
+        }
+    }
+
+    async function clearDiscoveryActivity() {
+        try {
+            const res = await fetch('/discovery/clear', { method: 'POST' });
+            if (res.ok) {
+                loadDiscoveryActivity();
+            }
+        } catch(e) {
+            console.warn('Discovery clear failed:', e);
+        }
+    }
 
     // ── Discovery ─────────────────────────────────────────────
     async function loadDiscoveryActivity() {
@@ -969,7 +1188,7 @@
         statsEl.appendChild(s3);
       }
 
-      // Render feed using DOM methods (no innerHTML with user data)
+      // Render feed as a table
       const feedEl = document.getElementById('discovery-feed');
       if (!feedEl) return;
 
@@ -982,45 +1201,52 @@
         return;
       }
 
+      const table = document.createElement('table');
+      table.className = 'discovery-table';
+
+      const thead = document.createElement('thead');
+      thead.innerHTML = '<tr><th class="col-status"></th><th class="col-title">Title</th><th class="col-source">Source</th><th class="col-time">Time</th></tr>';
+      table.appendChild(thead);
+
+      const tbody = document.createElement('tbody');
       const reversed = events.slice().reverse();
       reversed.forEach(function(event) {
-        const item = document.createElement('div');
-        item.className = 'discovery-item';
+        const row = document.createElement('tr');
 
-        const badge = document.createElement('span');
-        badge.className = 'discovery-badge';
-        if (event.status === 'ingested') {
-          badge.classList.add('badge-ingested');
-          badge.textContent = '✅';
-        } else if (event.status === 'failed') {
-          badge.classList.add('badge-failed');
-          badge.textContent = '❌';
-        } else {
-          badge.classList.add('badge-pending');
-          badge.textContent = '⏳';
-        }
+        const statusTd = document.createElement('td');
+        statusTd.className = 'col-status';
+        statusTd.textContent = event.status === 'ingested' ? '\u2705' : event.status === 'failed' ? '\u274c' : '\u23f3';
 
-        const content = document.createElement('div');
-        content.className = 'discovery-item-content';
-
+        const titleTd = document.createElement('td');
+        titleTd.className = 'col-title';
         const link = document.createElement('a');
         link.href = event.url || '#';
         link.target = '_blank';
-        link.className = 'discovery-item-title';
         link.title = event.url || '';
         link.textContent = event.title || event.url || '';
+        titleTd.appendChild(link);
 
-        const domain = document.createElement('span');
-        domain.className = 'discovery-item-domain';
+        const sourceTd = document.createElement('td');
+        sourceTd.className = 'col-source';
         const sourceParts = (event.source || '').split(': ');
-        domain.textContent = sourceParts[sourceParts.length - 1] || '';
+        sourceTd.textContent = sourceParts[sourceParts.length - 1] || '';
 
-        content.appendChild(link);
-        content.appendChild(domain);
-        item.appendChild(badge);
-        item.appendChild(content);
-        feedEl.appendChild(item);
+        const timeTd = document.createElement('td');
+        timeTd.className = 'col-time';
+        try {
+          const dt = event.discovered_at || event.ingested_at;
+          if (dt) timeTd.textContent = new Date(dt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        } catch (e) {}
+
+        row.appendChild(statusTd);
+        row.appendChild(titleTd);
+        row.appendChild(sourceTd);
+        row.appendChild(timeTd);
+        tbody.appendChild(row);
       });
+
+      table.appendChild(tbody);
+      feedEl.appendChild(table);
     }
 
     // ── Init ─────────────────────────────────────────────────

@@ -1,0 +1,29 @@
+{
+  "name": "personalwiki",
+  "version": "1.0.0",
+  "description": "**Ingest any URL or PDF, get a structured Obsidian note.**",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs",
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "playwright test --config=playwright.ci.config.js",
+    "test:e2e": "playwright test --config=playwright.ci.config.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vladbrincoveanu/wiki-all.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/vladbrincoveanu/wiki-all/issues"
+  },
+  "homepage": "https://github.com/vladbrincoveanu/wiki-all#readme",
+  "devDependencies": {
+    "@playwright/test": "^1.59.1"
+  }
+}

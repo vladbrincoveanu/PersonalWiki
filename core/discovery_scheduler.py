@@ -24,8 +24,6 @@ from core.keywords_manager import (
     load_manual_keywords as _load_manual_keywords,
     add_keyword as _km_add,
     remove_keyword as _km_remove,
-    purge_keyword as _km_purge,
-    _cascade_delete_by_source_keyword,
 )
 from ingesters.web import extract_url
 from pathlib import Path
@@ -207,18 +205,22 @@ class DiscoveryScheduler:
                 self._keywords.append(keyword)
         _logger.info("Discovery: added manual keyword %r", keyword)
 
-    def remove_keyword(self, keyword: str) -> list[str]:
-        """Remove keyword from _keywords; cascade delete source_keyword notes + wikilinks."""
-        _km_remove(keyword, KEYWORDS_FILE)
+    def remove_keyword(self, keyword: str) -> dict:
+        """Remove keyword; cascade delete handled by keywords_manager."""
+        result = _km_remove(keyword, KEYWORDS_FILE, vault_path=Path(VAULT_PATH))
         with self._keywords_lock:
             if keyword in self._keywords:
                 self._keywords.remove(keyword)
-        # Cascade delete by source_keyword frontmatter first
-        cascade_deleted = _cascade_delete_by_source_keyword(keyword, Path(VAULT_PATH))
-        # Then remove wikilinks from remaining files
-        wikilink_deleted = _km_purge(keyword, Path(VAULT_PATH))
-        _logger.info("Discovery: removed manual keyword %r, cascade-deleted %d files, purged %d wikilinks", keyword, len(cascade_deleted), len(wikilink_deleted))
-        return cascade_deleted + wikilink_deleted
+        _logger.info("Discovery: removed manual keyword %r, deleted %d files, stripped %d files", keyword, len(result["deleted"]), len(result["stripped"]))
+        return result
+
+    async def trigger_cycle(self) -> None:
+        """Trigger a single discovery cycle immediately (from UI)."""
+        if not self._running:
+            _logger.warning("Discovery: trigger ignored — scheduler not running")
+            raise RuntimeError("Discovery scheduler is not running")
+        _logger.info("Discovery: manual trigger — running one cycle")
+        await self._run_discovery_cycle()
 
     async def _amplify_from_note(self, note: dict):
         """Amplification disabled — keywords are user-owned only."""
@@ -284,19 +286,28 @@ class DiscoveryScheduler:
         return []
 
     async def _fetch_html(self, url: str) -> str:
-        """Fetch raw HTML for a URL (used for link extraction)."""
-        try:
-            resp = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=15)
-            resp.raise_for_status()
-            return resp.text
-        except Exception:
-            return ""
+        """Fetch raw HTML for a URL with exponential backoff retry."""
+        for attempt in range(3):
+            try:
+                resp = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=15)
+                resp.raise_for_status()
+                return resp.text
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                if attempt == 2:
+                    _logger.debug("Discovery: fetch failed after 3 attempts for %s: %s", url, e)
+                    return ""
+                wait = 2 ** attempt
+                await asyncio.sleep(wait)
+        return ""
 
     async def _search_keyword(self, keyword: str) -> list[dict]:
         """
         Search across sources for a keyword.
         Returns list of {url, title, snippet, source} dicts.
         Snippets are enriched generically for any source that returned empty ones.
+        Skips URLs already processed (exists in LanceDB) for idempotency.
         """
         results = []
 
@@ -306,7 +317,7 @@ class DiscoveryScheduler:
             _logger.warning("Discovery: arXiv search failed for %s: %s", keyword, e)
 
         try:
-            results.extend(self._search_hn(keyword))
+            results.extend(await self._search_hn(keyword))
         except Exception as e:
             _logger.warning("Discovery: HN search failed for %s: %s", keyword, e)
 
@@ -320,8 +331,16 @@ class DiscoveryScheduler:
         except Exception as e:
             _logger.warning("Discovery: DespreBursa search failed for %s: %s", keyword, e)
 
+        # Filter out already-processed URLs for idempotency
+        from core.vector_store import get_store
+        store = get_store()
+        filtered = [r for r in results if not store.exists(r["url"])]
+        if len(filtered) < len(results):
+            skipped = len(results) - len(filtered)
+            _logger.debug("Discovery: skipped %d already-processed URLs", skipped)
+
         # Generic snippet enrichment: fetch content for any result with an empty snippet
-        return await self._enrich_snippets(results)
+        return await self._enrich_snippets(filtered)
 
     async def _enrich_snippets(self, results: list[dict]) -> list[dict]:
         """Post-process: fetch article content for any result with an empty snippet.
@@ -358,7 +377,10 @@ class DiscoveryScheduler:
         """Search arXiv API for keyword."""
         import urllib.parse
 
-        query = urllib.parse.quote(f"all:{keyword}")
+        if " " in keyword:
+            query = urllib.parse.quote(f'all:"{keyword}"')
+        else:
+            query = urllib.parse.quote(f"all:{keyword}")
         url = f"http://export.arxiv.org/api/query?search_query={query}&max_results={max_results}"
         with urllib.request.urlopen(url, timeout=10) as resp:
             data = resp.read().decode("utf-8")
@@ -657,7 +679,6 @@ class DiscoveryScheduler:
                     if self._pipeline_func:
                         await self._run_pipeline(url, keyword=keyword)
                     ingested += 1
-                    self._update_keyword_score(keyword, +1)  # Successful ingest
                     self._seen_urls.add(url)
 
                     # Recursive link discovery: extract links from the crawled page
@@ -669,7 +690,6 @@ class DiscoveryScheduler:
                     except Exception as e:
                         _logger.debug("Discovery: link extraction failed for %s: %s", url, e)
                 except Exception as e:
-                    self._update_keyword_score(keyword, -2)  # Failed/rejected
                     _logger.error("Discovery: failed to queue %s: %s", url, e)
                 finally:
                     self._in_flight.discard(url)
@@ -718,7 +738,10 @@ class DiscoveryScheduler:
         dl_logger = get_discovery_logger()
         try:
             from pipeline import run_pipeline
-            async for _ in run_pipeline(url=url, is_discovery=True, source_keyword=keyword):
+            async for _ in run_pipeline(
+                url=url, is_discovery=True, source_keyword=keyword,
+                keywords=[keyword] if keyword else [],
+            ):
                 pass
             dl_logger.update_status(url, "ingested")
         except Exception as e:

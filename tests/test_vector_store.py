@@ -2,7 +2,15 @@ import json
 import tempfile
 from pathlib import Path
 from unittest.mock import patch
+import pytest
 from core.vector_store import VectorStore
+
+VECTOR_DIMENSION = 384
+
+
+def _embed_dim():
+    """Use the schema contract; real model behavior has a dedicated slow test."""
+    return VECTOR_DIMENSION
 
 def make_store():
     tmp = tempfile.mkdtemp()
@@ -13,7 +21,7 @@ def test_upsert_and_exists():
     store.upsert(
         path="notes/test.md",
         text="test content",
-        vector=[0.1] * 384,
+        vector=[0.1] * _embed_dim(),
         links=["other-note"],
         metadata={"title": "Test", "tags": ["test"]},
     )
@@ -25,34 +33,93 @@ def test_not_exists_for_unknown_path():
 
 def test_upsert_overwrites_existing():
     store = make_store()
-    store.upsert("notes/t.md", "v1", [0.1] * 384, [], {"title": "V1"})
-    store.upsert("notes/t.md", "v2", [0.2] * 384, [], {"title": "V2"})
-    results = store.search([0.2] * 384, top_k=1)
+    store.upsert("notes/t.md", "v1", [0.1] * _embed_dim(), [], {"title": "V1"})
+    store.upsert("notes/t.md", "v2", [0.2] * _embed_dim(), [], {"title": "V2"})
+    results = store.search([0.2] * _embed_dim(), top_k=1)
     assert results[0]["text"] == "v2"
 
 def test_search_returns_top_k():
     store = make_store()
     for i in range(5):
-        v = [float(i) / 10] * 384
+        v = [float(i) / 10] * _embed_dim()
         store.upsert(f"notes/note{i}.md", f"content {i}", v, [], {"title": f"Note {i}"})
-    results = store.search([0.4] * 384, top_k=3)
+    results = store.search([0.4] * _embed_dim(), top_k=3)
     assert len(results) == 3
 
 def test_search_metadata_is_dict():
     store = make_store()
-    store.upsert("notes/t.md", "text", [0.1] * 384, ["link1"], {"title": "T", "tags": ["a"]})
-    results = store.search([0.1] * 384, top_k=1)
+    store.upsert("notes/t.md", "text", [0.1] * _embed_dim(), ["link1"], {"title": "T", "tags": ["a"]})
+    results = store.search([0.1] * _embed_dim(), top_k=1)
     assert isinstance(results[0]["metadata"], dict)
     assert results[0]["metadata"]["title"] == "T"
+
+
+def test_entity_search_uses_entity_fields_without_vectors():
+    store = make_store()
+    store.upsert_entity(
+        "notes/personalwiki.md",
+        "project",
+        "PersonalWiki",
+        "A personal knowledge and memory bank.",
+        {"owner": "Vlad"},
+    )
+
+    results = store.search_entities("PersonalWiki", entity_type="project")
+
+    assert len(results) == 1
+    assert results[0]["entity_name"] == "PersonalWiki"
+    assert results[0]["metadata"] == {"owner": "Vlad"}
+
+
+def test_entity_search_preserves_punctuation_in_query_tokens():
+    store = make_store()
+    store.upsert_entity(
+        "notes/cpp.md",
+        "language",
+        "C++",
+        "A compiled systems programming language.",
+        {},
+    )
+
+    results = store.search_entities("C++", entity_type="language")
+
+    assert len(results) == 1
+    assert results[0]["entity_name"] == "C++"
+
+
+def test_entity_search_handles_apostrophes_in_query_tokens():
+    store = make_store()
+    store.upsert_entity(
+        "notes/oreilly.md",
+        "publisher",
+        "O'Reilly",
+        "Technical books",
+        {},
+    )
+
+    results = store.search_entities("O'Reilly", entity_type="publisher")
+
+    assert len(results) == 1
+    assert results[0]["entity_name"] == "O'Reilly"
+
+
+def test_wrong_vector_dimension_does_not_delete_existing_note():
+    store = make_store()
+    store.upsert("notes/t.md", "original", [0.1] * _embed_dim(), [], {"title": "Original"})
+
+    with pytest.raises(ValueError):
+        store.upsert("notes/t.md", "replacement", [0.1], [], {"title": "Replacement"})
+
+    assert store.exists("notes/t.md")
 
 
 # --- Tests for _get_links_for_paths ---
 
 def test_get_links_for_paths_returns_correct_links():
     store = make_store()
-    store.upsert("notes/a.md", "content a", [0.1] * 384, ["b", "c"], {"title": "A"})
-    store.upsert("notes/b.md", "content b", [0.2] * 384, ["c"], {"title": "B"})
-    store.upsert("notes/c.md", "content c", [0.3] * 384, [], {"title": "C"})
+    store.upsert("notes/a.md", "content a", [0.1] * _embed_dim(), ["b", "c"], {"title": "A"})
+    store.upsert("notes/b.md", "content b", [0.2] * _embed_dim(), ["c"], {"title": "B"})
+    store.upsert("notes/c.md", "content c", [0.3] * _embed_dim(), [], {"title": "C"})
     result = store._get_links_for_paths(["notes/a.md", "notes/b.md", "notes/c.md"])
     assert result["notes/a.md"] == ["b", "c"]
     assert result["notes/b.md"] == ["c"]
@@ -61,7 +128,7 @@ def test_get_links_for_paths_returns_correct_links():
 
 def test_get_links_for_paths_unknown_path_returns_empty():
     store = make_store()
-    store.upsert("notes/known.md", "content", [0.1] * 384, ["other"], {"title": "Known"})
+    store.upsert("notes/known.md", "content", [0.1] * _embed_dim(), ["other"], {"title": "Known"})
     result = store._get_links_for_paths(["notes/known.md", "notes/unknown.md"])
     assert result["notes/known.md"] == ["other"]
     assert result["notes/unknown.md"] == []
@@ -77,9 +144,9 @@ def test_get_links_for_paths_empty_input():
 
 def test_graph_hop_returns_hop1_links_with_correct_weight():
     store = make_store()
-    store.upsert("notes/a.md", "content a", [0.1] * 384, ["b", "c"], {"title": "A"})
-    store.upsert("notes/b.md", "content b", [0.2] * 384, [], {"title": "B"})
-    store.upsert("notes/c.md", "content c", [0.3] * 384, [], {"title": "C"})
+    store.upsert("notes/a.md", "content a", [0.1] * _embed_dim(), ["b", "c"], {"title": "A"})
+    store.upsert("notes/b.md", "content b", [0.2] * _embed_dim(), [], {"title": "B"})
+    store.upsert("notes/c.md", "content c", [0.3] * _embed_dim(), [], {"title": "C"})
     # Pass paths in order (a comes first so top-1 is just a)
     result = store._graph_hop(["notes/a.md", "notes/b.md"], top_k=5, hop1_weight=0.5, hop2_weight=0.25)
     paths = [r["path"] for r in result]
@@ -93,10 +160,10 @@ def test_graph_hop_returns_hop1_links_with_correct_weight():
 def test_graph_hop_returns_hop2_links_with_correct_weight():
     store = make_store()
     # Use full paths in links to enable hop-2 traversal
-    store.upsert("notes/a.md", "content a", [0.1] * 384, ["notes/b.md"], {"title": "A"})
-    store.upsert("notes/b.md", "content b", [0.2] * 384, ["notes/c.md"], {"title": "B"})
-    store.upsert("notes/c.md", "content c", [0.3] * 384, ["notes/d.md"], {"title": "C"})
-    store.upsert("notes/d.md", "content d", [0.4] * 384, [], {"title": "D"})
+    store.upsert("notes/a.md", "content a", [0.1] * _embed_dim(), ["notes/b.md"], {"title": "A"})
+    store.upsert("notes/b.md", "content b", [0.2] * _embed_dim(), ["notes/c.md"], {"title": "B"})
+    store.upsert("notes/c.md", "content c", [0.3] * _embed_dim(), ["notes/d.md"], {"title": "C"})
+    store.upsert("notes/d.md", "content d", [0.4] * _embed_dim(), [], {"title": "D"})
     result = store._graph_hop(["notes/a.md"], top_k=5, hop1_weight=0.5, hop2_weight=0.25)
     paths = [r["path"] for r in result]
     weights = {r["path"]: r["hop_weight"] for r in result}
@@ -110,9 +177,9 @@ def test_graph_hop_returns_hop2_links_with_correct_weight():
 def test_graph_hop_deduplicates_by_path():
     store = make_store()
     # a and b both link to c
-    store.upsert("notes/a.md", "content a", [0.1] * 384, ["c"], {"title": "A"})
-    store.upsert("notes/b.md", "content b", [0.2] * 384, ["c"], {"title": "B"})
-    store.upsert("notes/c.md", "content c", [0.3] * 384, [], {"title": "C"})
+    store.upsert("notes/a.md", "content a", [0.1] * _embed_dim(), ["c"], {"title": "A"})
+    store.upsert("notes/b.md", "content b", [0.2] * _embed_dim(), ["c"], {"title": "B"})
+    store.upsert("notes/c.md", "content c", [0.3] * _embed_dim(), [], {"title": "C"})
     result = store._graph_hop(["notes/a.md", "notes/b.md"], top_k=5, hop1_weight=0.5, hop2_weight=0.25)
     # c should appear only once
     c_entries = [r for r in result if r["path"] == "c"]
@@ -123,9 +190,9 @@ def test_graph_hop_deduplicates_by_path():
 def test_graph_hop_sorts_by_weight_descending():
     store = make_store()
     # a links to c (hop1), c links to d (hop2)
-    store.upsert("notes/a.md", "content a", [0.1] * 384, ["b"], {"title": "A"})
-    store.upsert("notes/b.md", "content b", [0.2] * 384, ["c"], {"title": "B"})
-    store.upsert("notes/c.md", "content c", [0.3] * 384, [], {"title": "C"})
+    store.upsert("notes/a.md", "content a", [0.1] * _embed_dim(), ["b"], {"title": "A"})
+    store.upsert("notes/b.md", "content b", [0.2] * _embed_dim(), ["c"], {"title": "B"})
+    store.upsert("notes/c.md", "content c", [0.3] * _embed_dim(), [], {"title": "C"})
     result = store._graph_hop(["notes/a.md"], top_k=5, hop1_weight=0.5, hop2_weight=0.25)
     weights = [r["hop_weight"] for r in result]
     assert weights == sorted(weights, reverse=True)
@@ -139,25 +206,25 @@ def test_graph_hop_empty_paths():
 
 def test_graph_hop_no_links():
     store = make_store()
-    store.upsert("notes/a.md", "content a", [0.1] * 384, [], {"title": "A"})
+    store.upsert("notes/a.md", "content a", [0.1] * _embed_dim(), [], {"title": "A"})
     result = store._graph_hop(["notes/a.md"], top_k=5, hop1_weight=0.5, hop2_weight=0.25)
     assert result == []
 
 
 def test_graph_hop_unknown_paths():
     store = make_store()
-    store.upsert("notes/known.md", "content", [0.1] * 384, ["other"], {"title": "Known"})
+    store.upsert("notes/known.md", "content", [0.1] * _embed_dim(), ["other"], {"title": "Known"})
     result = store._graph_hop(["notes/unknown.md"], top_k=5, hop1_weight=0.5, hop2_weight=0.25)
     assert result == []
 
 
 def test_graph_hop_respects_top_k():
     store = make_store()
-    store.upsert("notes/a.md", "content a", [0.1] * 384, ["b", "c", "d", "e"], {"title": "A"})
-    store.upsert("notes/b.md", "content b", [0.2] * 384, [], {"title": "B"})
-    store.upsert("notes/c.md", "content c", [0.3] * 384, [], {"title": "C"})
-    store.upsert("notes/d.md", "content d", [0.4] * 384, [], {"title": "D"})
-    store.upsert("notes/e.md", "content e", [0.5] * 384, [], {"title": "E"})
+    store.upsert("notes/a.md", "content a", [0.1] * _embed_dim(), ["b", "c", "d", "e"], {"title": "A"})
+    store.upsert("notes/b.md", "content b", [0.2] * _embed_dim(), [], {"title": "B"})
+    store.upsert("notes/c.md", "content c", [0.3] * _embed_dim(), [], {"title": "C"})
+    store.upsert("notes/d.md", "content d", [0.4] * _embed_dim(), [], {"title": "D"})
+    store.upsert("notes/e.md", "content e", [0.5] * _embed_dim(), [], {"title": "E"})
     result = store._graph_hop(["notes/a.md"], top_k=3, hop1_weight=0.5, hop2_weight=0.25)
     assert len(result) == 3
 
@@ -166,10 +233,10 @@ def test_graph_hop_only_includes_hop1_and_hop2():
     """Verify only 1-hop and 2-hop links are included; 3+ hops must not appear."""
     store = make_store()
     # Chain: a.md -> b.md -> c.md -> d.md
-    store.upsert("notes/a.md", "content a", [0.1] * 384, ["notes/b.md"], {"title": "A"})
-    store.upsert("notes/b.md", "content b", [0.2] * 384, ["notes/c.md"], {"title": "B"})
-    store.upsert("notes/c.md", "content c", [0.3] * 384, ["notes/d.md"], {"title": "C"})
-    store.upsert("notes/d.md", "content d", [0.4] * 384, [], {"title": "D"})
+    store.upsert("notes/a.md", "content a", [0.1] * _embed_dim(), ["notes/b.md"], {"title": "A"})
+    store.upsert("notes/b.md", "content b", [0.2] * _embed_dim(), ["notes/c.md"], {"title": "B"})
+    store.upsert("notes/c.md", "content c", [0.3] * _embed_dim(), ["notes/d.md"], {"title": "C"})
+    store.upsert("notes/d.md", "content d", [0.4] * _embed_dim(), [], {"title": "D"})
     result = store._graph_hop(["notes/a.md"], top_k=10, hop1_weight=0.5, hop2_weight=0.25)
     paths = [r["path"] for r in result]
     # hop-1: b.md, hop-2: c.md — d.md is hop-3 and must NOT appear
@@ -329,11 +396,9 @@ def test_hybrid_search_returns_correct_shape(mock_store, sample_notes):
         store.upsert(note["path"], note["text"], note["vector"], note["links"], note["metadata"])
 
     with patch("core.embeddings.embed") as mock_embed, \
-         patch("core.bm25_index.ensure_index") as mock_ensure, \
          patch("core.bm25_index.bm25_search") as mock_bm25:
 
-        mock_embed.return_value = [0.1] * 384
-        mock_ensure.return_value = (MagicMock(), [], [])
+        mock_embed.return_value = [0.1] * _embed_dim()
         mock_bm25.return_value = [
             {"path": "notes/a.md", "score": 0.9, "rank": 1},
             {"path": "notes/b.md", "score": 0.8, "rank": 2},
@@ -355,17 +420,15 @@ def test_hybrid_search_calls_all_three_streams(mock_store, sample_notes):
         store.upsert(note["path"], note["text"], note["vector"], note["links"], note["metadata"])
 
     with patch("core.embeddings.embed") as mock_embed, \
-         patch("core.bm25_index.ensure_index") as mock_ensure, \
          patch("core.bm25_index.bm25_search") as mock_bm25, \
          patch.object(store, "search") as mock_vector_search, \
          patch.object(store, "_graph_hop") as mock_graph_hop:
 
-        mock_embed.return_value = [0.1] * 384
+        mock_embed.return_value = [0.1] * _embed_dim()
         mock_vector_search.return_value = [
             {"path": "notes/a.md", "score": 0.9, "rank": 1, "metadata": {}},
             {"path": "notes/b.md", "score": 0.8, "rank": 2, "metadata": {}},
         ]
-        mock_ensure.return_value = (MagicMock(), [], [])
         mock_bm25.return_value = [
             {"path": "notes/a.md", "score": 0.9, "rank": 1},
             {"path": "notes/b.md", "score": 0.8, "rank": 2},
@@ -377,8 +440,7 @@ def test_hybrid_search_calls_all_three_streams(mock_store, sample_notes):
         store.hybrid_search("test query", top_k=5)
 
         mock_embed.assert_called_once_with("test query")
-        mock_ensure.assert_called_once()
-        mock_bm25.assert_called_once()
+        mock_bm25.assert_called_once_with("test query", top_k=10, include_body=True)
         mock_graph_hop.assert_called_once()
         # graph_hop should be called with vector search paths
         call_paths = mock_graph_hop.call_args[0][0]
@@ -392,15 +454,13 @@ def test_hybrid_search_uses_correct_weights(mock_store, sample_notes):
         store.upsert(note["path"], note["text"], note["vector"], note["links"], note["metadata"])
 
     with patch("core.embeddings.embed") as mock_embed, \
-         patch("core.bm25_index.ensure_index") as mock_ensure, \
          patch("core.bm25_index.bm25_search") as mock_bm25, \
          patch.object(store, "search") as mock_vector_search, \
          patch.object(store, "_graph_hop") as mock_graph_hop, \
          patch("core.vector_store._rrf_merge") as mock_rrf:
 
-        mock_embed.return_value = [0.1] * 384
+        mock_embed.return_value = [0.1] * _embed_dim()
         mock_vector_search.return_value = [{"path": "a.md", "score": 0.9, "rank": 1, "metadata": {}}]
-        mock_ensure.return_value = (MagicMock(), [], [])
         mock_bm25.return_value = [{"path": "a.md", "score": 0.9, "rank": 1}]
         mock_graph_hop.return_value = [{"path": "a.md", "hop_weight": 0.5}]
         mock_rrf.return_value = [{"path": "a.md", "score": 0.1, "rank": 1}]
@@ -421,14 +481,12 @@ def test_hybrid_search_merges_with_rrf(mock_store, sample_notes):
         store.upsert(note["path"], note["text"], note["vector"], note["links"], note["metadata"])
 
     with patch("core.embeddings.embed") as mock_embed, \
-         patch("core.bm25_index.ensure_index") as mock_ensure, \
          patch("core.bm25_index.bm25_search") as mock_bm25, \
          patch.object(store, "search") as mock_vector_search, \
          patch.object(store, "_graph_hop") as mock_graph_hop:
 
-        mock_embed.return_value = [0.1] * 384
+        mock_embed.return_value = [0.1] * _embed_dim()
         mock_vector_search.return_value = [{"path": "a.md", "score": 0.9, "rank": 1, "metadata": {"title": "A"}}]
-        mock_ensure.return_value = (MagicMock(), [], [])
         mock_bm25.return_value = [{"path": "a.md", "score": 0.9, "rank": 1}]
         mock_graph_hop.return_value = [{"path": "a.md", "hop_weight": 0.5}]
 
@@ -446,12 +504,11 @@ def test_hybrid_search_min_score_threshold(mock_store, sample_notes):
         store.upsert(note["path"], note["text"], note["vector"], note["links"], note["metadata"])
 
     with patch("core.embeddings.embed") as mock_embed, \
-         patch("core.bm25_index.ensure_index"), \
          patch("core.bm25_index.bm25_search") as mock_bm25, \
          patch.object(store, "search") as mock_vec, \
          patch.object(store, "_graph_hop") as mock_hop:
 
-        mock_embed.return_value = [0.1] * 384
+        mock_embed.return_value = [0.1] * _embed_dim()
         # Both streams return results at poor ranks → RRF below 0.05
         # vector at rank 1: 1/61 ≈ 0.016; bm25 at rank 100: 0.9/160 ≈ 0.005
         # Combined ≈ 0.021 < 0.05 threshold → filtered out
@@ -470,12 +527,11 @@ def test_hybrid_search_above_threshold(mock_store, sample_notes):
         store.upsert(note["path"], note["text"], note["vector"], note["links"], note["metadata"])
 
     with patch("core.embeddings.embed") as mock_embed, \
-         patch("core.bm25_index.ensure_index"), \
          patch("core.bm25_index.bm25_search") as mock_bm25, \
          patch.object(store, "search") as mock_vec, \
          patch.object(store, "_graph_hop") as mock_hop:
 
-        mock_embed.return_value = [0.1] * 384
+        mock_embed.return_value = [0.1] * _embed_dim()
         # Both at rank 1: 1/61 + 0.9/61 ≈ 0.031 > 0.05? No, 0.031 < 0.05.
         # Need BM25 at rank 1 and vector at rank 1 for maximum RRF: 0.031 < 0.05 still.
         # Use very high ranks to boost RRF: both at rank 1 gives max 0.031 < 0.05.
@@ -490,7 +546,15 @@ def test_hybrid_search_above_threshold(mock_store, sample_notes):
 
 # --- Fixtures ---
 
-import pytest
+
+@pytest.fixture(autouse=True)
+def mock_reranker(monkeypatch):
+    """Keep vector-store tests focused on fusion, not model downloads."""
+    class StubReranker:
+        def rerank(self, query, results, top_k=5):
+            return results[:top_k]
+
+    monkeypatch.setattr("core.reranker.CrossEncoderReranker", StubReranker)
 
 
 @pytest.fixture
@@ -506,21 +570,21 @@ def sample_notes():
         {
             "path": "notes/a.md",
             "text": "content a",
-            "vector": [0.1] * 384,
+            "vector": [0.1] * _embed_dim(),
             "links": ["notes/b.md"],
             "metadata": {"title": "Note A", "tags": ["a"]},
         },
         {
             "path": "notes/b.md",
             "text": "content b",
-            "vector": [0.2] * 384,
+            "vector": [0.2] * _embed_dim(),
             "links": ["notes/c.md"],
             "metadata": {"title": "Note B", "tags": ["b"]},
         },
         {
             "path": "notes/c.md",
             "text": "content c",
-            "vector": [0.3] * 384,
+            "vector": [0.3] * _embed_dim(),
             "links": [],
             "metadata": {"title": "Note C", "tags": ["c"]},
         },
@@ -542,7 +606,7 @@ def test_path_with_single_quote_no_injection():
     store.upsert(
         path=path,
         text="Test content",
-        vector=[0.0] * 384,
+        vector=[0.0] * _embed_dim(),
         links=[],
         metadata={"title": "O'Reilly's Notes", "_mtime": 999.0},
     )
@@ -550,3 +614,62 @@ def test_path_with_single_quote_no_injection():
     assert store.get_title_by_url(path) == "O'Reilly's Notes"
     assert store.get_mtime(path) == 999.0
 
+
+@pytest.mark.slow
+def test_embed_insert_query_real(mock_store):
+    """Real e2e: embed() → upsert() → search() with actual FastEmbed model."""
+    from core.embeddings import embed
+
+    store, tmp_dir = mock_store
+
+    vec1 = embed("attention mechanisms in transformer architectures")
+    vec2 = embed("cooking pasta carbonara with guanciale")
+    vec3 = embed("machine learning optimization techniques")
+
+    assert len(vec1) == 384, f"Expected 384d, got {len(vec1)}"
+
+    store.upsert("notes/attention.md", "attention content", vec1, [], {"title": "Attention"})
+    store.upsert("notes/pasta.md", "pasta content", vec2, [], {"title": "Pasta"})
+    store.upsert("notes/ml.md", "ml content", vec3, [], {"title": "ML"})
+
+    query_vec = embed("transformer attention layer design")
+    results = store.search(query_vec, top_k=1)
+
+    assert len(results) == 1
+    assert results[0]["path"] == "notes/attention.md"
+
+
+def test_migrate_on_dimension_mismatch(mock_store):
+    """Wrong-dimension tables remain intact until an explicit rebuild."""
+    import lancedb
+    import pyarrow as pa
+
+    store, tmp_dir = mock_store
+
+    db = lancedb.connect(str(tmp_dir))
+    wrong_schema = pa.schema([
+        pa.field("path", pa.string()),
+        pa.field("text", pa.string()),
+        pa.field("vector", pa.list_(pa.float32(), 1024)),
+        pa.field("links", pa.list_(pa.string())),
+        pa.field("metadata", pa.string()),
+    ])
+    db.drop_table("notes")
+    wrong_table = db.create_table("notes", schema=wrong_schema)
+    wrong_table.add([{
+        "path": "notes/legacy.md",
+        "text": "legacy content",
+        "vector": [0.1] * 1024,
+        "links": [],
+        "metadata": '{"title": "Legacy"}',
+    }])
+
+    store2 = VectorStore(index_path=str(tmp_dir))
+
+    table = store2._table
+    actual_dim = table.schema.field("vector").type.list_size
+    assert actual_dim == 1024, "Migration must not destroy the legacy table"
+    assert table.search().limit(1).to_list()[0]["path"] == "notes/legacy.md"
+    assert store2._migration_required is True
+    with pytest.raises(RuntimeError, match="schema does not match"):
+        store2.upsert("notes/new.md", "new", [0.1] * 384, [], {})

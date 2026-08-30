@@ -15,7 +15,8 @@ def test_index_returns_html():
     resp = client.get("/")
     assert resp.status_code == 200
     assert "personalWiki" in resp.text
-    assert 'action="/ingest"' in resp.text  # form posts to /ingest
+    assert '<form id="ingest-form"' in resp.text
+    assert "fetch('/ingest/preview'" in resp.text
 
 def test_ingest_url_returns_job_json():
     """Ingest endpoint returns JSON with job_id field, not HTML."""
@@ -172,7 +173,7 @@ def test_keywords_returns_graph_and_manual():
     assert body["total"] == len(body["manual"]) + len(body["graph"])
 
 
-def test_ingest_docx_file_returns_job_json():
+def test_ingest_docx_file_returns_job_json(tmp_path):
     """DOCX file upload to /ingest returns job_id JSON, not HTML or error."""
     import os
     import app as app_module
@@ -190,10 +191,13 @@ def test_ingest_docx_file_returns_job_json():
         yield "Extracting DOCX content..."
         yield "Saved → notes/test.docx.md"
 
+    docx_path = tmp_path / "test_docx.docx"
+    docx_path.write_bytes(b"test docx payload")
+
     try:
         client = make_client()
         with patch("app.run_pipeline", fake_pipeline):
-            with open("/tmp/test_docx.docx", "rb") as f:
+            with docx_path.open("rb") as f:
                 resp = client.post(
                     "/ingest",
                     files={"file": ("test_docx.docx", f, "application/vnd.openxmlformats-officedocument.wordprocessingml.document")}
@@ -212,7 +216,91 @@ def test_ingest_docx_file_returns_job_json():
         app_module._scheduler = prior_scheduler
 
 
-def test_ingest_docx_routes_to_correct_extractor():
+def test_ingest_preview_returns_keywords():
+    """POST /ingest/preview returns extracted keywords with existing vs new classification."""
+    import app as app_module
+
+    prior_scheduler = app_module._scheduler
+    app_module._scheduler = None
+    app_module._scheduler_lock = None
+    app_module._preview_cache.clear()
+
+    try:
+        client = make_client()
+        with patch("core.keyword_extractor.extract_and_classify", return_value={"existing": ["python"], "new": ["deep-learning"]}):
+            with patch("ingesters.router.extract", new_callable=AsyncMock) as mock_extract:
+                mock_extract.return_value = MagicMock(
+                    title="Test Article",
+                    raw_text="Python and deep learning content.",
+                    content_type="article",
+                )
+                resp = client.post("/ingest/preview", data={"url": "https://example.com"})
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "preview_id" in data
+        assert data["keywords"]["existing"] == ["python"]
+        assert data["keywords"]["new"] == ["deep-learning"]
+    finally:
+        app_module._preview_cache.clear()
+        app_module._scheduler = prior_scheduler
+
+
+def test_ingest_run_returns_job_id():
+    """POST /ingest/run returns a job_id for the confirmed keywords pipeline."""
+    import app as app_module
+
+    prior_scheduler = app_module._scheduler
+    app_module._scheduler = None
+    app_module._scheduler_lock = None
+    app_module._preview_cache.clear()
+    app_module._ingest_run_queues.clear()
+
+    async def fake_pipeline(**kwargs):
+        yield "Done"
+
+    try:
+        client = make_client()
+        with patch("app.run_pipeline", fake_pipeline):
+            with patch("app.load_manual_keywords", return_value=["python"]):
+                resp = client.post("/ingest/run", json={
+                    "preview_id": "test-preview-123",
+                    "accepted_keywords": ["python", "new-kw"],
+                    "url": "https://example.com",
+                })
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "job_id" in data
+    finally:
+        app_module._preview_cache.clear()
+        app_module._ingest_run_queues.clear()
+        app_module._scheduler = prior_scheduler
+
+
+def test_trigger_discovery_returns_triggered():
+    """POST /discovery/trigger starts a discovery cycle."""
+    import app as app_module
+
+    mock_scheduler = MagicMock()
+    mock_scheduler.trigger_cycle = AsyncMock()
+    prior_scheduler = app_module._scheduler
+    app_module._scheduler = mock_scheduler
+
+    async def mock_get_scheduler():
+        return mock_scheduler
+
+    try:
+        with patch.object(app_module, "_get_scheduler", mock_get_scheduler):
+            client = make_client()
+            resp = client.post("/discovery/trigger")
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "triggered"
+    finally:
+        app_module._scheduler = prior_scheduler
+
+
+def test_ingest_docx_routes_to_correct_extractor(tmp_path):
     """DOCX file with .docx extension should route to extract_docx via docx_path."""
     import app as app_module
 
@@ -227,10 +315,13 @@ def test_ingest_docx_routes_to_correct_extractor():
         captured_kwargs.update(kwargs)
         yield "done"
 
+    docx_path = tmp_path / "test_docx.docx"
+    docx_path.write_bytes(b"test docx payload")
+
     try:
         client = make_client()
         with patch("app.run_pipeline", capture_pipeline):
-            with open("/tmp/test_docx.docx", "rb") as f:
+            with docx_path.open("rb") as f:
                 resp = client.post(
                     "/ingest",
                     files={"file": ("my_document.docx", f, "application/vnd.openxmlformats-officedocument.wordprocessingml.document")}
@@ -255,6 +346,7 @@ def test_ingest_docx_routes_to_correct_extractor():
     os.environ.get("SKIP_PLAYWRIGHT") == "1",
     reason="Playwright browser test — set SKIP_PLAYWRIGHT=1 to skip"
 )
+@pytest.mark.integration
 def test_docx_upload_shows_badge_and_progress_via_browser():
     """
     End-to-end browser test: upload DOCX → badge appears with correct type

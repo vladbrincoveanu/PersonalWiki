@@ -14,7 +14,6 @@ Detects and removes:
 """
 import logging
 import re
-from pathlib import Path
 import frontmatter
 from config import NOTES_DIR
 
