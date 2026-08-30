@@ -428,9 +428,14 @@ async def ingest_run(request: Request):
     done_event = asyncio.Event()
     _ingest_run_queues[job_id] = (queue, done_event)
 
-    existing_keywords = await asyncio.to_thread(
-        load_manual_keywords, KEYWORDS_FILE
-    )
+    preview_tmp_path = cached.get("tmp_path") if cached else None
+    try:
+        existing_keywords = await asyncio.to_thread(
+            load_manual_keywords, KEYWORDS_FILE
+        )
+    except BaseException:
+        _cleanup_queued_job(_ingest_run_queues, job_id, preview_tmp_path)
+        raise
 
     async def _run():
         try:
@@ -473,7 +478,7 @@ async def ingest_run(request: Request):
             _cleanup_queued_job(
                 _ingest_run_queues,
                 job_id,
-                cached.get("tmp_path") if cached else None,
+                preview_tmp_path,
             )
 
     run_task = asyncio.create_task(_run())
@@ -482,7 +487,7 @@ async def ingest_run(request: Request):
             task,
             _ingest_run_queues,
             job_id,
-            cached.get("tmp_path") if cached else None,
+            preview_tmp_path,
         )
     )
     return {"job_id": job_id}

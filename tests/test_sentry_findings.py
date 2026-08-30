@@ -136,6 +136,43 @@ def test_completed_job_callback_retrieves_unexpected_task_exception():
 
 
 @pytest.mark.asyncio
+async def test_ingest_run_cleans_preview_when_keyword_loading_fails(tmp_path, monkeypatch):
+    import app
+
+    preview_file = tmp_path / "preview.pdf"
+    preview_file.write_bytes(b"preview")
+    previous_cache = app._preview_cache.copy()
+    previous_queues = app._ingest_run_queues.copy()
+    app._preview_cache.clear()
+    app._ingest_run_queues.clear()
+    app._preview_cache["preview-id"] = {
+        "tmp_path": str(preview_file),
+        "created_at": time.time(),
+    }
+
+    class Request:
+        async def json(self):
+            return {"preview_id": "preview-id", "accepted_keywords": []}
+
+    def fail_loading(*args):
+        raise RuntimeError("keyword file unavailable")
+
+    monkeypatch.setattr(app, "load_manual_keywords", fail_loading)
+    try:
+        with pytest.raises(RuntimeError, match="keyword file unavailable"):
+            await app.ingest_run(Request())
+
+        assert not preview_file.exists()
+        assert app._preview_cache == {}
+        assert app._ingest_run_queues == {}
+    finally:
+        app._preview_cache.clear()
+        app._preview_cache.update(previous_cache)
+        app._ingest_run_queues.clear()
+        app._ingest_run_queues.update(previous_queues)
+
+
+@pytest.mark.asyncio
 async def test_ingest_run_rejects_missing_preview_source():
     import app
 
