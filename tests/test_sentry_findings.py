@@ -173,6 +173,39 @@ async def test_ingest_run_cleans_preview_when_keyword_loading_fails(tmp_path, mo
 
 
 @pytest.mark.asyncio
+async def test_background_pipeline_exception_is_retrieved_by_finalizer(monkeypatch):
+    import app
+
+    previous_queues = app._ingest_run_queues.copy()
+    app._ingest_run_queues.clear()
+
+    class Request:
+        async def json(self):
+            return {"url": "https://example.com", "accepted_keywords": []}
+
+    async def fail_pipeline(**kwargs):
+        raise RuntimeError("pipeline failed")
+        yield
+
+    logger = MagicMock()
+    monkeypatch.setattr(app, "run_pipeline", fail_pipeline)
+    monkeypatch.setattr(app, "_logger", logger)
+    try:
+        result = await app.ingest_run(Request())
+
+        for _ in range(10):
+            await asyncio.sleep(0)
+            if logger.error.called:
+                break
+
+        assert logger.error.call_count == 1
+        assert result["job_id"] not in app._ingest_run_queues
+    finally:
+        app._ingest_run_queues.clear()
+        app._ingest_run_queues.update(previous_queues)
+
+
+@pytest.mark.asyncio
 async def test_ingest_run_rejects_missing_preview_source():
     import app
 

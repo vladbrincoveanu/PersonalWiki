@@ -472,6 +472,7 @@ async def ingest_run(request: Request):
                 await queue.put(f"<p>{msg}</p>")
         except Exception as e:
             await queue.put(f"<p>Error: {e}</p>")
+            raise
         finally:
             await queue.put(None)
             done_event.set()

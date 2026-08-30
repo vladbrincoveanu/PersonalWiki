@@ -17,7 +17,7 @@ _KEY_FIELDS = (
 )
 
 
-_TOKEN_RE = re.compile(r"[^\W]+(?:[-'_/+.#:][^\W]+)*[-+'#]*")
+_TOKEN_RE = re.compile(r"[^\W]+(?:[-'_/+.#:][^\W]+)*")
 _TOKEN_COMPONENT_RE = re.compile(r"[^\W]+")
 
 

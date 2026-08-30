@@ -94,3 +94,9 @@ def test_custom_frontmatter_values_are_indexed(vault):
     _write(vault, "custom.md", 'custom_field: "distinctive-value"')
     results = bm25.bm25_search("distinctive-value", top_k=5)
     assert results and results[0]["path"].endswith("custom.md")
+
+
+def test_matches_values_with_trailing_punctuation(vault):
+    _write(vault, "custom.md", 'custom_field: "James\'"')
+    results = bm25.bm25_search("James", top_k=5)
+    assert results and results[0]["path"].endswith("custom.md")
