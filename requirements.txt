@@ -10,7 +10,7 @@ lancedb==0.20.0
 pyarrow==23.0.1
 requests==2.33.1
 python-frontmatter==1.1.0
-python-dotenv==1.2.2
+python-dotenv==1.2.3
 pytest==9.0.3
 pytest-asyncio==1.4.0
 newspaper3k==0.2.8
