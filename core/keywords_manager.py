@@ -130,7 +130,7 @@ def _check_keyword_impact(keyword: str, vault_path: Path) -> dict:
 
 
 def _strip_keyword_from_file(keyword: str, filepath: Path) -> None:
-    """Remove keyword from frontmatter keywords list and strip [[wikilinks]]."""
+    """Remove keyword metadata and strip its ``[[wikilinks]]``."""
     import frontmatter as fm
     import re
 
@@ -142,6 +142,8 @@ def _strip_keyword_from_file(keyword: str, filepath: Path) -> None:
     if keyword in kws:
         kws = [k for k in kws if k != keyword]
         metadata["keywords"] = kws
+    if metadata.get("source_keyword") == keyword:
+        metadata.pop("source_keyword")
 
     post = fm.Post(body, **metadata)
     filepath.write_text(fm.dumps(post), encoding="utf-8")
