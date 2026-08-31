@@ -63,6 +63,7 @@ jobs:
         with:
           ref: refs/pull/${{ matrix.number }}/head
           fetch-depth: 0
+          clean: false
           persist-credentials: false
 
       - name: Fetch base ref
