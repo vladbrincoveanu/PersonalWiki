@@ -39,8 +39,6 @@ include = []
 for pr in prs:
     if pr.get("head", {}).get("repo", {}).get("full_name") != repo:
         continue
-    if pr.get("head", {}).get("ref") == "codex/pr-repair-agent":
-        continue
     include.append(
         {
             "number": pr["number"],
@@ -48,9 +46,6 @@ for pr in prs:
             "head_sha": pr["head"]["sha"],
         }
     )
-
-if not include:
-    include.append({"number": 0, "head_ref": "", "head_sha": ""})
 
 with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
     output.write("matrix=" + json.dumps({"include": include}, separators=(",", ":")) + "\n")
