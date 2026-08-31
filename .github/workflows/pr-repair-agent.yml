@@ -38,10 +38,95 @@ jobs:
           python-version: "3.13"
 
       - id: matrix
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
         env:
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
-          GITHUB_TOKEN: ${{ github.token }}
-        run: python .github/pr-repair-matrix.py
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            const defaultBranch = process.env.DEFAULT_BRANCH;
+            const controllerRef = "codex/pr-repair-agent";
+            const refPattern = /^[A-Za-z0-9._/-]+$/;
+            const shaPattern = /^[0-9a-f]{40}$/;
+
+            function validateRef(value, field) {
+              if (
+                typeof value !== "string" ||
+                !refPattern.test(value) ||
+                value.startsWith("/") ||
+                value.endsWith("/") ||
+                value.startsWith("-") ||
+                value.endsWith(".") ||
+                value.includes("..") ||
+                value.includes("//") ||
+                value.includes("@{")
+              ) {
+                throw new Error(`invalid ${field}`);
+              }
+              return value;
+            }
+
+            function validateSha(value, field) {
+              if (typeof value !== "string" || !shaPattern.test(value)) {
+                throw new Error(`invalid ${field}`);
+              }
+              return value;
+            }
+
+            validateRef(defaultBranch, "default branch");
+            const event = context.eventName;
+            const payload = context.payload;
+            let prs;
+            if (event === "schedule" || event === "workflow_dispatch") {
+              prs = await github.paginate(github.rest.pulls.list, {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                state: "open",
+                per_page: 100,
+              });
+            } else {
+              const number =
+                payload.pull_request?.number ??
+                payload.issue?.number ??
+                payload.review?.pull_request?.number ??
+                payload.comment?.pull_request?.number;
+              prs = number
+                ? [
+                    await github.rest.pulls.get({
+                      owner: context.repo.owner,
+                      repo: context.repo.repo,
+                      pull_number: number,
+                    }).then((response) => response.data),
+                  ]
+                : [];
+            }
+
+            const repository = `${context.repo.owner}/${context.repo.repo}`;
+            const entries = [];
+            for (const pr of prs) {
+              const head = pr.head ?? {};
+              const base = pr.base ?? {};
+              if (
+                pr.state !== "open" ||
+                head.repo?.full_name !== repository ||
+                head.ref === controllerRef ||
+                head.ref === defaultBranch
+              ) {
+                continue;
+              }
+              entries.push({
+                number: pr.number,
+                head_ref: validateRef(head.ref, "head ref"),
+                head_sha: validateSha(head.sha, "head SHA"),
+                base_ref: validateRef(base.ref, "base ref"),
+                base_sha: validateSha(base.sha, "base SHA"),
+              });
+            }
+            if (entries.length > 256) {
+              throw new Error(`too many open PRs for one matrix: ${entries.length}`);
+            }
+            core.setOutput("matrix", JSON.stringify({ include: entries }));
+            core.setOutput("has_prs", entries.length ? "true" : "false");
 
   repair:
     needs: prepare

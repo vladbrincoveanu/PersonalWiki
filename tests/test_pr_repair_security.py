@@ -216,6 +216,16 @@ def test_workflow_keeps_privileged_job_from_running_pr_code():
     assert "BASE_SHA: ${{ matrix.base_sha }}" in workflow
 
 
+def test_prepare_bootstraps_matrix_without_executing_pr_helper_code():
+    workflow = (GITHUB_DIR / "workflows" / "pr-repair-agent.yml").read_text()
+    prepare = workflow.split("\n  repair:", 1)[0]
+
+    assert "ref: ${{ github.event.repository.default_branch }}" in prepare
+    assert "uses: actions/github-script@" in prepare
+    assert "github.paginate" in prepare
+    assert "python .github/pr-repair-matrix.py" not in prepare
+
+
 def test_context_artifacts_are_written_to_the_run_directory():
     context = (GITHUB_DIR / "pr-repair-context.py").read_text()
     repair = (GITHUB_DIR / "pr-repair-deepinfra.py").read_text()
