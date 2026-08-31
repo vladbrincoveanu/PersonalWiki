@@ -185,7 +185,7 @@ def _build_paper_body(note: dict, entity_statuses: list[dict] = ()) -> str:
     # My Knowledge Says (cross-links)
     cross_links = note.get("cross_links", [])
     if cross_links:
-        links_str = ", ".join(f"[[{l}]]" for l in cross_links)
+        links_str = ", ".join(f"[[{link}]]" for link in cross_links)
         my_knowledge_section = f"\n## My Knowledge Says\n{links_str}\n"
     else:
         my_knowledge_section = ""
@@ -264,7 +264,7 @@ def _build_article_body(note: dict, entity_statuses: list[dict] = ()) -> str:
     cross_links = note.get("cross_links", [])
     cross_links_section = ""
     if cross_links:
-        links_str = ", ".join(f"[[{l}]]" for l in cross_links)
+        links_str = ", ".join(f"[[{link}]]" for link in cross_links)
         cross_links_section = f"\n## My Knowledge Says\n{links_str}\n"
 
     # Raw Extract

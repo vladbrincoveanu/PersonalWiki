@@ -1,5 +1,6 @@
 import pytest
 import asyncio
+import ipaddress
 from unittest.mock import MagicMock, patch
 
 # Prevent LanceDB segfaults in tests by mocking get_store early
@@ -14,6 +15,28 @@ patcher.start()
 def mock_vector_store():
     """Ensure get_store always returns a mock."""
     return _mock_store
+
+
+@pytest.fixture(autouse=True)
+def mock_public_dns_for_unit_tests(monkeypatch):
+    """Keep URL tests offline while retaining literal private-IP checks."""
+    def is_test_public_hostname(hostname: str) -> bool:
+        try:
+            address = ipaddress.ip_address(hostname)
+        except ValueError:
+            # DNS behavior belongs to the network/integration boundary; unit
+            # tests should not depend on the runner's resolver.
+            return True
+        return not (
+            address.is_private
+            or address.is_loopback
+            or address.is_link_local
+            or address.is_reserved
+            or address.is_multicast
+            or address.is_unspecified
+        )
+
+    monkeypatch.setattr("ingesters.router._is_public_hostname", is_test_public_hostname)
 
 
 @pytest.fixture(autouse=True)
@@ -33,5 +56,4 @@ def cleanup_discovery_scheduler():
                 _app._scheduler_lock = None
     except Exception:
         pass
-
 

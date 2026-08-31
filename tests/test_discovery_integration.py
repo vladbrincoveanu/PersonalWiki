@@ -5,6 +5,8 @@ Tests gap detection, scheduler deduplication, and pipeline integration.
 import pytest
 from pathlib import Path
 
+pytestmark = pytest.mark.integration
+
 
 # =============================================================================
 # Test 1: Gap Detection Follows Pipeline Integration

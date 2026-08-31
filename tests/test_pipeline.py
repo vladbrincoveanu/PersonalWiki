@@ -117,9 +117,23 @@ async def test_pipeline_pdf_url_passes_images_to_writer(tmp_path):
 
     with (
         patch("pipeline.get_store", return_value=mock_store),
-        patch("urllib.request.urlretrieve", side_effect=fake_urlretrieve),
+        patch("ingesters.router._download_pdf", side_effect=fake_urlretrieve),
         patch("ingesters.pdf.extract_pdf_full", return_value=fake_result),
         patch("pipeline.embed", return_value=[0.1] * 384),
+        patch("pipeline.enrich_with_images", return_value={
+            "title": "Paper",
+            "type": "paper",
+            "tags": [],
+            "summary": "This paper provides a comprehensive overview of the research topic and its significance in the field. It discusses key findings and contributions.",
+            "key_facts": [
+                "First key finding is important and contributes to the field.",
+                "Second key finding provides additional evidence and support.",
+                "Third key finding offers new insights into the topic.",
+            ],
+            "cross_links": [],
+            "raw_text": "# Paper\n\n<!-- image --> some content " + "x" * 500,
+            "error": False,
+        }),
         patch(
             "pipeline.enrich",
             return_value={

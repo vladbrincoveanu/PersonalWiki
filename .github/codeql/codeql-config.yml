@@ -1,0 +1,10 @@
+name: PersonalWiki CodeQL
+
+paths-ignore:
+  - "tests/**"
+  - "scripts/tests/**"
+  - "vault/tests/**"
+  - "docs/**"
+  - ".worktrees/**"
+  - "**/bin/**"
+  - "**/obj/**"

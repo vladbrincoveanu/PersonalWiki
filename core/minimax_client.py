@@ -95,7 +95,6 @@ def _find_timestamp_gap_splits(text: str) -> List[int]:
     timestamps = list(_TIMESTAMP_PATTERN_RE.finditer(text))
     splits = []
     for i in range(1, len(timestamps)):
-        prev_end = timestamps[i - 1].end()
         next_start = timestamps[i].start()
         prev_ts = timestamps[i - 1].group()
         next_ts = timestamps[i].group()

@@ -4,6 +4,7 @@ import time
 import uuid
 import tempfile
 import os
+import re
 from pathlib import Path
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Form, UploadFile, Request, HTTPException
@@ -21,6 +22,7 @@ _job_queues: dict[str, tuple[asyncio.Queue, asyncio.Event]] = {}
 _ingest_run_queues: dict[str, tuple[asyncio.Queue, asyncio.Event]] = {}
 _preview_cache: dict[str, dict] = {}
 _PREVIEW_TTL = 300
+_NOTE_SLUG_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+){0,127}$")
 _scheduler: DiscoveryScheduler | None = None
 _doctor_scheduler: DoctorScheduler | None = None
 _scheduler_lock = asyncio.Lock()
@@ -145,10 +147,15 @@ async def stream(job_id: str):
 async def get_note(slug: str):
     """Return the markdown content of a saved note."""
     from config import VAULT_PATH
-    note_path = Path(VAULT_PATH) / "notes" / f"{slug}.md"
+    if not _NOTE_SLUG_RE.fullmatch(slug):
+        raise HTTPException(400, "Invalid note slug")
+    notes_root = (Path(VAULT_PATH) / "notes").resolve()
+    note_path = (notes_root / f"{slug}.md").resolve()
+    if notes_root not in note_path.parents:
+        raise HTTPException(400, "Invalid note path")
     if not note_path.exists():
         raise HTTPException(404, "Note not found")
-    return {"content": note_path.read_text()}
+    return {"content": note_path.read_text(encoding="utf-8")}
 
 
 @app.get("/keywords")

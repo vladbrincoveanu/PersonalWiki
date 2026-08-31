@@ -1,5 +1,6 @@
 # Stage 1: builder
-FROM python:3.13-slim AS builder
+# Base pinned by digest (index of python:3.13-slim, Debian trixie), observed 2026-08-31.
+FROM python:3.13-slim@sha256:7ce4b6dfe35e55397b7cda544f8a13f191b7ae28dc5aad71fe664dbc9bc2623f AS builder
 
 WORKDIR /app
 
@@ -12,12 +13,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     make \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python deps
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Install Python deps from the committed transitive lock.
+COPY requirements.lock.txt .
+RUN pip install --no-cache-dir -r requirements.lock.txt
 
 # Stage 2: runtime
-FROM python:3.13-slim
+# Same pinned base as the builder stage, observed 2026-08-31.
+FROM python:3.13-slim@sha256:7ce4b6dfe35e55397b7cda544f8a13f191b7ae28dc5aad71fe664dbc9bc2623f
 
 WORKDIR /app
 
@@ -63,5 +65,8 @@ EXPOSE 8000
 # Vault is mounted read-write at container runtime via docker-compose
 ENV VAULT_PATH=/vault
 ENV INDEX_PATH=/app/.vke_index
+
+HEALTHCHECK --interval=10s --timeout=5s --start-period=20s --retries=12 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/', timeout=3)"
 
 CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]

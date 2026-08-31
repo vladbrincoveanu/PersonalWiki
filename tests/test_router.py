@@ -1,5 +1,5 @@
 import pytest
-from ingesters.router import route_url
+from ingesters.router import _validate_external_url, route_url
 
 
 def test_route_url_tweet():
@@ -24,3 +24,13 @@ def test_route_url_news():
     assert route_url("https://example.com/article") == "news"
     assert route_url("https://news.site.com/story/123") == "news"
     assert route_url("https://blog.post.com/2024/01/01/title") == "news"
+
+
+def test_external_url_rejects_private_destinations():
+    with pytest.raises(ValueError, match="public address"):
+        _validate_external_url("http://127.0.0.1:8080/admin")
+
+
+def test_external_url_rejects_embedded_credentials():
+    with pytest.raises(ValueError, match="credentials"):
+        _validate_external_url("https://user:password@example.com/article")

@@ -5,6 +5,9 @@ from contextlib import contextmanager
 from ingesters import Document
 
 
+pytestmark = pytest.mark.slow
+
+
 SAMPLE_VTT = """\
 WEBVTT
 

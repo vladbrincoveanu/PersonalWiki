@@ -1,6 +1,8 @@
 import pytest
 from unittest.mock import patch, MagicMock
 
+pytestmark = pytest.mark.slow
+
 
 def test_hybrid_search_calls_reranker():
     """hybrid_search should call reranker after RRF merge."""

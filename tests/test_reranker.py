@@ -2,6 +2,9 @@ import pytest
 from unittest.mock import patch, MagicMock
 
 
+pytestmark = pytest.mark.slow
+
+
 def test_reranker_boosts_relevant_results():
     from core.reranker import CrossEncoderReranker
     reranker = CrossEncoderReranker()

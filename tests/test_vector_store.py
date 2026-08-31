@@ -2,7 +2,11 @@ import json
 import tempfile
 from pathlib import Path
 from unittest.mock import patch
+import pytest
 from core.vector_store import VectorStore
+
+
+pytestmark = pytest.mark.slow
 
 _embed_dim_cached = None
 
@@ -606,4 +610,3 @@ def test_migrate_on_dimension_mismatch(mock_store):
     table = store2._table
     actual_dim = table.schema.field("vector").type.list_size
     assert actual_dim == 384, f"Expected 384d, got {actual_dim}"
-

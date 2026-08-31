@@ -2,6 +2,8 @@
 import pytest
 from unittest.mock import patch, AsyncMock, MagicMock
 
+pytestmark = pytest.mark.integration
+
 @pytest.mark.asyncio
 async def test_pipeline_runs_quality_gate_before_enrichment():
     from pipeline import run_pipeline

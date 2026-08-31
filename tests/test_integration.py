@@ -12,6 +12,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 from PIL import Image
 
+pytestmark = pytest.mark.integration
+
 
 # ---------------------------------------------------------------------------
 # Helpers

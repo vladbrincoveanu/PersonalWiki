@@ -56,7 +56,10 @@ def _build_index() -> tuple[BM25Okapi, list[str], list[str]]:
             paths.append(str(md_file))
             corpus.append(body)
     tokenized = [_simple_tokenizer(doc) for doc in corpus]
-    index = BM25Okapi(tokenized)
+    # rank_bm25 divides by corpus_size during construction, so an empty
+    # vault must still receive a harmless sentinel index.  Keep paths/corpus
+    # empty so callers correctly return no results for a fresh vault.
+    index = BM25Okapi(tokenized or [["__empty__"]])
     return index, paths, corpus
 
 

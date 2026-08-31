@@ -206,8 +206,8 @@ def _has_english_cues(vtt_text: str) -> bool:
         if "lang=en" in line or "lang=en-" in line:
             return True
     # Fallback: character ratio check on text content lines
-    text_lines = [l.strip() for l in vtt_text.splitlines()
-                  if not l.startswith("00:") and "-->" not in l]
+    text_lines = [line.strip() for line in vtt_text.splitlines()
+                  if not line.startswith("00:") and "-->" not in line]
     sample = " ".join(text_lines[:50])
     return _is_english_text(sample)
 

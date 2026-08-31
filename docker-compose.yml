@@ -4,13 +4,20 @@ services:
     ports:
       - "8010:8000"
     volumes:
-      - ${VAULT_PATH:-/Users/vladbrincoveanu/Library/Mobile Documents/iCloud~md~obsidian/Documents/PersonalWiki}:/vault
+      - ${VAULT_PATH:-./.vault}:/vault
     env_file:
-      - .env
+      - path: .env
+        required: false
     environment:
-      - VAULT_PATH=/vault
-      - INDEX_PATH=/app/.vke_index
-      - YOUTUBE_PROXY=  # intentionally empty — NordVPN HTTP Proxy requires paid add-on
+      VAULT_PATH: /vault
+      INDEX_PATH: /app/.vke_index
+      YOUTUBE_PROXY: ""
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
     restart: unless-stopped
     deploy:
       resources:
