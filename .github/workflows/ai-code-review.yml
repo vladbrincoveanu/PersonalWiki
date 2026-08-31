@@ -1,4 +1,4 @@
-name: Free AI Code Review (DeepInfra)
+name: Free AI Code Review (OpenRouter)
 
 on:
   pull_request:
@@ -24,10 +24,10 @@ jobs:
         uses: qodo-ai/pr-agent@872dacfba6fd25f0e5aac3016b21a59fa013a42b # main
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          DEEPINFRA.KEY: ${{ secrets.DEEPINFRA_TOKEN }}
-          CONFIG.MODEL: "deepinfra/deepseek-ai/DeepSeek-V4-Flash-0731"
+          OPENROUTER__KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          CONFIG.MODEL: "openrouter/nvidia/nemotron-3-ultra-550b-a55b:free"
           CONFIG.CUSTOM_MODEL_MAX_TOKENS: "32000"
-          CONFIG.FALLBACK_MODELS: '["deepinfra/deepseek-ai/DeepSeek-V4-Flash-0731"]'
+          CONFIG.FALLBACK_MODELS: '["openrouter/nvidia/nemotron-3-ultra-550b-a55b:free"]'
           CONFIG.PROPAGATE_TOOL_ERRORS: "true"
           PR_REVIEWER.EXTRA_INSTRUCTIONS: >-
             Prefix every key_issues_to_review issue_header with exactly one
