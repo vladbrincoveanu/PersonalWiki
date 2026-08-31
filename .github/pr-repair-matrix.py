@@ -49,5 +49,8 @@ for pr in prs:
         }
     )
 
+if not include:
+    include.append({"number": 0, "head_ref": "", "head_sha": ""})
+
 with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
     output.write("matrix=" + json.dumps({"include": include}, separators=(",", ":")) + "\n")
