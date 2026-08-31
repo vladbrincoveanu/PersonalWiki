@@ -21,7 +21,7 @@ jobs:
 
       - name: Run PR Agent
         id: pr_agent
-        uses: qodo-ai/pr-agent@43276f98607d03459d40dc92632599faae2078c4 # main
+        uses: qodo-ai/pr-agent@872dacfba6fd25f0e5aac3016b21a59fa013a42b # main
         env:
           GITHUB_TOKEN: ${{ github.token }}
           DEEPINFRA.KEY: ${{ secrets.DEEPINFRA_TOKEN }}
