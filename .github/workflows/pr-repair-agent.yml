@@ -128,7 +128,7 @@ jobs:
         run: |
           set -euo pipefail
           echo "pushed=false" >> "$GITHUB_OUTPUT"
-          printf '%s\n' pr-repair-context.json pr-repair-prompt.md repair-result.json repair-result.md >> .git/info/exclude
+          printf '%s\n' controller/ pr-repair-context.json pr-repair-prompt.md repair-result.json repair-result.md >> .git/info/exclude
           git config --local --unset-all core.hooksPath || true
           git config --local --unset-regexp '^filter\.' || true
           if [ -z "$(git status --porcelain)" ]; then
@@ -139,7 +139,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git -c core.hooksPath=/dev/null add -A
           git -c core.hooksPath=/dev/null commit --no-verify -m "fix: address automated PR review feedback"
-          git -c "http.https://github.com/.extraheader=AUTHORIZATION: bearer ${GITHUB_TOKEN}" push origin "HEAD:${HEAD_REF}"
+          git -c "http.extraheader=AUTHORIZATION: bearer ${GITHUB_TOKEN}" push origin "HEAD:${HEAD_REF}"
           echo "pushed=true" >> "$GITHUB_OUTPUT"
 
       - name: Reply on fixed bot comments
