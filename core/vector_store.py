@@ -1,9 +1,12 @@
 import json
 import re
+from contextlib import contextmanager
 from pathlib import Path
 import lancedb
 import logging
 import pyarrow as pa
+
+from core.observability import observed_span, record_vector_operation
 
 TABLE_NAME = "notes"
 ENTITIES_TABLE = "personal_entities"
@@ -28,6 +31,23 @@ def _parse_metadata(meta: str | dict) -> dict:
 
 
 _logger = logging.getLogger(__name__)
+
+@contextmanager
+def _vector_operation(operation: str):
+    outcome = "error"
+    with observed_span(
+        f"personalwiki.vector.{operation}",
+        {"operation": operation},
+    ):
+        try:
+            yield
+        except BaseException:
+            raise
+        else:
+            outcome = "success"
+        finally:
+            record_vector_operation(operation, outcome)
+
 
 _SEARCH_TOKEN_RE = re.compile(r"[^\W]+(?:[-'_/+.#:][^\W]+)*[-+'#]*")
 
@@ -155,18 +175,19 @@ class VectorStore:
             )
 
     def upsert(self, path: str, text: str, vector: list[float], links: list[str], metadata: dict):
-        expected_dim = EMBEDDING_DIMENSION
-        if len(vector) != expected_dim:
-            raise ValueError(f"Vector dimension must be {expected_dim}, got {len(vector)}")
-        self._require_current_schema()
-        self._table.delete(f"path = '{_escape_path(path)}'")
-        self._table.add([{
-            "path": path,
-            "text": text,
-            "vector": [float(v) for v in vector],
-            "links": links,
-            "metadata": json.dumps(metadata),
-        }])
+        with _vector_operation("upsert"):
+            expected_dim = EMBEDDING_DIMENSION
+            if len(vector) != expected_dim:
+                raise ValueError(f"Vector dimension must be {expected_dim}, got {len(vector)}")
+            self._require_current_schema()
+            self._table.delete(f"path = '{_escape_path(path)}'")
+            self._table.add([{
+                "path": path,
+                "text": text,
+                "vector": [float(v) for v in vector],
+                "links": links,
+                "metadata": json.dumps(metadata),
+            }])
 
     def delete(self, path: str) -> bool:
         """Delete a path from the vector store. Returns True if a row was deleted."""
@@ -177,13 +198,14 @@ class VectorStore:
             return False
 
     def search(self, vector: list[float], top_k: int = 3) -> list[dict]:
-        self._require_current_schema()
-        rows = self._table.search([float(v) for v in vector]).limit(top_k).to_list()
-        results = []
-        for row in rows:
-            row["metadata"] = _parse_metadata(row["metadata"])
-            results.append(row)
-        return results
+        with _vector_operation("search"):
+            self._require_current_schema()
+            rows = self._table.search([float(v) for v in vector]).limit(top_k).to_list()
+            results = []
+            for row in rows:
+                row["metadata"] = _parse_metadata(row["metadata"])
+                results.append(row)
+            return results
 
     def exists(self, path: str) -> bool:
         rows = self._table.search().where(f"path = '{_escape_path(path)}'").limit(1).to_list()
@@ -216,62 +238,64 @@ class VectorStore:
         return float(meta.get("_mtime", 0.0))
 
     def upsert_entity(self, path: str, entity_type: str, entity_name: str, summary: str, metadata: dict):
-        try:
-            self._entities_table.delete(
-                f"path = '{_escape_path(path)}' AND "
-                f"entity_name = '{_escape_path(entity_name)}'"
-            )
-        except Exception:
-            pass
-        self._entities_table.add([{
-            "path": path,
-            "entity_type": entity_type,
-            "entity_name": entity_name,
-            "summary": summary,
-            "metadata": json.dumps(metadata),
-        }])
+        with _vector_operation("entity_upsert"):
+            try:
+                self._entities_table.delete(
+                    f"path = '{_escape_path(path)}' AND "
+                    f"entity_name = '{_escape_path(entity_name)}'"
+                )
+            except Exception:
+                pass
+            self._entities_table.add([{
+                "path": path,
+                "entity_type": entity_type,
+                "entity_name": entity_name,
+                "summary": summary,
+                "metadata": json.dumps(metadata),
+            }])
 
     def search_entities(self, query: str, entity_type: str | None = None, top_k: int = 5) -> list[dict]:
         """Search entity names and summaries without requiring an embedding column."""
-        query_tokens = _search_tokens(query)
-        if not query_tokens:
-            return []
+        with _vector_operation("entity_search"):
+            query_tokens = _search_tokens(query)
+            if not query_tokens:
+                return []
 
-        # Push coarse matching into LanceDB and cap candidates before Python
-        # scoring so a large entity table is never fully materialized.
-        safe_tokens = sorted(query_tokens)
-        token_clauses = [
-            "(lower(entity_name) LIKE '%{0}%' ESCAPE '\\' OR "
-            "lower(summary) LIKE '%{0}%' ESCAPE '\\' OR "
-            "lower(metadata) LIKE '%{0}%' ESCAPE '\\')".format(
-                _escape_like(token)
-            )
-            for token in safe_tokens
-        ]
-        where = " OR ".join(token_clauses)
-        if entity_type:
-            where = f"entity_type = '{_escape_path(entity_type)}' AND ({where})"
-        candidate_limit = max(top_k * 20, 100)
+            # Push coarse matching into LanceDB and cap candidates before Python
+            # scoring so a large entity table is never fully materialized.
+            safe_tokens = sorted(query_tokens)
+            token_clauses = [
+                "(lower(entity_name) LIKE '%{0}%' ESCAPE '\\' OR "
+                "lower(summary) LIKE '%{0}%' ESCAPE '\\' OR "
+                "lower(metadata) LIKE '%{0}%' ESCAPE '\\')".format(
+                    _escape_like(token)
+                )
+                for token in safe_tokens
+            ]
+            where = " OR ".join(token_clauses)
+            if entity_type:
+                where = f"entity_type = '{_escape_path(entity_type)}' AND ({where})"
+            candidate_limit = max(top_k * 20, 100)
 
-        scored: list[tuple[int, dict]] = []
-        for row in self._entities_table.search().where(where).limit(candidate_limit).to_list():
-            metadata = _parse_metadata(row.get("metadata", "{}"))
-            name_tokens = _search_tokens(str(row.get("entity_name", "")))
-            searchable = " ".join([
-                str(row.get("entity_name", "")),
-                str(row.get("summary", "")),
-                json.dumps(metadata),
-            ])
-            searchable_tokens = _search_tokens(searchable)
-            overlap = query_tokens.intersection(searchable_tokens)
-            if not overlap:
-                continue
-            score = sum(2 if token in name_tokens else 1 for token in overlap)
-            row["metadata"] = metadata
-            scored.append((score, row))
+            scored: list[tuple[int, dict]] = []
+            for row in self._entities_table.search().where(where).limit(candidate_limit).to_list():
+                metadata = _parse_metadata(row.get("metadata", "{}"))
+                name_tokens = _search_tokens(str(row.get("entity_name", "")))
+                searchable = " ".join([
+                    str(row.get("entity_name", "")),
+                    str(row.get("summary", "")),
+                    json.dumps(metadata),
+                ])
+                searchable_tokens = _search_tokens(searchable)
+                overlap = query_tokens.intersection(searchable_tokens)
+                if not overlap:
+                    continue
+                score = sum(2 if token in name_tokens else 1 for token in overlap)
+                row["metadata"] = metadata
+                scored.append((score, row))
 
-        scored.sort(key=lambda item: (-item[0], item[1].get("entity_name", "")))
-        return [row for _, row in scored[:top_k]]
+            scored.sort(key=lambda item: (-item[0], item[1].get("entity_name", "")))
+            return [row for _, row in scored[:top_k]]
 
     def get_recent_notes(self, top_k: int = 5) -> list[dict]:
         """Return notes sorted by _indexed_at timestamp descending."""
@@ -288,63 +312,64 @@ class VectorStore:
         Unified search across vector, BM25, and graph hop streams via RRF.
         Returns list of {path, score, rank, metadata} sorted by RRF score descending.
         """
-        from core.embeddings import embed
-        from core.bm25_index import bm25_search
+        with _vector_operation("hybrid_search"):
+            from core.embeddings import embed
+            from core.bm25_index import bm25_search
 
-        # Vector stream: embed + search with doubled top_k for headroom
-        query_vector = embed(query)
-        vector_results = self.search(query_vector, top_k=top_k * 2)
+            # Vector stream: embed + search with doubled top_k for headroom
+            query_vector = embed(query)
+            vector_results = self.search(query_vector, top_k=top_k * 2)
 
-        # BM25 stream
-        bm25_results = bm25_search(query, top_k=top_k * 2, include_body=True)
+            # BM25 stream
+            bm25_results = bm25_search(query, top_k=top_k * 2, include_body=True)
 
-        # Graph hops from vector results
-        vector_paths = [r["path"] for r in vector_results]
-        hop_results = self._graph_hop(vector_paths, top_k=top_k * 2)
-        # Convert hop_weight to rank-based scoring for RRF
-        ranked_hops = [
-            {"path": item["path"], "score": item["hop_weight"], "rank": rank}
-            for rank, item in enumerate(hop_results, start=1)
-        ]
+            # Graph hops from vector results
+            vector_paths = [r["path"] for r in vector_results]
+            hop_results = self._graph_hop(vector_paths, top_k=top_k * 2)
+            # Convert hop_weight to rank-based scoring for RRF
+            ranked_hops = [
+                {"path": item["path"], "score": item["hop_weight"], "rank": rank}
+                for rank, item in enumerate(hop_results, start=1)
+            ]
 
-        # Enumerate ranks for vector results so they are differentiated in RRF
-        ranked_vector = [
-            {"path": r["path"], "score": r.get("score"), "rank": rank + 1}
-            for rank, r in enumerate(vector_results)
-        ]
+            # Enumerate ranks for vector results so they are differentiated in RRF
+            ranked_vector = [
+                {"path": r["path"], "score": r.get("score"), "rank": rank + 1}
+                for rank, r in enumerate(vector_results)
+            ]
 
-        # Collect metadata from ALL streams before merging
-        metadata_map: dict[str, dict] = {}
-        for r in vector_results:
-            metadata_map[r["path"]] = r.get("metadata", {})
-        for r in bm25_results:
-            if r["path"] not in metadata_map:
-                metadata_map[r["path"]] = {}
-        for r in hop_results:
-            if r["path"] not in metadata_map:
-                metadata_map[r["path"]] = {}
+            # Collect metadata from ALL streams before merging
+            metadata_map: dict[str, dict] = {}
+            for r in vector_results:
+                metadata_map[r["path"]] = r.get("metadata", {})
+            for r in bm25_results:
+                if r["path"] not in metadata_map:
+                    metadata_map[r["path"]] = {}
+            for r in hop_results:
+                if r["path"] not in metadata_map:
+                    metadata_map[r["path"]] = {}
 
-        # RRF merge
-        merged = _rrf_merge(
-            [ranked_vector, bm25_results, ranked_hops],
-            weights=[1.0, 0.9, 0.5],
-            k=60,
-            top_k=top_k,
-        )
+            # RRF merge
+            merged = _rrf_merge(
+                [ranked_vector, bm25_results, ranked_hops],
+                weights=[1.0, 0.9, 0.5],
+                k=60,
+                top_k=top_k,
+            )
 
-        # Filter noise — if top result scores below threshold, return empty
-        if merged and merged[0]["score"] < min_score:
-            return []
+            # Filter noise — if top result scores below threshold, return empty
+            if merged and merged[0]["score"] < min_score:
+                return []
 
-        # Attach metadata from collected map
-        for item in merged:
-            item["metadata"] = metadata_map.get(item["path"], {})
+            # Attach metadata from collected map
+            for item in merged:
+                item["metadata"] = metadata_map.get(item["path"], {})
 
-        # Track D: Cross-encoder rerank — improve result ordering
-        from core.reranker import CrossEncoderReranker
-        reranker = CrossEncoderReranker()
-        reranked = reranker.rerank(query, merged, top_k=top_k)
-        return reranked
+            # Track D: Cross-encoder rerank — improve result ordering
+            from core.reranker import CrossEncoderReranker
+            reranker = CrossEncoderReranker()
+            reranked = reranker.rerank(query, merged, top_k=top_k)
+            return reranked
 
     def _get_links_for_paths(self, paths: list[str]) -> dict[str, list[str]]:
         """Fetch the links field from LanceDB for each path in the input list.

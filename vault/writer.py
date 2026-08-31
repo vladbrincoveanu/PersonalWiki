@@ -3,6 +3,7 @@ from collections.abc import Sequence
 from datetime import date
 import frontmatter
 from config import NOTES_DIR, VAULT_PATH
+from core.observability import observed_span, record_vault_write
 from vault.entity_status import _build_prose
 
 
@@ -186,7 +187,7 @@ def _build_paper_body(note: dict, entity_statuses: list[dict] = ()) -> str:
     # My Knowledge Says (cross-links)
     cross_links = note.get("cross_links", [])
     if cross_links:
-        links_str = ", ".join(f"[[{l}]]" for l in cross_links)
+        links_str = ", ".join(f"[[{link}]]" for link in cross_links)
         my_knowledge_section = f"\n## My Knowledge Says\n{links_str}\n"
     else:
         my_knowledge_section = ""
@@ -265,7 +266,7 @@ def _build_article_body(note: dict, entity_statuses: list[dict] = ()) -> str:
     cross_links = note.get("cross_links", [])
     cross_links_section = ""
     if cross_links:
-        links_str = ", ".join(f"[[{l}]]" for l in cross_links)
+        links_str = ", ".join(f"[[{link}]]" for link in cross_links)
         cross_links_section = f"\n## My Knowledge Says\n{links_str}\n"
 
     # Raw Extract
@@ -296,53 +297,64 @@ def write_note(
     source_keyword: str | None = None,
     keywords: list[str] | None = None,
 ) -> str:
-    # Discovered notes go to notes/discovered/, others to notes/
-    if is_discovery:
-        notes_subdir = NOTES_DIR / "discovered"
-    else:
-        notes_subdir = NOTES_DIR
-    notes_subdir.mkdir(parents=True, exist_ok=True)
+    outcome = "error"
+    with observed_span(
+        "personalwiki.vault.write",
+        {"discovery": "true" if is_discovery else "false"},
+    ) as span:
+        try:
+            # Discovered notes go to notes/discovered/, others to notes/
+            if is_discovery:
+                notes_subdir = NOTES_DIR / "discovered"
+            else:
+                notes_subdir = NOTES_DIR
+            notes_subdir.mkdir(parents=True, exist_ok=True)
 
-    title = note.get("title") or "Untitled"
-    ingested_date = ingested_date or str(date.today())
-    slug = slugify(title)
-    filepath = notes_subdir / f"{slug}.md"
+            title = note.get("title") or "Untitled"
+            ingested_date = ingested_date or str(date.today())
+            slug = slugify(title)
+            filepath = notes_subdir / f"{slug}.md"
 
-    # Handle slug collisions
-    counter = 1
-    while filepath.exists():
-        filepath = notes_subdir / f"{slug}-{counter}.md"
-        counter += 1
-    final_slug = filepath.stem
+            # Handle slug collisions
+            counter = 1
+            while filepath.exists():
+                filepath = notes_subdir / f"{slug}-{counter}.md"
+                counter += 1
+            final_slug = filepath.stem
 
-    metadata = {
-        "title": title,
-        "source": source,
-        "type": note.get("type", "article"),
-        "keywords": keywords or [],
-        "ingested": ingested_date,
-    }
-    if is_discovery:
-        metadata["discovery"] = "auto"
-    if source_keyword:
-        metadata["source_keyword"] = source_keyword
+            metadata = {
+                "title": title,
+                "source": source,
+                "type": note.get("type", "article"),
+                "keywords": keywords or [],
+                "ingested": ingested_date,
+            }
+            if is_discovery:
+                metadata["discovery"] = "auto"
+            if source_keyword:
+                metadata["source_keyword"] = source_keyword
 
-    # Replace image placeholders before building body
-    figure_captions = note.get("figure_captions", [])
-    if images:
-        _save_images(images, final_slug)
-        note["raw_text"] = _replace_image_placeholders(
-            note.get("raw_text", ""), final_slug, len(images), figure_captions
-        )
+            # Replace image placeholders before building body
+            figure_captions = note.get("figure_captions", [])
+            if images:
+                _save_images(images, final_slug)
+                note["raw_text"] = _replace_image_placeholders(
+                    note.get("raw_text", ""), final_slug, len(images), figure_captions
+                )
 
-    body = _build_body(note, entity_statuses=entity_statuses)
-    if keywords:
-        body = _inject_keywords_section(body, keywords)
-    if is_discovery:
-        body = body.rstrip() + "\n\n#auto-discovery\n"
+            body = _build_body(note, entity_statuses=entity_statuses)
+            if keywords:
+                body = _inject_keywords_section(body, keywords)
+            if is_discovery:
+                body = body.rstrip() + "\n\n#auto-discovery\n"
 
-    post = frontmatter.Post(body, **metadata)
-    with open(filepath, "w", encoding="utf-8") as f:
-        f.write(frontmatter.dumps(post))
+            post = frontmatter.Post(body, **metadata)
+            with open(filepath, "w", encoding="utf-8") as f:
+                f.write(frontmatter.dumps(post))
 
-    return str(filepath)
+            outcome = "success"
+            return str(filepath)
+        finally:
+            if span is not None:
+                span.set_attribute("vault.outcome", outcome)
+            record_vault_write(outcome, is_discovery)
