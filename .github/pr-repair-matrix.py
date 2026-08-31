@@ -39,7 +39,7 @@ else:
         or payload.get("comment", {}).get("pull_request", {}).get("number")
         or payload.get("review", {}).get("pull_request", {}).get("number")
     )
-    prs = [api(f"repos/{repo}/pulls/{number}")] if number else []
+    prs = api_all(f"repos/{repo}/pulls/{number}") if number else []
 
 include = []
 for pr in prs:
