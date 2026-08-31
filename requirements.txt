@@ -25,4 +25,4 @@ transformers==5.16.1
 openai-whisper==20250625
 python-docx==1.2.0
 markdown==3.10.3
-mcp==1.28.1
+mcp==2.1.1

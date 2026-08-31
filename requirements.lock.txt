@@ -259,7 +259,7 @@ marko==2.2.4
     # via docling-slim
 markupsafe==3.0.3
     # via jinja2
-mcp==1.28.1
+mcp==2.1.1
     # via -r requirements.txt
 mdurl==0.1.2
     # via markdown-it-py
