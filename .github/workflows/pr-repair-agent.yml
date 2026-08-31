@@ -31,6 +31,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
+          ref: ${{ github.workflow_sha }}
           persist-credentials: false
       - id: matrix
         env:
@@ -53,6 +54,7 @@ jobs:
       - name: Check out trusted controller
         uses: actions/checkout@v5
         with:
+          ref: ${{ github.workflow_sha }}
           path: controller
           persist-credentials: false
 
