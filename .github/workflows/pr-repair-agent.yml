@@ -44,7 +44,7 @@ jobs:
       (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' ||
        github.actor == 'vladbrincoveanu' || github.actor == 'sentry[bot]' ||
        github.actor == 'greptile-apps[bot]' || github.actor == 'github-actions[bot]' ||
-       github.actor == 'vercel[bot]' || github.actor == 'cursor[bot]')
+       github.actor == 'vercel[bot]' || github.actor == 'cursor[bot]') && matrix.number != 0
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
