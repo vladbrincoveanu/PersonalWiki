@@ -332,3 +332,69 @@ def test_shutdown_swallows_exporter_failures_and_is_idempotent():
 
     trace_flush.assert_called_once()
     metric_flush.assert_called_once()
+
+
+def test_fastapi_lifespan_configures_and_flushes_telemetry():
+    import app as app_module
+    from fastapi.testclient import TestClient
+
+    runtime = Mock()
+    with (
+        patch.object(
+            app_module,
+            "configure_observability",
+            return_value=runtime,
+            create=True,
+        ) as configure,
+        patch.object(app_module, "shutdown_observability", create=True) as shutdown,
+        patch.object(app_module, "scan_vault", return_value=0),
+    ):
+        with TestClient(app_module.app):
+            pass
+
+    configure.assert_called_once_with(app_module.app)
+    shutdown.assert_called_once_with()
+
+
+def test_fastapi_http_span_keeps_route_method_status_only(monkeypatch):
+    monkeypatch.setenv("OTEL_TRACES_SAMPLER", "always_on")
+    from config import get_telemetry_settings
+    from core.observability import _build_runtime
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+    from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+
+    exporter = InMemorySpanExporter()
+    runtime = _build_runtime(
+        get_telemetry_settings(),
+        extra_span_processors=(SimpleSpanProcessor(exporter),),
+        register_globals=False,
+    )
+    test_app = FastAPI()
+
+    @test_app.post("/items/{item_id}")
+    async def item(item_id: str):
+        return {"item_id": item_id}
+
+    runtime.instrument_app(test_app)
+    with TestClient(test_app) as client:
+        response = client.post(
+            "/items/42?token=query-secret",
+            headers={"Authorization": "Bearer header-secret"},
+            json={"document": "raw body"},
+        )
+
+    assert response.status_code == 200
+    server_span = next(
+        span
+        for span in exporter.get_finished_spans()
+        if span.attributes.get("http.route") == "/items/{item_id}"
+    )
+    attributes = dict(server_span.attributes)
+    assert attributes.get("http.request.method", attributes.get("http.method")) == "POST"
+    assert attributes.get("http.response.status_code", attributes.get("http.status_code")) == 200
+    assert "http.url" not in attributes
+    assert "http.target" not in attributes
+    assert all("secret" not in str(value) for value in attributes.values())
+    assert "raw body" not in str(server_span.events)
