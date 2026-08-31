@@ -27,7 +27,12 @@ if event in {"schedule", "workflow_dispatch"}:
 elif event == "issue_comment" and not payload.get("issue", {}).get("pull_request"):
     prs = []
 else:
-    number = payload.get("pull_request", {}).get("number") or payload.get("issue", {}).get("number")
+    number = (
+        payload.get("pull_request", {}).get("number")
+        or payload.get("issue", {}).get("number")
+        or payload.get("comment", {}).get("pull_request", {}).get("number")
+        or payload.get("review", {}).get("pull_request", {}).get("number")
+    )
     prs = [api(f"repos/{repo}/pulls/{number}")] if number else []
 
 include = []
