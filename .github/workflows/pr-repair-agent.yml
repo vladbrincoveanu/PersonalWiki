@@ -98,7 +98,7 @@ jobs:
         env:
           DEEPINFRA_TOKEN: ${{ secrets.DEEPINFRA_TOKEN }}
           DEEPINFRA_ENDPOINT: https://api.deepinfra.com/v1/openai/chat/completions
-          DEEPINFRA_MODEL: deepinfra/deepseek-ai/DeepSeek-V4-Flash-0731
+          DEEPINFRA_MODEL: deepseek-ai/DeepSeek-V4-Flash-0731
         run: python controller/.github/pr-repair-deepinfra.py
 
       - name: Validate PersonalWiki repair
