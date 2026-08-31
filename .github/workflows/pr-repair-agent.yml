@@ -31,7 +31,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          ref: ${{ github.ref }}
+          ref: codex/pr-repair-agent
           persist-credentials: false
       - id: matrix
         env:
@@ -54,7 +54,7 @@ jobs:
       - name: Check out trusted controller
         uses: actions/checkout@v5
         with:
-          ref: ${{ github.ref }}
+          ref: codex/pr-repair-agent
           path: controller
           persist-credentials: false
 
