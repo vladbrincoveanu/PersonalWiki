@@ -595,3 +595,15 @@ async def test_discovery_queue_depth_metric_tracks_enqueue_and_drain(telemetry_r
     scheduler.stop()
 
     assert queue_depth() == 0
+
+
+def test_env_example_documents_opt_in_telemetry_defaults():
+    from pathlib import Path
+
+    text = Path(".env.example").read_text(encoding="utf-8")
+    assert "SENTRY_DSN=" in text
+    assert "OTEL_EXPORTER_OTLP_ENDPOINT=" in text
+    assert "OTEL_TRACES_SAMPLER=parentbased_traceidratio" in text
+    assert "OTEL_TRACES_SAMPLER_ARG=0.1" in text
+    assert "OTEL_SDK_DISABLED=false" in text
+    assert "OTEL_EXPORTER_OTLP_HEADERS=" in text
