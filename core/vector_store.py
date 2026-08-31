@@ -1,8 +1,11 @@
 import json
+from contextlib import contextmanager
 from pathlib import Path
 import lancedb
 import logging
 import pyarrow as pa
+
+from core.observability import observed_span, record_vector_operation
 
 TABLE_NAME = "notes"
 ENTITIES_TABLE = "personal_entities"
@@ -27,6 +30,23 @@ def _parse_metadata(meta: str | dict) -> dict:
 
 
 _logger = logging.getLogger(__name__)
+
+
+@contextmanager
+def _vector_operation(operation: str):
+    outcome = "error"
+    with observed_span(
+        f"personalwiki.vector.{operation}",
+        {"operation": operation},
+    ):
+        try:
+            yield
+        except BaseException:
+            raise
+        else:
+            outcome = "success"
+        finally:
+            record_vector_operation(operation, outcome)
 
 SCHEMA = pa.schema([
     pa.field("path", pa.string()),
@@ -132,18 +152,19 @@ class VectorStore:
         _store = None
 
     def upsert(self, path: str, text: str, vector: list[float], links: list[str], metadata: dict):
-        self._table.delete(f"path = '{_escape_path(path)}'")
-        from core.embeddings import embed
-        expected_dim = len(embed("test"))
-        if len(vector) != expected_dim:
-            raise ValueError(f"Vector dimension must be {expected_dim}, got {len(vector)}")
-        self._table.add([{
-            "path": path,
-            "text": text,
-            "vector": [float(v) for v in vector],
-            "links": links,
-            "metadata": json.dumps(metadata),
-        }])
+        with _vector_operation("upsert"):
+            self._table.delete(f"path = '{_escape_path(path)}'")
+            from core.embeddings import embed
+            expected_dim = len(embed("test"))
+            if len(vector) != expected_dim:
+                raise ValueError(f"Vector dimension must be {expected_dim}, got {len(vector)}")
+            self._table.add([{
+                "path": path,
+                "text": text,
+                "vector": [float(v) for v in vector],
+                "links": links,
+                "metadata": json.dumps(metadata),
+            }])
 
     def delete(self, path: str) -> bool:
         """Delete a path from the vector store. Returns True if a row was deleted."""
@@ -154,12 +175,13 @@ class VectorStore:
             return False
 
     def search(self, vector: list[float], top_k: int = 3) -> list[dict]:
-        rows = self._table.search([float(v) for v in vector]).limit(top_k).to_list()
-        results = []
-        for row in rows:
-            row["metadata"] = _parse_metadata(row["metadata"])
-            results.append(row)
-        return results
+        with _vector_operation("search"):
+            rows = self._table.search([float(v) for v in vector]).limit(top_k).to_list()
+            results = []
+            for row in rows:
+                row["metadata"] = _parse_metadata(row["metadata"])
+                results.append(row)
+            return results
 
     def exists(self, path: str) -> bool:
         rows = self._table.search().where(f"path = '{_escape_path(path)}'").limit(1).to_list()
@@ -192,28 +214,30 @@ class VectorStore:
         return float(meta.get("_mtime", 0.0))
 
     def upsert_entity(self, path: str, entity_type: str, entity_name: str, summary: str, metadata: dict):
-        try:
-            self._entities_table.delete(f"path = '{_escape_path(path)}' AND entity_name = '{entity_name}'")
-        except Exception:
-            pass
-        self._entities_table.add([{
-            "path": path,
-            "entity_type": entity_type,
-            "entity_name": entity_name,
-            "summary": summary,
-            "metadata": json.dumps(metadata),
-        }])
+        with _vector_operation("entity_upsert"):
+            try:
+                self._entities_table.delete(f"path = '{_escape_path(path)}' AND entity_name = '{entity_name}'")
+            except Exception:
+                pass
+            self._entities_table.add([{
+                "path": path,
+                "entity_type": entity_type,
+                "entity_name": entity_name,
+                "summary": summary,
+                "metadata": json.dumps(metadata),
+            }])
 
     def search_entities(self, query: str, entity_type: str | None = None, top_k: int = 5) -> list[dict]:
-        from core.embeddings import embed
-        query_vector = embed(query)
-        if entity_type:
-            results = self._entities_table.search([float(v) for v in query_vector]).where(f"entity_type = '{entity_type}'").limit(top_k).to_list()
-        else:
-            results = self._entities_table.search([float(v) for v in query_vector]).limit(top_k).to_list()
-        for row in results:
-            row["metadata"] = _parse_metadata(row["metadata"])
-        return results
+        with _vector_operation("entity_search"):
+            from core.embeddings import embed
+            query_vector = embed(query)
+            if entity_type:
+                results = self._entities_table.search([float(v) for v in query_vector]).where(f"entity_type = '{entity_type}'").limit(top_k).to_list()
+            else:
+                results = self._entities_table.search([float(v) for v in query_vector]).limit(top_k).to_list()
+            for row in results:
+                row["metadata"] = _parse_metadata(row["metadata"])
+            return results
 
     def get_recent_notes(self, top_k: int = 5) -> list[dict]:
         """Return notes sorted by _indexed_at timestamp descending."""
@@ -230,64 +254,65 @@ class VectorStore:
         Unified search across vector, BM25, and graph hop streams via RRF.
         Returns list of {path, score, rank, metadata} sorted by RRF score descending.
         """
-        from core.embeddings import embed
-        from core.bm25_index import ensure_index, bm25_search
+        with _vector_operation("hybrid_search"):
+            from core.embeddings import embed
+            from core.bm25_index import ensure_index, bm25_search
 
-        # Vector stream: embed + search with doubled top_k for headroom
-        query_vector = embed(query)
-        vector_results = self.search(query_vector, top_k=top_k * 2)
+            # Vector stream: embed + search with doubled top_k for headroom
+            query_vector = embed(query)
+            vector_results = self.search(query_vector, top_k=top_k * 2)
 
-        # BM25 stream
-        ensure_index()
-        bm25_results = bm25_search(query, top_k=top_k * 2)
+            # BM25 stream
+            ensure_index()
+            bm25_results = bm25_search(query, top_k=top_k * 2)
 
-        # Graph hops from vector results
-        vector_paths = [r["path"] for r in vector_results]
-        hop_results = self._graph_hop(vector_paths, top_k=top_k * 2)
-        # Convert hop_weight to rank-based scoring for RRF
-        ranked_hops = [
-            {"path": item["path"], "score": item["hop_weight"], "rank": rank}
-            for rank, item in enumerate(hop_results, start=1)
-        ]
+            # Graph hops from vector results
+            vector_paths = [r["path"] for r in vector_results]
+            hop_results = self._graph_hop(vector_paths, top_k=top_k * 2)
+            # Convert hop_weight to rank-based scoring for RRF
+            ranked_hops = [
+                {"path": item["path"], "score": item["hop_weight"], "rank": rank}
+                for rank, item in enumerate(hop_results, start=1)
+            ]
 
-        # Enumerate ranks for vector results so they are differentiated in RRF
-        ranked_vector = [
-            {"path": r["path"], "score": r.get("score"), "rank": rank + 1}
-            for rank, r in enumerate(vector_results)
-        ]
+            # Enumerate ranks for vector results so they are differentiated in RRF
+            ranked_vector = [
+                {"path": r["path"], "score": r.get("score"), "rank": rank + 1}
+                for rank, r in enumerate(vector_results)
+            ]
 
-        # Collect metadata from ALL streams before merging
-        metadata_map: dict[str, dict] = {}
-        for r in vector_results:
-            metadata_map[r["path"]] = r.get("metadata", {})
-        for r in bm25_results:
-            if r["path"] not in metadata_map:
-                metadata_map[r["path"]] = {}
-        for r in hop_results:
-            if r["path"] not in metadata_map:
-                metadata_map[r["path"]] = {}
+            # Collect metadata from ALL streams before merging
+            metadata_map: dict[str, dict] = {}
+            for r in vector_results:
+                metadata_map[r["path"]] = r.get("metadata", {})
+            for r in bm25_results:
+                if r["path"] not in metadata_map:
+                    metadata_map[r["path"]] = {}
+            for r in hop_results:
+                if r["path"] not in metadata_map:
+                    metadata_map[r["path"]] = {}
 
-        # RRF merge
-        merged = _rrf_merge(
-            [ranked_vector, bm25_results, ranked_hops],
-            weights=[1.0, 0.9, 0.5],
-            k=60,
-            top_k=top_k,
-        )
+            # RRF merge
+            merged = _rrf_merge(
+                [ranked_vector, bm25_results, ranked_hops],
+                weights=[1.0, 0.9, 0.5],
+                k=60,
+                top_k=top_k,
+            )
 
-        # Filter noise — if top result scores below threshold, return empty
-        if merged and merged[0]["score"] < min_score:
-            return []
+            # Filter noise — if top result scores below threshold, return empty
+            if merged and merged[0]["score"] < min_score:
+                return []
 
-        # Attach metadata from collected map
-        for item in merged:
-            item["metadata"] = metadata_map.get(item["path"], {})
+            # Attach metadata from collected map
+            for item in merged:
+                item["metadata"] = metadata_map.get(item["path"], {})
 
-        # Track D: Cross-encoder rerank — improve result ordering
-        from core.reranker import CrossEncoderReranker
-        reranker = CrossEncoderReranker()
-        reranked = reranker.rerank(query, merged, top_k=top_k)
-        return reranked
+            # Track D: Cross-encoder rerank — improve result ordering
+            from core.reranker import CrossEncoderReranker
+            reranker = CrossEncoderReranker()
+            reranked = reranker.rerank(query, merged, top_k=top_k)
+            return reranked
 
     def _get_links_for_paths(self, paths: list[str]) -> dict[str, list[str]]:
         """Fetch the links field from LanceDB for each path in the input list.
