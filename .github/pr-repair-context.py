@@ -8,6 +8,30 @@ number = os.environ["PR_NUMBER"]
 token = os.environ["GITHUB_TOKEN"]
 
 
+def api_all(path, result_key=None):
+    results = []
+    url = "https://api.github.com/" + path
+    while url:
+        request = urllib.request.Request(
+            url,
+            headers={
+                "Accept": "application/vnd.github+json",
+                "Authorization": f"Bearer {token}",
+                "X-GitHub-Api-Version": "2022-11-28",
+            },
+        )
+        with urllib.request.urlopen(request) as response:
+            data = json.load(response)
+            value = data.get(result_key, data) if result_key else data
+            results.extend(value if isinstance(value, list) else [value])
+            url = None
+            for part in response.headers.get("Link", "").split(","):
+                if 'rel="next"' in part:
+                    url = part[part.find("<") + 1 : part.find(">")]
+                    break
+    return results
+
+
 def api(path):
     request = urllib.request.Request(
         "https://api.github.com/" + path,
@@ -22,10 +46,10 @@ def api(path):
 
 
 pr = api(f"repos/{repo}/pulls/{number}")
-issue_comments = api(f"repos/{repo}/issues/{number}/comments?per_page=100")
-review_comments = api(f"repos/{repo}/pulls/{number}/comments?per_page=100")
-reviews = api(f"repos/{repo}/pulls/{number}/reviews?per_page=100")
-checks = api(f"repos/{repo}/commits/{pr['head']['sha']}/check-runs?per_page=100")
+issue_comments = api_all(f"repos/{repo}/issues/{number}/comments?per_page=100")
+review_comments = api_all(f"repos/{repo}/pulls/{number}/comments?per_page=100")
+reviews = api_all(f"repos/{repo}/pulls/{number}/reviews?per_page=100")
+checks = api_all(f"repos/{repo}/commits/{pr['head']['sha']}/check-runs?per_page=100", "check_runs")
 
 context = {
     "repository": repo,
@@ -41,7 +65,7 @@ context = {
     "issue_comments": issue_comments,
     "review_comments": review_comments,
     "reviews": reviews,
-    "check_runs": checks.get("check_runs", []),
+    "check_runs": checks,
 }
 
 with open("pr-repair-context.json", "w", encoding="utf-8") as handle:
