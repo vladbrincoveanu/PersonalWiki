@@ -1,4 +1,5 @@
-from unittest.mock import Mock, patch
+import pytest
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 
 def test_telemetry_settings_default_to_disabled(monkeypatch):
@@ -398,3 +399,90 @@ def test_fastapi_http_span_keeps_route_method_status_only(monkeypatch):
     assert "http.target" not in attributes
     assert all("secret" not in str(value) for value in attributes.values())
     assert "raw body" not in str(server_span.events)
+
+
+@pytest.mark.asyncio
+async def test_direct_pipeline_execution_bootstraps_observability():
+    import pipeline
+
+    store = MagicMock()
+    store.exists.return_value = True
+    with (
+        patch.object(pipeline, "get_store", return_value=store),
+        patch.object(pipeline, "configure_observability", create=True) as configure,
+    ):
+        messages = [message async for message in pipeline.run_pipeline(url="https://example.com")]
+
+    configure.assert_called_once_with()
+    assert any("already exists" in message.lower() for message in messages)
+
+
+@pytest.mark.asyncio
+async def test_pipeline_emits_root_and_stage_spans_without_source_content(telemetry_runtime):
+    from pipeline import run_pipeline
+
+    store = MagicMock()
+    store.exists.return_value = False
+    store.search.return_value = []
+    document = MagicMock(
+        raw_text="meaningful extracted article text " * 100,
+        content_type="article",
+        images=[],
+    )
+    note = {
+        "title": "private title",
+        "type": "article",
+        "summary": "meaningful summary " * 40,
+        "key_facts": ["meaningful fact " * 20],
+        "cross_links": [],
+        "entities": [],
+    }
+    with (
+        patch("pipeline.get_store", return_value=store),
+        patch("pipeline.extract", new_callable=AsyncMock, return_value=document),
+        patch("pipeline.embed", return_value=[0.1] * 384),
+        patch("pipeline.enrich", return_value=note),
+        patch("pipeline.extract_entities", return_value=[]),
+        patch("pipeline.fetch_entity_status", return_value=[]),
+        patch("pipeline.detect_gaps", return_value=[]),
+        patch("pipeline.write_note", return_value="/vault/notes/private-title.md"),
+    ):
+        async for _ in run_pipeline(url="https://private.example/articles/secret?token=abc"):
+            pass
+
+    names = {span.name for span in telemetry_runtime.span_exporter.get_finished_spans()}
+    assert "personalwiki.pipeline.run" in names
+    assert {
+        "personalwiki.pipeline.extract",
+        "personalwiki.pipeline.quality_gate",
+        "personalwiki.pipeline.embed",
+        "personalwiki.pipeline.vector_search",
+        "personalwiki.pipeline.enrich",
+        "personalwiki.pipeline.entity_status",
+        "personalwiki.pipeline.gap_detection",
+        "personalwiki.pipeline.vault_write",
+        "personalwiki.pipeline.vector_upsert",
+    } <= names
+    assert all(
+        "private.example" not in str(span.attributes)
+        and "token=abc" not in str(span.attributes)
+        for span in telemetry_runtime.span_exporter.get_finished_spans()
+    )
+
+
+@pytest.mark.asyncio
+async def test_pipeline_duplicate_and_quality_gate_paths_record_skipped_outcome(telemetry_runtime):
+    from pipeline import run_pipeline
+
+    store = MagicMock()
+    store.exists.return_value = True
+    with patch("pipeline.get_store", return_value=store):
+        async for _ in run_pipeline(url="https://example.com"):
+            pass
+
+    root = next(
+        span
+        for span in telemetry_runtime.span_exporter.get_finished_spans()
+        if span.name == "personalwiki.pipeline.run"
+    )
+    assert root.attributes["pipeline.outcome"] == "skipped"
