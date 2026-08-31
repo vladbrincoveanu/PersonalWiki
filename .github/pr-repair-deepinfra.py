@@ -14,7 +14,8 @@ with open("pr-repair-context.json", encoding="utf-8") as handle:
 with open("pr-repair-prompt.md", encoding="utf-8") as handle:
     instructions = handle.read()
 
-diff = command("git", "diff", "--no-ext-diff", "origin/main...HEAD")
+base_ref = context["pull_request"]["base"]
+diff = command("git", "diff", "--no-ext-diff", f"origin/{base_ref}...HEAD")
 if len(diff) > 120_000:
     diff = diff[:120_000] + "\n[diff truncated]\n"
 
@@ -70,10 +71,10 @@ with open("repair-result.json", "w", encoding="utf-8") as handle:
 with open("repair-result.md", "w", encoding="utf-8") as handle:
     handle.write(decision.get("summary", "No summary returned.") + "\n")
 
-if decision.get("action") != "patch" or not decision.get("patch", "").strip():
+patch_text = decision.get("patch") or ""
+if decision.get("action") != "patch" or not patch_text.strip():
     raise SystemExit(0)
 
-patch_text = decision["patch"]
 for line in patch_text.splitlines():
     if not line.startswith("+++ b/"):
         continue
