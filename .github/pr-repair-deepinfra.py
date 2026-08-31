@@ -85,7 +85,8 @@ for line in patch_text.splitlines():
         or path in {".env", ".env.local", ".gitconfig"}
         or ".." in path.split("/")
     ):
-        raise RuntimeError(f"Refusing model patch for protected path: {path}")
+        print(f"Refusing model patch for protected path: {path}")
+        raise SystemExit(0)
 with tempfile.NamedTemporaryFile("w", suffix=".patch", encoding="utf-8") as handle:
     handle.write(patch_text)
     handle.flush()
