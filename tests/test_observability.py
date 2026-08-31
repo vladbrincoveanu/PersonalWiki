@@ -486,3 +486,112 @@ async def test_pipeline_duplicate_and_quality_gate_paths_record_skipped_outcome(
         if span.name == "personalwiki.pipeline.run"
     )
     assert root.attributes["pipeline.outcome"] == "skipped"
+
+
+@pytest.mark.asyncio
+async def test_discovery_cycle_emits_sanitized_cycle_search_and_ingest_spans(telemetry_runtime):
+    from core.discovery_scheduler import DiscoveryScheduler
+
+    async def fake_pipeline(**kwargs):
+        yield "done"
+
+    with patch.object(DiscoveryScheduler, "_blocking_refresh"):
+        scheduler = DiscoveryScheduler()
+    scheduler._keywords = ["private keyword"]
+    scheduler._seen_urls.clear()
+    scheduler._pipeline_func = object()
+    with (
+        patch.object(
+            scheduler,
+            "_search_keyword",
+            new_callable=AsyncMock,
+            return_value=[{
+                "url": "https://private.example/article?token=secret",
+                "title": "private title",
+                "snippet": "private snippet",
+                "source": "minimax",
+            }],
+        ),
+        patch(
+            "core.vector_store.get_store",
+            return_value=MagicMock(exists=MagicMock(return_value=False)),
+        ),
+        patch.object(scheduler, "_fetch_html", new_callable=AsyncMock, return_value=""),
+        patch("pipeline.run_pipeline", fake_pipeline),
+        patch("core.discovery_scheduler.cleanup_junk", return_value=[]),
+        patch("core.discovery_scheduler.get_discovery_logger") as logger_factory,
+    ):
+        logger_factory.return_value.record = MagicMock()
+        logger_factory.return_value.today.return_value = []
+        await scheduler._run_discovery_cycle()
+    scheduler.stop()
+
+    spans = telemetry_runtime.span_exporter.get_finished_spans()
+    names = {span.name for span in spans}
+    assert "personalwiki.discovery.cycle" in names
+    assert "personalwiki.discovery.ingest" in names
+    assert all("private.example" not in str(span.attributes) for span in spans)
+    assert all("private keyword" not in str(span.attributes) for span in spans)
+    assert all("private title" not in str(span.attributes) for span in spans)
+    assert all("minimax" not in str(span.attributes).lower() for span in spans)
+
+
+@pytest.mark.asyncio
+async def test_discovery_failure_marks_ingestion_error_without_changing_logger_behavior(telemetry_runtime):
+    from core.discovery_scheduler import DiscoveryScheduler
+
+    with patch.object(DiscoveryScheduler, "_blocking_refresh"):
+        scheduler = DiscoveryScheduler()
+    with patch("pipeline.run_pipeline", side_effect=RuntimeError("raw secret")):
+        await scheduler._run_pipeline(
+            "https://private.example/secret",
+            keyword="private keyword",
+        )
+    scheduler.stop()
+
+    span = next(
+        span
+        for span in telemetry_runtime.span_exporter.get_finished_spans()
+        if span.name == "personalwiki.discovery.ingest"
+    )
+    assert span.attributes["discovery.outcome"] == "error"
+    assert span.attributes["error.type"] == "RuntimeError"
+    assert "raw secret" not in str(span.events)
+    assert "private.example" not in str(span.attributes)
+
+
+@pytest.mark.asyncio
+async def test_discovery_queue_depth_metric_tracks_enqueue_and_drain(telemetry_runtime):
+    from core.discovery_scheduler import DiscoveryScheduler
+
+    def queue_depth():
+        data = telemetry_runtime.metric_reader.get_metrics_data()
+        metric = next(
+            metric
+            for resource_metrics in data.resource_metrics
+            for scope_metrics in resource_metrics.scope_metrics
+            for metric in scope_metrics.metrics
+            if metric.name == "personalwiki.discovery.queue.depth"
+        )
+        return metric.data.data_points[0].value
+
+    with patch.object(DiscoveryScheduler, "_blocking_refresh"):
+        scheduler = DiscoveryScheduler()
+    scheduler._seen_urls.clear()
+    scheduler._keywords = []
+    scheduler._run_pipeline = AsyncMock()
+    with (
+        patch.object(scheduler, "_try_sitemap", return_value=["https://example.com/article"]),
+        patch("core.discovery_scheduler.get_discovery_logger") as logger_factory,
+        patch("core.vector_store.get_store", return_value=MagicMock(exists=MagicMock(return_value=False))),
+        patch.object(scheduler, "_persist_seen_urls"),
+        patch("core.discovery_scheduler.cleanup_junk", return_value=[]),
+    ):
+        logger_factory.return_value.record = MagicMock()
+        logger_factory.return_value.today.return_value = []
+        scheduler._enqueue_interest_domain("example.com")
+        assert queue_depth() == 1
+        await scheduler._run_discovery_cycle()
+    scheduler.stop()
+
+    assert queue_depth() == 0
