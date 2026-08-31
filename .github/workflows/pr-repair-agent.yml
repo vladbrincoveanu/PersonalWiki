@@ -1,0 +1,264 @@
+name: PR Repair Agent
+
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize, ready_for_review]
+  issue_comment:
+    types: [created, edited]
+  pull_request_review_comment:
+    types: [created, edited]
+  pull_request_review:
+    types: [submitted]
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: read
+      checks: read
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+      has_prs: ${{ steps.matrix.outputs.has_prs }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.13"
+
+      - id: matrix
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            const defaultBranch = process.env.DEFAULT_BRANCH;
+            const controllerRef = "codex/pr-repair-agent";
+            const refPattern = /^[A-Za-z0-9._/-]+$/;
+            const shaPattern = /^[0-9a-f]{40}$/;
+
+            function validateRef(value, field) {
+              if (
+                typeof value !== "string" ||
+                !refPattern.test(value) ||
+                value.startsWith("/") ||
+                value.endsWith("/") ||
+                value.startsWith("-") ||
+                value.endsWith(".") ||
+                value.includes("..") ||
+                value.includes("//") ||
+                value.includes("@{")
+              ) {
+                throw new Error(`invalid ${field}`);
+              }
+              return value;
+            }
+
+            function validateSha(value, field) {
+              if (typeof value !== "string" || !shaPattern.test(value)) {
+                throw new Error(`invalid ${field}`);
+              }
+              return value;
+            }
+
+            validateRef(defaultBranch, "default branch");
+            const event = context.eventName;
+            const payload = context.payload;
+            let prs;
+            if (event === "schedule" || event === "workflow_dispatch") {
+              prs = await github.paginate(github.rest.pulls.list, {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                state: "open",
+                per_page: 100,
+              });
+            } else {
+              const number =
+                payload.pull_request?.number ??
+                payload.issue?.number ??
+                payload.review?.pull_request?.number ??
+                payload.comment?.pull_request?.number;
+              prs = number
+                ? [
+                    await github.rest.pulls.get({
+                      owner: context.repo.owner,
+                      repo: context.repo.repo,
+                      pull_number: number,
+                    }).then((response) => response.data),
+                  ]
+                : [];
+            }
+
+            const repository = `${context.repo.owner}/${context.repo.repo}`;
+            const entries = [];
+            for (const pr of prs) {
+              const head = pr.head ?? {};
+              const base = pr.base ?? {};
+              if (
+                pr.state !== "open" ||
+                head.repo?.full_name !== repository ||
+                head.ref === controllerRef ||
+                head.ref === defaultBranch
+              ) {
+                continue;
+              }
+              entries.push({
+                number: pr.number,
+                head_ref: validateRef(head.ref, "head ref"),
+                head_sha: validateSha(head.sha, "head SHA"),
+                base_ref: validateRef(base.ref, "base ref"),
+                base_sha: validateSha(base.sha, "base SHA"),
+              });
+            }
+            if (entries.length > 256) {
+              throw new Error(`too many open PRs for one matrix: ${entries.length}`);
+            }
+            core.setOutput("matrix", JSON.stringify({ include: entries }));
+            core.setOutput("has_prs", entries.length ? "true" : "false");
+
+  repair:
+    needs: prepare
+    if: >-
+      (needs.prepare.outputs.has_prs == 'true' &&
+       (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' ||
+       github.actor == 'vladbrincoveanu' || github.actor == 'sentry[bot]' ||
+       github.actor == 'greptile-apps[bot]' || github.actor == 'github-actions[bot]' ||
+       github.actor == 'vercel[bot]' || github.actor == 'cursor[bot]'))
+    concurrency:
+      group: pr-repair-${{ github.repository }}-${{ matrix.number }}
+      cancel-in-progress: false
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: read
+      checks: read
+    steps:
+      # The root checkout is the immutable PR base and contains only trusted helpers.
+      - name: Check out trusted repair code
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      # The PR is data to inspect and patch, never code to execute in this job.
+      - name: Check out PR target
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ matrix.head_sha }}
+          path: target
+          fetch-depth: 0
+          clean: true
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.13"
+
+      - name: Sanitize target git configuration
+        run: |
+          set -euo pipefail
+          git -C target config --local --unset-all core.hooksPath || true
+          git -C target config --local --unset-all remote.origin.pushurl || true
+          if filter_keys="$(git -C target config --local --name-only --get-regexp '^filter\.' 2>/dev/null)"; then
+            while IFS= read -r key; do
+              [ -z "$key" ] || git -C target config --local --unset-all "$key" || true
+            done <<< "$filter_keys"
+          fi
+
+      - name: Fetch base commit
+        env:
+          BASE_SHA: ${{ matrix.base_sha }}
+        run: git -C target fetch --no-tags origin "$BASE_SHA"
+
+      - name: Collect complete PR state
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ matrix.number }}
+          REPAIR_ARTIFACT_DIR: ${{ runner.temp }}/pr-repair-${{ matrix.number }}
+        run: python .github/pr-repair-context.py
+
+      - name: Run DeepInfra repair cycle
+        env:
+          DEEPINFRA_TOKEN: ${{ secrets.DEEPINFRA_TOKEN }}
+          DEEPINFRA_ENDPOINT: https://api.deepinfra.com/v1/openai/chat/completions
+          DEEPINFRA_MODEL: deepseek-ai/DeepSeek-V4-Flash-0731
+          EXPECTED_HEAD_SHA: ${{ matrix.head_sha }}
+          EXPECTED_BASE_SHA: ${{ matrix.base_sha }}
+          REPAIR_WORKSPACE: ${{ github.workspace }}/target
+          REPAIR_ARTIFACT_DIR: ${{ runner.temp }}/pr-repair-${{ matrix.number }}
+        run: python .github/pr-repair-deepinfra.py
+
+      - name: Validate staged repair
+        env:
+          HEAD_SHA: ${{ matrix.head_sha }}
+          REPAIR_WORKSPACE: ${{ github.workspace }}/target
+          REPAIR_ARTIFACT_DIR: ${{ runner.temp }}/pr-repair-${{ matrix.number }}
+        run: |
+          set -euo pipefail
+          test "$(git -C "$REPAIR_WORKSPACE" rev-parse HEAD)" = "$HEAD_SHA"
+          git -C "$REPAIR_WORKSPACE" diff --cached --check
+          python -c 'import json, os; result = json.load(open(os.path.join(os.environ["REPAIR_ARTIFACT_DIR"], "repair-result.json"))); assert result["action"] in {"patch", "no_change", "blocked"}'
+
+      - id: push
+        name: Commit and push only the staged repair
+        env:
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_TOKEN: ${{ github.token }}
+          HEAD_REF: ${{ matrix.head_ref }}
+          HEAD_SHA: ${{ matrix.head_sha }}
+          REPAIR_WORKSPACE: ${{ github.workspace }}/target
+          REPAIR_ARTIFACT_DIR: ${{ runner.temp }}/pr-repair-${{ matrix.number }}
+        run: |
+          set -euo pipefail
+          echo "pushed=false" >> "$GITHUB_OUTPUT"
+          ACTION="$(python -c 'import json, os; print(json.load(open(os.path.join(os.environ["REPAIR_ARTIFACT_DIR"], "repair-result.json")))["action"])')"
+          if [ "$ACTION" != "patch" ]; then
+            echo "No validated patch produced."
+            exit 0
+          fi
+          test "$(git -C "$REPAIR_WORKSPACE" rev-parse HEAD)" = "$HEAD_SHA"
+          if git -C "$REPAIR_WORKSPACE" diff --cached --quiet; then
+            echo "No changes produced."
+            exit 0
+          fi
+          if [ -n "$(git -C "$REPAIR_WORKSPACE" diff --name-only)" ] || \
+             [ -n "$(git -C "$REPAIR_WORKSPACE" ls-files --others --exclude-standard)" ]; then
+            echo "::error::Repair left unstaged or untracked changes."
+            exit 1
+          fi
+          git -C "$REPAIR_WORKSPACE" diff --cached --check
+          git -C "$REPAIR_WORKSPACE" config --local --unset-all remote.origin.pushurl || true
+          git -C "$REPAIR_WORKSPACE" remote set-url origin "https://github.com/${GITHUB_REPOSITORY}.git"
+          git -C "$REPAIR_WORKSPACE" config user.name "github-actions[bot]"
+          git -C "$REPAIR_WORKSPACE" config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git -C "$REPAIR_WORKSPACE" -c core.hooksPath=/dev/null commit --no-verify -m "fix: address automated PR review feedback"
+          git -C "$REPAIR_WORKSPACE" -c core.hooksPath=/dev/null -c "http.extraheader=AUTHORIZATION: bearer ${GITHUB_TOKEN}" push --force-with-lease="refs/heads/${HEAD_REF}:${HEAD_SHA}" origin "HEAD:refs/heads/${HEAD_REF}"
+          echo "commit_sha=$(git -C "$REPAIR_WORKSPACE" rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "pushed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Reply on fixed bot comments
+        if: steps.push.outputs.pushed == 'true'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ matrix.number }}
+          COMMIT_SHA: ${{ steps.push.outputs.commit_sha }}
+          REPAIR_ARTIFACT_DIR: ${{ runner.temp }}/pr-repair-${{ matrix.number }}
+        run: python .github/pr-repair-report.py
