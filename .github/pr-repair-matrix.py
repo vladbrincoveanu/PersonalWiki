@@ -3,17 +3,23 @@ import os
 import urllib.request
 
 
-def api(path):
-    request = urllib.request.Request(
-        "https://api.github.com/" + path,
-        headers={
+def api_all(path):
+    results = []
+    url = "https://api.github.com/" + path
+    while url:
+        request = urllib.request.Request(url, headers={
             "Accept": "application/vnd.github+json",
             "Authorization": f"Bearer {os.environ['GITHUB_TOKEN']}",
             "X-GitHub-Api-Version": "2022-11-28",
-        },
-    )
-    with urllib.request.urlopen(request) as response:
-        return json.load(response)
+        })
+        with urllib.request.urlopen(request) as response:
+            results.extend(json.load(response))
+            url = None
+            for part in response.headers.get("Link", "").split(","):
+                if 'rel="next"' in part:
+                    url = part[part.find("<") + 1 : part.find(">")]
+                    break
+    return results
 
 
 repo = os.environ["GITHUB_REPOSITORY"]
@@ -23,7 +29,7 @@ with open(event_path, encoding="utf-8") as handle:
     payload = json.load(handle)
 
 if event in {"schedule", "workflow_dispatch"}:
-    prs = api(f"repos/{repo}/pulls?state=open&per_page=100")
+    prs = api_all(f"repos/{repo}/pulls?state=open&per_page=100")
 elif event == "issue_comment" and not payload.get("issue", {}).get("pull_request"):
     prs = []
 else:
