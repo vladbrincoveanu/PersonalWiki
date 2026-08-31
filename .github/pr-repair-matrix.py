@@ -34,6 +34,8 @@ include = []
 for pr in prs:
     if pr.get("head", {}).get("repo", {}).get("full_name") != repo:
         continue
+    if pr.get("head", {}).get("ref") == "codex/pr-repair-agent":
+        continue
     include.append(
         {
             "number": pr["number"],
