@@ -3,19 +3,23 @@ import os
 import subprocess
 import tempfile
 import urllib.request
+from pathlib import Path
+
+
+workspace = Path(os.environ.get("GITHUB_WORKSPACE", ".."))
 
 
 def command(*args):
     return subprocess.run(args, check=True, text=True, capture_output=True).stdout
 
 
-with open("pr-repair-context.json", encoding="utf-8") as handle:
+with open(workspace / "pr-repair-context.json", encoding="utf-8") as handle:
     context = json.load(handle)
-with open("pr-repair-prompt.md", encoding="utf-8") as handle:
+with open(workspace / "pr-repair-prompt.md", encoding="utf-8") as handle:
     instructions = handle.read()
 
 base_ref = context["pull_request"]["base"]
-diff = command("git", "diff", "--no-ext-diff", f"origin/{base_ref}...HEAD")
+diff = command("git", "-C", str(workspace), "diff", "--no-ext-diff", f"origin/{base_ref}...HEAD")
 if len(diff) > 120_000:
     diff = diff[:120_000] + "\n[diff truncated]\n"
 
@@ -65,10 +69,10 @@ if content.startswith("```"):
     content = content.split("\n", 1)[1].rsplit("```", 1)[0].strip()
 decision = json.loads(content)
 
-with open("repair-result.json", "w", encoding="utf-8") as handle:
+with open(workspace / "repair-result.json", "w", encoding="utf-8") as handle:
     json.dump(decision, handle, indent=2)
 
-with open("repair-result.md", "w", encoding="utf-8") as handle:
+with open(workspace / "repair-result.md", "w", encoding="utf-8") as handle:
     handle.write(decision.get("summary", "No summary returned.") + "\n")
 
 patch_text = decision.get("patch") or ""
@@ -91,5 +95,5 @@ for line in patch_text.splitlines():
 with tempfile.NamedTemporaryFile("w", suffix=".patch", encoding="utf-8") as handle:
     handle.write(patch_text)
     handle.flush()
-    subprocess.run(["git", "apply", "--check", handle.name], check=True)
-    subprocess.run(["git", "apply", handle.name], check=True)
+    subprocess.run(["git", "-C", str(workspace), "apply", "--check", handle.name], check=True)
+    subprocess.run(["git", "-C", str(workspace), "apply", handle.name], check=True)
