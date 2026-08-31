@@ -60,6 +60,7 @@ jobs:
             --cov=scripts \
             --cov-report=term-missing \
             --cov-report=xml:artifacts/python-coverage.xml \
+            --cov-fail-under=60 \
             --junitxml=artifacts/python-junit.xml \
             -m "not integration and not slow" tests
 
