@@ -24,6 +24,6 @@
   },
   "homepage": "https://github.com/vladbrincoveanu/wiki-all#readme",
   "devDependencies": {
-    "@playwright/test": "^1.59.1"
+    "@playwright/test": "^1.62.1"
   }
 }
