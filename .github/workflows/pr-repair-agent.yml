@@ -133,9 +133,11 @@ jobs:
           echo "pushed=false" >> "$GITHUB_OUTPUT"
           printf '%s\n' controller/ pr-repair-context.json pr-repair-prompt.md repair-result.json repair-result.md >> .git/info/exclude
           git config --local --unset-all core.hooksPath || true
-          git config --local --name-only --get-regexp '^filter\.' | while IFS= read -r key; do
-            git config --local --unset-all "$key" || true
-          done
+          if filter_keys="$(git config --local --name-only --get-regexp '^filter\.' 2>/dev/null)"; then
+            while IFS= read -r key; do
+              [ -z "$key" ] || git config --local --unset-all "$key" || true
+            done <<< "$filter_keys"
+          fi
           if [ -z "$(git status --porcelain)" ]; then
             echo "No changes produced."
             exit 0
