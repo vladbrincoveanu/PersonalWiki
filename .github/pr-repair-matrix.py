@@ -24,6 +24,8 @@ with open(event_path, encoding="utf-8") as handle:
 
 if event in {"schedule", "workflow_dispatch"}:
     prs = api(f"repos/{repo}/pulls?state=open&per_page=100")
+elif event == "issue_comment" and not payload.get("issue", {}).get("pull_request"):
+    prs = []
 else:
     number = payload.get("pull_request", {}).get("number") or payload.get("issue", {}).get("number")
     prs = [api(f"repos/{repo}/pulls/{number}")] if number else []
