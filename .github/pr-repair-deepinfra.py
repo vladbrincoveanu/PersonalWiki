@@ -74,6 +74,18 @@ if decision.get("action") != "patch" or not decision.get("patch", "").strip():
     raise SystemExit(0)
 
 patch_text = decision["patch"]
+for line in patch_text.splitlines():
+    if not line.startswith("+++ b/"):
+        continue
+    path = line[6:]
+    if (
+        path.startswith("/")
+        or path.startswith(".github/workflows/")
+        or path.startswith(".github/pr-repair-")
+        or path in {".env", ".env.local", ".gitconfig"}
+        or ".." in path.split("/")
+    ):
+        raise RuntimeError(f"Refusing model patch for protected path: {path}")
 with tempfile.NamedTemporaryFile("w", suffix=".patch", encoding="utf-8") as handle:
     handle.write(patch_text)
     handle.flush()
