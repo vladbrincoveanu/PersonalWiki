@@ -72,15 +72,43 @@ jobs:
           PR_NUMBER: ${{ matrix.number }}
         run: python controller/.github/pr-repair-context.py
 
-      - name: Run Codex repair cycle
-        uses: openai/codex-action@v1
-        with:
-          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
-          prompt-file: pr-repair-prompt.md
-          sandbox: workspace-write
-          safety-strategy: drop-sudo
-          model: gpt-5.5
-          effort: high
+      - name: Install PersonalWiki dependencies
+        if: github.repository == 'vladbrincoveanu/PersonalWiki'
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt pytest pytest-cov
+
+      - name: Install ImmoAgent dependencies
+        if: github.repository == 'vladbrincoveanu/ImmoAgent'
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r Project/requirements.txt pytest pytest-asyncio
+
+      - name: Run DeepInfra repair cycle
+        env:
+          DEEPINFRA_TOKEN: ${{ secrets.DEEPINFRA_TOKEN }}
+          DEEPINFRA_ENDPOINT: https://api.deepinfra.com/v1/openai/chat/completions
+          DEEPINFRA_MODEL: deepinfra/deepseek-ai/DeepSeek-V4-Flash-0731
+        run: python controller/.github/pr-repair-deepinfra.py
+
+      - name: Validate PersonalWiki repair
+        if: github.repository == 'vladbrincoveanu/PersonalWiki'
+        run: |
+          python -m compileall -q app.py pipeline.py config.py core ingesters vault scripts tests
+          python -m pytest -q --disable-warnings -m "not integration and not slow" tests
+
+      - name: Validate ImmoAgent repair
+        if: github.repository == 'vladbrincoveanu/ImmoAgent'
+        run: |
+          python -m compileall -q Project scripts tests
+          python -m pytest -q --disable-warnings \
+            tests/test_pr_agent_review_gate.py \
+            tests/test_workflow_dependencies.py \
+            tests/tests/test_coop_poll_window.py \
+            Project/Tests/test_alert_dispatcher.py \
+            Project/Tests/test_alert_matcher.py \
+            Project/Tests/test_coop_channel_ledger.py \
+            Project/Tests/test_run_coop.py
 
       - name: Validate and push targeted changes
         env:
