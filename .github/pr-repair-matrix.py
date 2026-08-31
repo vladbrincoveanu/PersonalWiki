@@ -13,7 +13,11 @@ def api_all(path):
             "X-GitHub-Api-Version": "2022-11-28",
         })
         with urllib.request.urlopen(request) as response:
-            results.extend(json.load(response))
+            data = json.load(response)
+            if isinstance(data, list):
+                results.extend(data)
+            else:
+                results.append(data)
             url = None
             for part in response.headers.get("Link", "").split(","):
                 if 'rel="next"' in part:
