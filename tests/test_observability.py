@@ -1,3 +1,6 @@
+from unittest.mock import Mock, patch
+
+
 def test_telemetry_settings_default_to_disabled(monkeypatch):
     for name in (
         "SENTRY_DSN",
@@ -58,3 +61,274 @@ def test_telemetry_settings_read_environment_at_call_time(monkeypatch):
     assert settings.otlp_headers == "authorization=Bearer test-only"
     assert settings.traces_sampler == "always_on"
     assert settings.sdk_disabled is True
+
+
+def test_no_backends_builds_no_exporters(monkeypatch):
+    from config import get_telemetry_settings
+    from core.observability import _build_runtime
+
+    for name in ("SENTRY_DSN", "OTEL_EXPORTER_OTLP_ENDPOINT"):
+        monkeypatch.delenv(name, raising=False)
+
+    runtime = _build_runtime(get_telemetry_settings(), register_globals=False)
+
+    assert runtime.exporters == ()
+    assert runtime.metric_readers == ()
+    assert runtime.sentry_initialized is False
+
+
+def test_sentry_only_uses_otlp_integration_on_the_shared_provider(monkeypatch):
+    monkeypatch.setenv("SENTRY_DSN", "https://public@example.invalid/1")
+    monkeypatch.delenv("OTEL_EXPORTER_OTLP_ENDPOINT", raising=False)
+
+    from config import get_telemetry_settings
+    from core.observability import OTLPIntegration, _build_runtime
+
+    sentry_init = Mock()
+    runtime = _build_runtime(
+        get_telemetry_settings(),
+        sentry_init=sentry_init,
+        register_globals=False,
+    )
+
+    sentry_init.assert_called_once()
+    kwargs = sentry_init.call_args.kwargs
+    assert kwargs["dsn"] == "https://public@example.invalid/1"
+    assert kwargs["instrumenter"] == "otel"
+    assert kwargs["send_default_pii"] is False
+    assert kwargs["max_request_body_size"] == "never"
+    assert kwargs["include_local_variables"] is False
+    assert kwargs["enable_logs"] is False
+    assert "traces_sample_rate" not in kwargs
+    assert any(isinstance(item, OTLPIntegration) for item in kwargs["integrations"])
+    assert runtime.sentry_initialized is True
+    assert runtime.metric_readers == ()
+
+
+def test_external_otlp_adds_trace_and_metric_exporters(monkeypatch):
+    monkeypatch.delenv("SENTRY_DSN", raising=False)
+    monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://collector:4318/")
+
+    from config import get_telemetry_settings
+    from core.observability import _build_runtime
+
+    trace_factory = Mock(return_value=Mock(name="trace-exporter"))
+    metric_exporter = Mock(name="metric-exporter")
+    metric_exporter._preferred_temporality = {}
+    metric_exporter._preferred_aggregation = {}
+    metric_factory = Mock(return_value=metric_exporter)
+    runtime = _build_runtime(
+        get_telemetry_settings(),
+        trace_exporter_factory=trace_factory,
+        metric_exporter_factory=metric_factory,
+        register_globals=False,
+    )
+
+    trace_factory.assert_called_once_with(endpoint="http://collector:4318/v1/traces")
+    metric_factory.assert_called_once_with(endpoint="http://collector:4318/v1/metrics")
+    assert len(runtime.exporters) == 1
+    assert len(runtime.metric_readers) == 1
+
+
+def test_sentry_setup_follows_global_provider_registration(monkeypatch):
+    monkeypatch.setenv("SENTRY_DSN", "https://public@example.invalid/1")
+    monkeypatch.delenv("OTEL_EXPORTER_OTLP_ENDPOINT", raising=False)
+
+    from config import get_telemetry_settings
+    from core.observability import _build_runtime
+
+    calls = []
+
+    def capture_provider(provider):
+        calls.append(("provider", provider))
+
+    def capture_sentry(**kwargs):
+        calls.append(("sentry", kwargs))
+
+    with patch("core.observability.trace.set_tracer_provider", side_effect=capture_provider):
+        runtime = _build_runtime(
+            get_telemetry_settings(),
+            sentry_init=capture_sentry,
+            register_globals=True,
+        )
+
+    assert calls[0] == ("provider", runtime.tracer_provider)
+    assert calls[1][0] == "sentry"
+
+
+def test_both_backends_share_one_provider_and_do_not_duplicate_instrumentation(monkeypatch):
+    monkeypatch.setenv("SENTRY_DSN", "https://public@example.invalid/1")
+    monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://collector:4318")
+
+    from config import get_telemetry_settings
+    from core.observability import (
+        FastAPIInstrumentor,
+        RequestsInstrumentor,
+        URLLibInstrumentor,
+        _build_runtime,
+    )
+
+    sentry_init = Mock()
+    runtime = _build_runtime(get_telemetry_settings(), sentry_init=sentry_init, register_globals=False)
+    test_app = object()
+    with (
+        patch.object(FastAPIInstrumentor, "instrument_app") as instrument_app,
+        patch.object(RequestsInstrumentor, "instrument") as instrument_requests,
+        patch.object(URLLibInstrumentor, "instrument") as instrument_urllib,
+    ):
+        runtime.instrument_app(test_app)
+        runtime.instrument_app(test_app)
+
+    assert len(runtime.exporters) == 1
+    assert sentry_init.call_count == 1
+    instrument_app.assert_called_once_with(test_app, tracer_provider=runtime.tracer_provider)
+    assert instrument_requests.call_count == 1
+    assert instrument_urllib.call_count == 1
+
+
+def test_sampler_defaults_to_parent_based_ten_percent_and_honors_override(monkeypatch):
+    from config import get_telemetry_settings
+    from core.observability import _build_runtime
+    from opentelemetry.sdk.trace.sampling import ParentBased, TraceIdRatioBased
+
+    monkeypatch.delenv("OTEL_TRACES_SAMPLER", raising=False)
+    monkeypatch.delenv("OTEL_TRACES_SAMPLER_ARG", raising=False)
+    default_runtime = _build_runtime(get_telemetry_settings(), register_globals=False)
+    assert isinstance(default_runtime.tracer_provider.sampler, ParentBased)
+    assert default_runtime.tracer_provider.sampler._root.__class__ is TraceIdRatioBased
+    assert default_runtime.tracer_provider.sampler._root.rate == 0.1
+
+    monkeypatch.setenv("OTEL_TRACES_SAMPLER", "always_on")
+    override_runtime = _build_runtime(get_telemetry_settings(), register_globals=False)
+    assert override_runtime.tracer_provider.sampler.get_description() == "AlwaysOnSampler"
+
+
+def test_resource_attributes_keep_identity_and_drop_secrets(monkeypatch):
+    monkeypatch.setenv("OTEL_SERVICE_VERSION", "1.2.3")
+    monkeypatch.setenv(
+        "OTEL_RESOURCE_ATTRIBUTES",
+        "deployment.environment=staging,api.key=should-not-appear,service.name=wrong",
+    )
+
+    from config import get_telemetry_settings
+    from core.observability import _build_runtime
+
+    runtime = _build_runtime(get_telemetry_settings(), register_globals=False)
+    attributes = dict(runtime.tracer_provider.resource.attributes)
+
+    assert attributes["service.name"] == "personalwiki"
+    assert attributes["service.version"] == "1.2.3"
+    assert attributes["deployment.environment"] == "staging"
+    assert "api.key" not in attributes
+    assert attributes["service.name"] != "wrong"
+
+
+def test_redaction_removes_http_payloads_and_exception_messages(monkeypatch):
+    monkeypatch.setenv("OTEL_TRACES_SAMPLER", "always_on")
+    from config import get_telemetry_settings
+    from core.observability import _build_runtime
+    from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+    from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+
+    exporter = InMemorySpanExporter()
+    runtime = _build_runtime(
+        settings=get_telemetry_settings(),
+        extra_span_processors=(SimpleSpanProcessor(exporter),),
+        register_globals=False,
+    )
+
+    with runtime.tracer.start_as_current_span(
+        "personalwiki.test",
+        attributes={
+            "http.route": "/items/{item_id}",
+            "http.request.method": "POST",
+            "http.response.status_code": 500,
+            "http.url": "https://private.example/items/42?token=secret",
+            "http.request.header.authorization": "Bearer secret",
+            "request.body": "raw document text",
+        },
+    ) as span:
+        span.record_exception(ValueError("raw exception secret"))
+
+    finished = exporter.get_finished_spans()
+    assert len(finished) == 1
+    attributes = dict(finished[0].attributes)
+    assert attributes["http.route"] == "/items/{item_id}"
+    assert attributes["http.request.method"] == "POST"
+    assert attributes["http.response.status_code"] == 500
+    assert "http.url" not in attributes
+    assert "http.request.header.authorization" not in attributes
+    assert "request.body" not in attributes
+    assert all(
+        "raw exception secret" not in str(event.attributes)
+        for event in finished[0].events
+    )
+
+
+def test_sentry_event_redaction_drops_request_and_exception_values():
+    from core.observability import redact_sentry_event
+
+    event = {
+        "request": {
+            "url": "https://private.example/items?token=secret",
+            "method": "POST",
+            "headers": {"Authorization": "Bearer secret"},
+            "query_string": "token=secret",
+            "data": {"body": "raw document"},
+        },
+        "user": {"id": "private-user"},
+        "breadcrumbs": [{"message": "raw breadcrumb"}],
+        "extra": {"secret": "raw exception secret"},
+        "exception": {
+            "values": [{
+                "type": "ValueError",
+                "value": "raw exception secret",
+                "stacktrace": {"frames": [{"vars": {"secret": "raw"}}]},
+            }]
+        },
+    }
+
+    redacted = redact_sentry_event(event, {})
+
+    assert redacted["request"] == {"method": "POST"}
+    assert "user" not in redacted
+    assert "breadcrumbs" not in redacted
+    assert "extra" not in redacted
+    exception_value = redacted["exception"]["values"][0]
+    assert exception_value == {"type": "ValueError"}
+    assert "raw exception secret" not in str(redacted)
+
+
+def test_shutdown_swallows_exporter_failures_and_is_idempotent():
+    from config import get_telemetry_settings
+    from core.observability import _build_runtime
+
+    runtime = _build_runtime(get_telemetry_settings(), register_globals=False)
+    with (
+        patch.object(
+            runtime.tracer_provider,
+            "force_flush",
+            side_effect=RuntimeError("flush secret"),
+        ) as trace_flush,
+        patch.object(
+            runtime.tracer_provider,
+            "shutdown",
+            side_effect=RuntimeError("shutdown secret"),
+        ),
+        patch.object(
+            runtime.meter_provider,
+            "force_flush",
+            side_effect=RuntimeError("metric secret"),
+        ) as metric_flush,
+        patch.object(
+            runtime.meter_provider,
+            "shutdown",
+            side_effect=RuntimeError("metric shutdown secret"),
+        ),
+        patch("core.observability.sentry_sdk.flush", side_effect=RuntimeError("sentry secret")),
+    ):
+        runtime.shutdown(timeout_seconds=0.01)
+        runtime.shutdown(timeout_seconds=0.01)
+
+    trace_flush.assert_called_once()
+    metric_flush.assert_called_once()
