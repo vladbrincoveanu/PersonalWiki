@@ -66,6 +66,13 @@ jobs:
           clean: false
           persist-credentials: false
 
+      - name: Restore trusted controller
+        uses: actions/checkout@v5
+        with:
+          ref: codex/pr-repair-agent
+          path: controller
+          persist-credentials: false
+
       - name: Fetch base ref
         run: git fetch --no-tags origin "${{ github.event.pull_request.base.ref || 'main' }}"
 
