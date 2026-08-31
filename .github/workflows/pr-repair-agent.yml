@@ -1,0 +1,93 @@
+name: PR Repair Agent
+
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize, ready_for_review]
+  issue_comment:
+    types: [created, edited]
+  pull_request_review_comment:
+    types: [created, edited]
+  pull_request_review:
+    types: [submitted]
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: pr-repair-${{ github.repository }}-${{ github.event.pull_request.number || github.event.issue.number || 'scheduled' }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: read
+  issues: read
+  checks: read
+
+jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - id: matrix
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python .github/pr-repair-matrix.py
+
+  repair:
+    needs: prepare
+    if: >-
+      (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' ||
+       github.actor == 'vladbrincoveanu' || github.actor == 'sentry[bot]' ||
+       github.actor == 'greptile-apps[bot]' || github.actor == 'github-actions[bot]' ||
+       github.actor == 'vercel[bot]' || github.actor == 'cursor[bot]')
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Check out PR branch
+        uses: actions/checkout@v5
+        with:
+          ref: refs/pull/${{ matrix.number }}/head
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Fetch base ref
+        run: git fetch --no-tags origin "${{ github.event.pull_request.base.ref || 'main' }}"
+
+      - name: Collect complete PR state
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ matrix.number }}
+        run: python .github/pr-repair-context.py
+
+      - name: Run Codex repair cycle
+        uses: openai/codex-action@v1
+        with:
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          prompt-file: pr-repair-prompt.md
+          sandbox: workspace-write
+          safety-strategy: drop-sudo
+          model: gpt-5.5
+          effort: high
+
+      - name: Validate and push targeted changes
+        env:
+          HEAD_REF: ${{ matrix.head_ref }}
+        run: |
+          set -euo pipefail
+          git diff --check
+          if git diff --quiet; then
+            echo "No changes produced."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix: address automated PR review feedback"
+          git push origin "HEAD:${HEAD_REF}"
