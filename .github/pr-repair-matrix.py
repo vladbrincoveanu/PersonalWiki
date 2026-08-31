@@ -54,8 +54,10 @@ for pr in prs:
             "number": pr["number"],
             "head_ref": pr["head"]["ref"],
             "head_sha": pr["head"]["sha"],
+            "base_ref": pr["base"]["ref"],
         }
     )
 
 with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
     output.write("matrix=" + json.dumps({"include": include}, separators=(",", ":")) + "\n")
+    output.write("has_prs=" + ("true" if include else "false") + "\n")
