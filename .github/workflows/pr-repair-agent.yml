@@ -50,6 +50,12 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
+      - name: Check out trusted controller
+        uses: actions/checkout@v5
+        with:
+          path: controller
+          persist-credentials: false
+
       - name: Check out PR branch
         uses: actions/checkout@v5
         with:
@@ -64,7 +70,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ matrix.number }}
-        run: python .github/pr-repair-context.py
+        run: python controller/.github/pr-repair-context.py
 
       - name: Run Codex repair cycle
         uses: openai/codex-action@v1
