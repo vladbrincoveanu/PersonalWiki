@@ -19,8 +19,8 @@ concurrency:
 
 permissions:
   contents: write
-  pull-requests: read
-  issues: read
+  pull-requests: write
+  issues: write
   checks: read
 
 jobs:
@@ -120,12 +120,14 @@ jobs:
             Project/Tests/test_coop_channel_ledger.py \
             Project/Tests/test_run_coop.py
 
-      - name: Validate and push targeted changes
+      - id: push
+        name: Validate and push targeted changes
         env:
           GITHUB_TOKEN: ${{ github.token }}
           HEAD_REF: ${{ matrix.head_ref }}
         run: |
           set -euo pipefail
+          echo "pushed=false" >> "$GITHUB_OUTPUT"
           git diff --check
           if git diff --quiet; then
             echo "No changes produced."
@@ -136,3 +138,13 @@ jobs:
           git add -A
           git commit -m "fix: address automated PR review feedback"
           git -c "http.https://github.com/.extraheader=AUTHORIZATION: bearer ${GITHUB_TOKEN}" push origin "HEAD:${HEAD_REF}"
+          echo "pushed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Reply on fixed bot comments
+        if: steps.push.outputs.pushed == 'true'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ matrix.number }}
+          COMMIT_SHA: ${{ steps.push.outputs.commit_sha }}
+        run: |
+          COMMIT_SHA="$(git rev-parse HEAD)" python controller/.github/pr-repair-report.py
