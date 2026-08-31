@@ -28,6 +28,7 @@ jobs:
     runs-on: ubuntu-24.04
     outputs:
       matrix: ${{ steps.matrix.outputs.matrix }}
+      has_prs: ${{ steps.matrix.outputs.has_prs }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -41,10 +42,11 @@ jobs:
   repair:
     needs: prepare
     if: >-
-      (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' ||
+      (needs.prepare.outputs.has_prs == 'true' &&
+       (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' ||
        github.actor == 'vladbrincoveanu' || github.actor == 'sentry[bot]' ||
        github.actor == 'greptile-apps[bot]' || github.actor == 'github-actions[bot]' ||
-       github.actor == 'vercel[bot]' || github.actor == 'cursor[bot]')
+       github.actor == 'vercel[bot]' || github.actor == 'cursor[bot]'))
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
@@ -74,7 +76,7 @@ jobs:
           persist-credentials: false
 
       - name: Fetch base ref
-        run: git fetch --no-tags origin "${{ github.event.pull_request.base.ref || 'main' }}"
+        run: git fetch --no-tags origin "${{ matrix.base_ref }}"
 
       - name: Collect complete PR state
         env:
@@ -99,7 +101,8 @@ jobs:
           DEEPINFRA_TOKEN: ${{ secrets.DEEPINFRA_TOKEN }}
           DEEPINFRA_ENDPOINT: https://api.deepinfra.com/v1/openai/chat/completions
           DEEPINFRA_MODEL: deepseek-ai/DeepSeek-V4-Flash-0731
-        run: python controller/.github/pr-repair-deepinfra.py
+        working-directory: controller
+        run: python .github/pr-repair-deepinfra.py
 
       - name: Validate PersonalWiki repair
         if: github.repository == 'vladbrincoveanu/PersonalWiki'
@@ -130,7 +133,9 @@ jobs:
           echo "pushed=false" >> "$GITHUB_OUTPUT"
           printf '%s\n' controller/ pr-repair-context.json pr-repair-prompt.md repair-result.json repair-result.md >> .git/info/exclude
           git config --local --unset-all core.hooksPath || true
-          git config --local --unset-regexp '^filter\.' || true
+          git config --local --name-only --get-regexp '^filter\.' | while IFS= read -r key; do
+            git config --local --unset-all "$key" || true
+          done
           if [ -z "$(git status --porcelain)" ]; then
             echo "No changes produced."
             exit 0
@@ -139,6 +144,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git -c core.hooksPath=/dev/null add -A
           git -c core.hooksPath=/dev/null commit --no-verify -m "fix: address automated PR review feedback"
+          git remote set-url origin "https://github.com/${GITHUB_REPOSITORY}.git"
           git -c "http.extraheader=AUTHORIZATION: bearer ${GITHUB_TOKEN}" push origin "HEAD:${HEAD_REF}"
           echo "pushed=true" >> "$GITHUB_OUTPUT"
 
