@@ -1,6 +1,0 @@
-{"type":"server-started","port":56410,"host":"127.0.0.1","url_host":"localhost","url":"http://localhost:56410","screen_dir":"/Users/vladbrincoveanu/Desktop/Startup/personalWiki/.superpowers/brainstorm/96488-1776232004/content","state_dir":"/Users/vladbrincoveanu/Desktop/Startup/personalWiki/.superpowers/brainstorm/96488-1776232004/state"}
-{"type":"screen-added","file":"/Users/vladbrincoveanu/Desktop/Startup/personalWiki/.superpowers/brainstorm/96488-1776232004/content/architecture-v2.html"}
-{"type":"screen-added","file":"/Users/vladbrincoveanu/Desktop/Startup/personalWiki/.superpowers/brainstorm/96488-1776232004/content/track-a.html"}
-{"type":"screen-added","file":"/Users/vladbrincoveanu/Desktop/Startup/personalWiki/.superpowers/brainstorm/96488-1776232004/content/track-b.html"}
-{"type":"screen-added","file":"/Users/vladbrincoveanu/Desktop/Startup/personalWiki/.superpowers/brainstorm/96488-1776232004/content/tracks-c-d.html"}
-{"type":"server-stopped","reason":"idle timeout"}
