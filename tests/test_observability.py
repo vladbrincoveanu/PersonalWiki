@@ -277,6 +277,7 @@ def test_sentry_event_redaction_drops_request_and_exception_values():
             "query_string": "token=secret",
             "data": {"body": "raw document"},
         },
+        "message": "raw top-level exception secret",
         "user": {"id": "private-user"},
         "breadcrumbs": [{"message": "raw breadcrumb"}],
         "extra": {"secret": "raw exception secret"},
@@ -295,6 +296,7 @@ def test_sentry_event_redaction_drops_request_and_exception_values():
     assert "user" not in redacted
     assert "breadcrumbs" not in redacted
     assert "extra" not in redacted
+    assert "message" not in redacted
     exception_value = redacted["exception"]["values"][0]
     assert exception_value == {"type": "ValueError"}
     assert "raw exception secret" not in str(redacted)
