@@ -8,9 +8,8 @@ Detects and removes:
 - Notes with [NO_TRANSCRIPT] or [TRANSLATION_FAILED] in title
 - Notes with empty body
 - Sparse notes with < 200 chars raw_text
-- Orphaned notes: source_keyword not in active keywords (or blank),
-  AND body has no wikilink to its own source_keyword,
-  AND body has no wikilink to any active keyword
+- Orphaned discovery notes: discovery: auto with a source keyword no longer
+  active, and no wikilink to the source keyword or an active keyword
 """
 import logging
 import re
@@ -29,12 +28,17 @@ def _slugify(text: str) -> str:
     return slug
 
 
-def _is_junk_note(note: dict, active_keywords: list[str]) -> tuple[bool, str]:
+def _is_junk_note(
+    note: dict, active_keywords: list[str], file_stem: str | None = None
+) -> tuple[bool, str]:
     """
     Return (is_junk, reason) where reason is one of:
     video-no-content, untitled-no-h1, untitled-exact, untitled-h1,
-    transcript-failed, no-body, sparse, orphaned-no-keyword-link,
+    transcript-failed, no-body, sparse, orphaned-discovery-no-keyword-link,
     or "" if not junk.
+
+    ``file_stem`` is retained as an optional compatibility argument for older
+    callers; the detector does not need the path to make its decision.
     """
     title = note.get("title", "")
     body = note.get("body", note.get("raw_text", ""))
@@ -65,10 +69,12 @@ def _is_junk_note(note: dict, active_keywords: list[str]) -> tuple[bool, str]:
         if re.match(r"^#\s*untitled$", first_line, re.IGNORECASE):
             return True, "untitled-h1"
 
-    # Orphaned — source_keyword not in active keywords (or blank)
-    # AND body has no wikilink to its own source_keyword or any active keyword
+    # Orphaned discovery — only auto-discovered notes with a declared source
+    # keyword are eligible. Normal/manual notes commonly have no source
+    # keyword and must never be deleted by the legacy cleanup wrapper.
+    discovery = note.get("discovery", "")
     source_keyword = note.get("source_keyword", "")
-    if source_keyword not in active_keywords:
+    if discovery == "auto" and source_keyword and source_keyword not in active_keywords:
         has_own_link = (
             f"[[{source_keyword}]]" in body
             or f"[[{_slugify(source_keyword)}]]" in body
@@ -78,7 +84,7 @@ def _is_junk_note(note: dict, active_keywords: list[str]) -> tuple[bool, str]:
             for kw in active_keywords
         )
         if not has_own_link and not has_keyword_link:
-            return True, "orphaned-no-keyword-link"
+            return True, "orphaned-discovery-no-keyword-link"
 
     # Sparse — raw_text < 200 chars
     if len(raw_text) < 200:
@@ -131,7 +137,7 @@ def run_vault_doctor(active_keywords: list[str]) -> dict[str, list[str]]:
                 results["untitled"].append(str(md_path))
             elif reason == "sparse":
                 results["sparse"].append(str(md_path))
-            elif reason in ("orphaned-discovery", "orphaned-no-keyword-link"):
+            elif reason in ("orphaned-discovery", "orphaned-discovery-no-keyword-link"):
                 results["orphaned"].append(str(md_path))
             elif reason == "video-no-content":
                 results["video-no-content"].append(str(md_path))
