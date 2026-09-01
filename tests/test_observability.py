@@ -444,7 +444,7 @@ async def test_pipeline_emits_root_and_stage_spans_without_source_content(teleme
         patch("pipeline.extract", new_callable=AsyncMock, return_value=document),
         patch("pipeline.embed", return_value=[0.1] * 384),
         patch("pipeline.enrich", return_value=note),
-        patch("pipeline.extract_entities", return_value=[]),
+        patch("pipeline._merge_entities", return_value=[]),
         patch("pipeline.fetch_entity_status", return_value=[]),
         patch("pipeline.detect_gaps", return_value=[]),
         patch("pipeline.write_note", return_value="/vault/notes/private-title.md"),
