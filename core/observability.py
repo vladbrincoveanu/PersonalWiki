@@ -188,6 +188,7 @@ def redact_sentry_event(event: dict[str, Any], hint: dict[str, Any]) -> dict[str
         "contexts",
         "contexts.runtime",
         "modules",
+        "message",
     ):
         redacted.pop(key, None)
     exception = redacted.get("exception")
