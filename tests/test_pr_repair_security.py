@@ -258,6 +258,25 @@ def test_ci_workflow_has_one_top_level_environment_block():
     assert 'OTEL_SDK_DISABLED: "false"' in workflow
 
 
+def test_docker_lock_contains_all_runtime_requirements():
+    root = Path(__file__).parents[1]
+
+    def package_names(path: Path) -> set[str]:
+        names = set()
+        for line in path.read_text().splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or line.startswith("-"):
+                continue
+            name = line.split("==", 1)[0].split("[", 1)[0]
+            names.add(name.replace("_", "-").lower())
+        return names
+
+    direct = package_names(root / "requirements.txt")
+    locked = package_names(root / "requirements.lock.txt")
+
+    assert direct <= locked
+
+
 def test_prepare_bootstraps_matrix_without_executing_pr_helper_code():
     workflow = (GITHUB_DIR / "workflows" / "pr-repair-agent.yml").read_text()
     prepare = workflow.split("\n  repair:", 1)[0]

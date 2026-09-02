@@ -34,6 +34,8 @@ anyio==4.14.2
     #   sse-starlette
     #   starlette
     #   watchfiles
+asgiref==3.12.1
+    # via opentelemetry-instrumentation-asgi
 attrs==26.1.0
     # via
     #   aiohttp
@@ -53,6 +55,7 @@ certifi==2026.7.22
     #   httpcore
     #   httpx
     #   requests
+    #   sentry-sdk
 cffi==2.1.1
     # via cryptography
 chardet==7.6.0
@@ -149,10 +152,16 @@ fsspec==2026.7.0
     # via
     #   huggingface-hub
     #   torch
+googleapis-common-protos==1.75.2
+    # via
+    #   opentelemetry-exporter-otlp-proto-grpc
+    #   opentelemetry-exporter-otlp-proto-http
 greenlet==3.5.5
     # via
     #   patchright
     #   playwright
+grpcio==1.83.1
+    # via opentelemetry-exporter-otlp-proto-grpc
 h11==0.16.0
     # via
     #   httpcore
@@ -370,6 +379,73 @@ opencv-python==5.0.0.93
     # via rapidocr
 openpyxl==3.1.5
     # via docling-slim
+opentelemetry-api==1.44.0
+    # via
+    #   -r requirements.txt
+    #   opentelemetry-distro
+    #   opentelemetry-exporter-otlp-proto-grpc
+    #   opentelemetry-exporter-otlp-proto-http
+    #   opentelemetry-instrumentation
+    #   opentelemetry-instrumentation-asgi
+    #   opentelemetry-instrumentation-fastapi
+    #   opentelemetry-instrumentation-requests
+    #   opentelemetry-instrumentation-urllib
+    #   opentelemetry-sdk
+    #   opentelemetry-semantic-conventions
+opentelemetry-distro==0.65b0
+    # via sentry-sdk
+opentelemetry-exporter-otlp==1.44.0
+    # via opentelemetry-distro
+opentelemetry-exporter-otlp-proto-common==1.44.0
+    # via
+    #   opentelemetry-exporter-otlp-proto-grpc
+    #   opentelemetry-exporter-otlp-proto-http
+opentelemetry-exporter-otlp-proto-grpc==1.44.0
+    # via opentelemetry-exporter-otlp
+opentelemetry-exporter-otlp-proto-http==1.44.0
+    # via
+    #   -r requirements.txt
+    #   opentelemetry-exporter-otlp
+opentelemetry-instrumentation==0.65b0
+    # via
+    #   opentelemetry-distro
+    #   opentelemetry-instrumentation-asgi
+    #   opentelemetry-instrumentation-fastapi
+    #   opentelemetry-instrumentation-requests
+    #   opentelemetry-instrumentation-urllib
+opentelemetry-instrumentation-asgi==0.65b0
+    # via opentelemetry-instrumentation-fastapi
+opentelemetry-instrumentation-fastapi==0.65b0
+    # via -r requirements.txt
+opentelemetry-instrumentation-requests==0.65b0
+    # via -r requirements.txt
+opentelemetry-instrumentation-urllib==0.65b0
+    # via -r requirements.txt
+opentelemetry-proto==1.44.0
+    # via
+    #   opentelemetry-exporter-otlp-proto-common
+    #   opentelemetry-exporter-otlp-proto-grpc
+    #   opentelemetry-exporter-otlp-proto-http
+opentelemetry-sdk==1.44.0
+    # via
+    #   -r requirements.txt
+    #   opentelemetry-distro
+    #   opentelemetry-exporter-otlp-proto-grpc
+    #   opentelemetry-exporter-otlp-proto-http
+opentelemetry-semantic-conventions==0.65b0
+    # via
+    #   opentelemetry-instrumentation
+    #   opentelemetry-instrumentation-asgi
+    #   opentelemetry-instrumentation-fastapi
+    #   opentelemetry-instrumentation-requests
+    #   opentelemetry-instrumentation-urllib
+    #   opentelemetry-sdk
+opentelemetry-util-http==0.65b0
+    # via
+    #   opentelemetry-instrumentation-asgi
+    #   opentelemetry-instrumentation-fastapi
+    #   opentelemetry-instrumentation-requests
+    #   opentelemetry-instrumentation-urllib
 overrides==7.7.0
     # via lancedb
 packaging==26.3
@@ -379,6 +455,7 @@ packaging==26.3
     #   huggingface-hub
     #   lancedb
     #   onnxruntime
+    #   opentelemetry-instrumentation
     #   pytest
     #   transformers
 pandas==3.0.5
@@ -415,7 +492,10 @@ propcache==0.5.2
     #   aiohttp
     #   yarl
 protobuf==7.36.0
-    # via onnxruntime
+    # via
+    #   googleapis-common-protos
+    #   onnxruntime
+    #   opentelemetry-proto
 psutil==7.2.2
     # via
     #   accelerate
@@ -535,6 +615,7 @@ requests==2.33.1
     #   fastembed
     #   feedfinder2
     #   newspaper3k
+    #   opentelemetry-exporter-otlp-proto-http
     #   rapidocr
     #   requests-file
     #   tiktoken
@@ -571,6 +652,8 @@ scipy==1.18.1
 semchunk==3.2.5
     # via docling-core
 sentence-transformers==6.0.0
+    # via -r requirements.txt
+sentry-sdk==2.68.1
     # via -r requirements.txt
 setuptools==84.0.0
     # via torch
@@ -684,9 +767,15 @@ typing-extensions==4.16.0
     #   beautifulsoup4
     #   docling-core
     #   fastapi
+    #   grpcio
     #   huggingface-hub
     #   mcp
     #   openai
+    #   opentelemetry-api
+    #   opentelemetry-exporter-otlp-proto-grpc
+    #   opentelemetry-exporter-otlp-proto-http
+    #   opentelemetry-sdk
+    #   opentelemetry-semantic-conventions
     #   polyfactory
     #   pydantic
     #   pydantic-core
@@ -706,7 +795,9 @@ typing-inspection==0.4.4
 unclecode-litellm==1.81.13
     # via crawl4ai
 urllib3==2.7.0
-    # via requests
+    # via
+    #   requests
+    #   sentry-sdk
 uvicorn==0.52.4
     # via
     #   -r requirements.txt
@@ -719,6 +810,8 @@ websockets==16.1.1
     # via
     #   docling-slim
     #   uvicorn
+wrapt==2.4.0
+    # via opentelemetry-instrumentation
 xlsxwriter==3.2.9
     # via python-pptx
 xxhash==3.8.1
