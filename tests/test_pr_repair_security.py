@@ -44,6 +44,34 @@ def test_workflow_uses_openrouter_repair_credentials():
     assert "DEEPINFRA" not in workflow
 
 
+def test_model_request_requires_openrouter_api_key(monkeypatch):
+    repair = _load_script("pr-repair-openrouter.py", "pr_repair_openrouter_credentials")
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+
+    with pytest.raises(RuntimeError, match="OPENROUTER_API_KEY"):
+        repair._model_request({})
+
+
+def test_model_request_wraps_network_errors(monkeypatch):
+    repair = _load_script("pr-repair-openrouter.py", "pr_repair_openrouter_network")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+
+    def fail_request(*_args, **_kwargs):
+        raise repair.urllib.error.URLError("offline")
+
+    monkeypatch.setattr(repair.urllib.request, "urlopen", fail_request)
+
+    with pytest.raises(RuntimeError, match="OpenRouter request failed"):
+        repair._model_request({})
+
+
+def test_model_response_requires_text_content():
+    repair = _load_script("pr-repair-openrouter.py", "pr_repair_openrouter_response")
+
+    with pytest.raises(ValueError, match="model response"):
+        repair._response_content({"error": {"message": "unavailable"}})
+
+
 def test_patch_path_validation_rejects_protected_deletion():
     utils = _load_script("pr_repair_utils.py", "pr_repair_utils")
     patch = """\

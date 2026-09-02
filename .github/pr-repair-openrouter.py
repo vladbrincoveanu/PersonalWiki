@@ -120,12 +120,27 @@ def build_request_body(instructions: str, context: dict, diff: str, model: str |
     }
 
 
+def _response_content(response: object) -> str:
+    if not isinstance(response, dict):
+        raise ValueError("model response must be an object")
+    choices = response.get("choices")
+    if not isinstance(choices, list) or not choices or not isinstance(choices[0], dict):
+        raise ValueError("model response choices are missing")
+    message = choices[0].get("message")
+    if not isinstance(message, dict) or not isinstance(message.get("content"), str):
+        raise ValueError("model response content is missing")
+    return message["content"]
+
+
 def _model_request(request_body: dict) -> dict:
+    api_key = os.environ.get("OPENROUTER_API_KEY")
+    if not api_key:
+        raise RuntimeError("OPENROUTER_API_KEY is required")
     request = urllib.request.Request(
         os.environ.get("OPENROUTER_ENDPOINT", DEFAULT_ENDPOINT),
         data=json.dumps(request_body).encode("utf-8"),
         headers={
-            "Authorization": f"Bearer {os.environ['OPENROUTER_API_KEY']}",
+            "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
             "HTTP-Referer": "https://github.com/vladbrincoveanu/PersonalWiki",
             "X-OpenRouter-Title": "PR Repair Agent",
@@ -138,6 +153,10 @@ def _model_request(request_body: dict) -> dict:
     except urllib.error.HTTPError as error:
         detail = error.read().decode("utf-8", errors="replace")[:500]
         raise RuntimeError(f"OpenRouter request failed ({error.code}): {detail}") from error
+    except (urllib.error.URLError, TimeoutError) as error:
+        raise RuntimeError(
+            f"OpenRouter request failed ({type(error).__name__})"
+        ) from error
 
 
 def _strip_json_fence(content: str) -> str:
@@ -190,12 +209,18 @@ def main() -> None:
         model=os.environ.get("OPENROUTER_MODEL"),
     )
 
-    response = _model_request(request_body)
-    choices = response.get("choices") or []
-    raw_content = (choices[0].get("message") or {}).get("content") if choices else None
     try:
+        raw_content = _response_content(_model_request(request_body))
         decision = validate_model_decision(json.loads(_strip_json_fence(raw_content)))
-    except (AttributeError, IndexError, KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+    except (
+        AttributeError,
+        IndexError,
+        KeyError,
+        RuntimeError,
+        TypeError,
+        ValueError,
+        json.JSONDecodeError,
+    ) as exc:
         _write_result(
             artifact_dir,
             {
