@@ -426,7 +426,7 @@ def test_build_video_body_uses_correct_field_names():
     note = {
         "summary": "Test summary",
         "type": "video",
-        # These are the actual field names from MiniMax API
+        # These are the actual field names from LLM API
         "key_quotes": [{"text": "Something important", "speaker": "Dr. Smith"}],
         "topics_covered": ["machine learning", "AI safety"],
         "chapters": [{"time": "00:00", "title": "Intro"}],

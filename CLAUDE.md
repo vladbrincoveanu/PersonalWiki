@@ -77,8 +77,6 @@ Planning and implementation should be separate sessions when possible: planning 
 
 **RTK (Rust Token Killer):** token-optimized CLI proxy: `rtk gain` (savings analytics), `rtk gain --history`, `rtk discover` (find missed opportunities), `rtk proxy <cmd>` (raw, unfiltered). Other bash commands are auto-rewritten through the `rtk` hook transparently — no action needed. If `rtk gain` fails, check for a name collision with `reachingforthejack/rtk` (Rust Type Kit).
 
-**MiniMax API:** this project routes through `https://api.minimax.io/anthropic` with a MiniMax token (in `settings.local.json` — don't share). immo-scouter, by contrast, uses the standard Anthropic API, not MiniMax.
-
 **NVIDIA API:** available via env var `NVIDIA_API_KEY`, base URL `https://integrate.api.nvidia.com/v1`. Models: `nvidia/llama-3.1-nemotron-70b-instruct`, `meta/llama-3.1-405b-instruct`, `google/gemma-2-27b-it`, `deepseek-ai/DeepSeek-V3-0324`.
 
 **Git worktrees** for isolated feature work: `git worktree add ../branch-name` (this repo has one at `.worktrees/keyword-discovery`).

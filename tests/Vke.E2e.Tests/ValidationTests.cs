@@ -18,7 +18,7 @@ public class ValidationTests
         http.DefaultRequestHeaders.Add("x-api-key", Environment.GetEnvironmentVariable("ANTHROPIC_AUTH_TOKEN") ?? "");
         http.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", Environment.GetEnvironmentVariable("ANTHROPIC_AUTH_TOKEN") ?? "");
         var apiKey = Environment.GetEnvironmentVariable("ANTHROPIC_AUTH_TOKEN") ?? "";
-        var llm = new Vke.Core.Services.LlmClient(http, "https://api.minimax.io/anthropic", "MiniMax-M2.7", apiKey);
+        var llm = new Vke.Core.Services.LlmClient(http, "https://api.deepinfra.com/v1/openai", "the LLM-M2.7", apiKey);
         var secEdgar = new Vke.Core.Services.SecEdgarClient(http);
         var semScholar = new Vke.Core.Services.SemanticScholarClient(http);
         var webSearch = new Vke.Core.Services.WebSearchClient(http);

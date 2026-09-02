@@ -3,29 +3,35 @@
 ## Environment Setup
 
 ```bash
-# Required environment variables for MiniMax API
-export ANTHROPIC_AUTH_TOKEN=sk-cp-47dYVe9QJIj732X68hINusCgJhqXz6_XFcy1WIGQpl5N6cPL28EjF4dLl9Iqu3BR5NKNBw1WhiNn1oh-Gsk4MNLq_dN2AlmLDojSShq7RFwsNtMPuYCMzgk
-export ANTHROPIC_BASE_URL=https://api.minimax.io/anthropic
-export ANTHROPIC_MODEL=MiniMax-M2.7
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env   # then fill in LLM_API_KEY
 ```
+
+The LLM is any OpenAI-compatible chat-completions endpoint, configured entirely
+through `.env`:
+
+| Variable | Default |
+|---|---|
+| `LLM_API_KEY` | *(required)* |
+| `LLM_BASE_URL` | `https://api.deepinfra.com/v1/openai` |
+| `LLM_MODEL` | `deepseek-ai/DeepSeek-V4-Flash-0731` |
+| `LLM_VISION_MODEL` | `Qwen/Qwen3-VL-235B-A22B-Instruct` |
+
+Never commit `.env` — it is gitignored.
 
 ## Commands
 
 ```bash
-# Build
-dotnet build Vke.sln
-
-# Run tests
-dotnet test Vke.sln
-
-# Run CLI
-dotnet run --project src/Vke.Cli -- ingest --url <url> --type <type> --domain <domain>
-dotnet run --project src/Vke.Cli -- lint
+python app.py                        # web UI on http://localhost:8000
+python -m pytest tests/ -v           # test suite
+python -m vault.scanner              # reindex the vault into LanceDB
+docker compose up --build            # containerised run (always --build)
 ```
 
 ## Tech Stack
 
-- C# / .NET 10
-- DuckDB.NET for graph storage
-- MiniMax M2.7 via Anthropic API
-- xUnit for tests
+- Python 3.13, FastAPI + HTMX
+- LanceDB (vectors) + FastEmbed `BAAI/bge-small-en-v1.5`
+- Docling (PDF), Crawl4AI (web), yt-dlp (video)
+- pytest

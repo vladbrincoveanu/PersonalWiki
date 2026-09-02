@@ -82,8 +82,8 @@ public class BrowserTests : IAsyncLifetime, IDisposable
                 db.InitializeDatabase();
 
                 var apiKey = Environment.GetEnvironmentVariable("ANTHROPIC_AUTH_TOKEN") ?? "";
-                var baseUrl = Environment.GetEnvironmentVariable("ANTHROPIC_BASE_URL") ?? "https://api.minimax.io/anthropic";
-                var model = Environment.GetEnvironmentVariable("ANTHROPIC_MODEL") ?? "MiniMax-M2.7-highspeed";
+                var baseUrl = Environment.GetEnvironmentVariable("ANTHROPIC_BASE_URL") ?? "https://api.deepinfra.com/v1/openai";
+                var model = Environment.GetEnvironmentVariable("ANTHROPIC_MODEL") ?? "the LLM-M2.7-highspeed";
 
                 await System.IO.File.AppendAllTextAsync(logFile, $"[/api/ingest] API: baseUrl={baseUrl}, model={model}, tokenSet={!string.IsNullOrEmpty(apiKey)}\n");
 

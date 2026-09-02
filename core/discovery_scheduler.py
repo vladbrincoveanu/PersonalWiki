@@ -320,9 +320,9 @@ class DiscoveryScheduler:
             _logger.warning("Discovery: HN search failed for %s: %s", keyword, e)
 
         try:
-            results.extend(await self._search_minimax(keyword))
+            results.extend(await self._search_llm_web(keyword))
         except Exception as e:
-            _logger.warning("Discovery: MiniMax search failed for %s: %s", keyword, e)
+            _logger.warning("Discovery: LLM web search failed for %s: %s", keyword, e)
 
         try:
             results.extend(await self._search_desprebursa(keyword))
@@ -343,7 +343,7 @@ class DiscoveryScheduler:
     async def _enrich_snippets(self, results: list[dict]) -> list[dict]:
         """Post-process: fetch article content for any result with an empty snippet.
 
-        Works generically for any source. arXiv/HN/MiniMax already return real snippets
+        Works generically for any source. arXiv/HN/the LLM already return real snippets
         so this is mostly a no-op for them. DespreBursa also fetches its own snippets,
         so this is a fallback for any future source that returns empty ones.
         """
@@ -419,11 +419,11 @@ class DiscoveryScheduler:
 
         return await asyncio.to_thread(_blocking_search)
 
-    async def _search_minimax(self, keyword: str, limit: int = 3) -> list[dict]:
+    async def _search_llm_web(self, keyword: str, limit: int = 3) -> list[dict]:
         """
-        Web search via MiniMax chat API using function-calling hybrid.
+        Web search via the LLM chat API using function-calling hybrid.
 
-        Round 1: Sends the request with a 'web_search' tool definition. If MiniMax
+        Round 1: Sends the request with a 'web_search' tool definition. If the LLM
         returns tool_calls, the arguments contain real URLs from an actual web search.
 
         Round 2 (fallback): If no tool_calls came back (tool unavailable or error),
@@ -495,11 +495,11 @@ class DiscoveryScheduler:
                     _logger.debug("Discovery: failed to parse tool_call arguments: %s", e)
         else:
             # Round 2 fallback: extract https:// URLs from text content via regex
-            # This handles cases where MiniMax doesn't invoke the tool but still
+            # This handles cases where the LLM doesn't invoke the tool but still
             # returns URLs in its text response (hallucinated but we HEAD-validate them)
             content = (message.get("content") or "").strip()
             if not content:
-                _logger.warning("Discovery: MiniMax returned empty content for %s", keyword)
+                _logger.warning("Discovery: the LLM returned empty content for %s", keyword)
                 return []
             content = content.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
 
@@ -517,7 +517,7 @@ class DiscoveryScheduler:
                     raw_urls.append({"url": url, "title": keyword, "snippet": ""})
 
         if not raw_urls:
-            _logger.warning("Discovery: MiniMax returned no URLs for %s", keyword)
+            _logger.warning("Discovery: the LLM returned no URLs for %s", keyword)
             return []
 
         # HEAD-validate each URL and fetch real snippets via Crawl4AI
@@ -540,10 +540,10 @@ class DiscoveryScheduler:
                             "url": url,
                             "title": r.get("title", keyword),
                             "snippet": real_snippet[:200] if real_snippet else r.get("snippet", "")[:200],
-                            "source": "minimax",
+                            "source": "llm_web",
                         })
             except Exception:
-                _logger.debug("Discovery: MiniMax URL failed HEAD check, dropping: %s", url)
+                _logger.debug("Discovery: the LLM URL failed HEAD check, dropping: %s", url)
             if len(validated) >= limit:
                 break
 

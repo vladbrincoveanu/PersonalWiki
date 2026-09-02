@@ -204,10 +204,10 @@ def test_remove_keyword_removes_and_purges():
 
 
 @pytest.mark.asyncio
-async def test_search_minimax_no_nested_event_loop():
-    """_search_minimax must not create a new event loop when already running.
+async def test_search_llm_web_no_nested_event_loop():
+    """_search_llm_web must not create a new event loop when already running.
 
-    Bug: _search_minimax used asyncio.new_event_loop() inside an already-running
+    Bug: _search_llm_web used asyncio.new_event_loop() inside an already-running
     loop (called from _search_keyword -> _run_discovery_cycle), raising
     RuntimeError: loop already running.
     """
@@ -246,7 +246,7 @@ async def test_search_minimax_no_nested_event_loop():
                 # This is called from within an async context (already running loop)
                 # Must not raise RuntimeError: loop already running
                 try:
-                    results = await ds._search_minimax("test query")
+                    results = await ds._search_llm_web("test query")
                     assert isinstance(results, list)
                 except RuntimeError as e:
                     if "loop" in str(e).lower() or "event" in str(e).lower():
@@ -254,12 +254,12 @@ async def test_search_minimax_no_nested_event_loop():
                     raise
 
 
-def test_search_minimax_includes_tools_parameter_for_function_calling():
+def test_search_llm_web_includes_tools_parameter_for_function_calling():
     """
-    Bug: _search_minimax() sends a plain prompt asking LLM to invent URLs.
+    Bug: _search_llm_web() sends a plain prompt asking LLM to invent URLs.
     The LLM has no internet access — URLs come from training data (hallucination).
 
-    Fix: _search_minimax() must include 'tools' in the API payload so MiniMax
+    Fix: _search_llm_web() must include 'tools' in the API payload so the LLM
     can call a real web_search function. Without this, discovery returns
     hallucinated/dead links and stale content for any non-famous topic.
 
@@ -303,10 +303,10 @@ def test_search_minimax_includes_tools_parameter_for_function_calling():
                 async def fake_fetch(url):
                     return "Real article content."
                 with patch.object(ds, "_fetch_article_snippet", fake_fetch):
-                    results = asyncio.run(ds._search_minimax("reinforcement learning"))
+                    results = asyncio.run(ds._search_llm_web("reinforcement learning"))
 
     assert len(results) >= 1, f"Expected at least 1 result, got {len(results)}"
-    assert all(r["source"] == "minimax" for r in results)
+    assert all(r["source"] == "llm_web" for r in results)
     assert all(r["url"].startswith("https://") for r in results)
 
     # KEY assertion: payload should include 'tools' for function-calling
@@ -387,8 +387,8 @@ def test_pick_best_link():
     assert "very-long-article" in best2  # longest slug
 
 
-def test_minimax_search_rejects_http_urls():
-    """MiniMax search must only accept https:// URLs."""
+def test_llm_web_search_rejects_http_urls():
+    """LLM web search must only accept https:// URLs."""
     from core.discovery_scheduler import DiscoveryScheduler
     import json
 
@@ -406,7 +406,7 @@ def test_minimax_search_rejects_http_urls():
     def fake_urlopen(req, timeout=None):
         return FakeHTTPResponse(status=200)
 
-    # Mock minimax to return mixed http/https URLs
+    # Mock the LLM to return mixed http/https URLs
     def fake_post(url, headers=None, json_data=None, timeout=None, **kwargs):
         m = MagicMock()
         m.raise_for_status = MagicMock()
@@ -429,30 +429,30 @@ def test_minimax_search_rejects_http_urls():
                 async def fake_fetch(url):
                     return "Real article content."
                 with patch.object(ds, "_fetch_article_snippet", fake_fetch):
-                    results = asyncio.run(ds._search_minimax("test"))
+                    results = asyncio.run(ds._search_llm_web("test"))
 
     urls = [r["url"] for r in results]
     assert "http://insecure.example.com/page" not in urls, "http:// URL was not rejected"
     assert "https://secure.example.com/page" in urls
 
 
-@pytest.mark.skip(reason="MiniMax API not accessible from test environment — run manually")
+@pytest.mark.skip(reason="LLM API not accessible from test environment — run manually")
 @pytest.mark.integration
-def test_search_minimax_returns_real_urls_with_real_content():
+def test_search_llm_web_returns_real_urls_with_real_content():
     """
-    Verify MiniMax search returns real, crawlable URLs with actual content.
-    This is an integration test — it hits real APIs (MiniMax + live web).
-    Skipped by default since MiniMax API times out from this server environment.
-    Run manually with: pytest tests/test_discovery_scheduler.py::test_search_minimax_returns_real_urls_with_real_content -v
+    Verify LLM web search returns real, crawlable URLs with actual content.
+    This is an integration test — it hits real APIs (the LLM + live web).
+    Skipped by default since LLM API times out from this server environment.
+    Run manually with: pytest tests/test_discovery_scheduler.py::test_search_llm_web_returns_real_urls_with_real_content -v
     """
     from core.discovery_scheduler import DiscoveryScheduler
     ds = DiscoveryScheduler()
 
-    results = ds._search_minimax("reinforcement learning")
+    results = ds._search_llm_web("reinforcement learning")
 
     assert len(results) >= 1, "Should return at least 1 result"
     for r in results:
-        assert r["source"] == "minimax", f"Expected source='minimax', got {r['source']}"
+        assert r["source"] == "llm_web", f"Expected source='llm_web', got {r['source']}"
         assert r["url"].startswith("https://"), f"URL should be real https: {r['url']}"
         # Snippets should be real content from actual pages (Crawl4AI fetched)
         assert len(r["snippet"]) > 20, f"Snippet should be real content, got: {r['snippet'][:50]}"

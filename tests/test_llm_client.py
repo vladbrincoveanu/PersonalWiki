@@ -125,7 +125,7 @@ def test_enrich_no_api_key_fallback_includes_new_field_defaults():
 
 
 def test_enrich_handles_unexpected_response_shape(monkeypatch):
-    """Malformed or unexpected MiniMax response shapes must not silently pass."""
+    """Malformed or unexpected LLM response shapes must not silently pass."""
     from core.llm_client import enrich
 
     def mock_post(url, headers, json, timeout):
@@ -191,13 +191,13 @@ def test_enrich_posts_to_configured_openai_endpoint(monkeypatch):
     llm_client.enrich("raw text", [], "http://example.com")
 
     assert seen["url"].endswith("/chat/completions")
-    assert "minimax" not in seen["url"]
+    assert seen["url"] == llm_client.LLM_API_URL
     assert seen["model"] == llm_client.LLM_MODEL
     assert seen["auth"] == "Bearer test-key"
 
 
 def test_enrich_json_decode_error_returns_fallback(monkeypatch):
-    """Invalid JSON in MiniMax response must return fallback note, not crash."""
+    """Invalid JSON in the LLM response must return a fallback note, not crash."""
     from core.llm_client import enrich
 
     def mock_post(url, headers, json, timeout):
