@@ -76,6 +76,32 @@ nothing here: the reranker tests pass against provably broken code (see 2.2).
 *Done when:* one note has gone URL → vault file → index → search result, observed,
 and the test baseline is written down.
 
+### Stage 0 results (executed 2026-09-02)
+
+| Step | Outcome |
+|---|---|
+| `.venv` + requirements | done; `core.mcp_server` now imports cleanly (lancedb 0.20.0) |
+| Vault move | 60 notes + `attachments/` copied to `./.vault/`; source dirs left in place, untouched |
+| `.env` → `./.vault` | **not done** — editing `.env` is on the no-go list. Everything below ran with `VAULT_PATH=./.vault` in the environment (`load_dotenv()` does not override real env vars, so this is equivalent). One-line change for the user. |
+| Index rebuild | old `.vke_index` renamed `.vke_index.retired-2026-09-02` (not deleted). Fresh scan: **34 rows, 1.8M** — down from 61M. The other 26 of the 60 notes are `[NO_TRANSCRIPT]`/`[NO_TWEET]` junk the scanner skips by design. |
+| `ok init` | done in `.vault`; paths appended to `.git/info/exclude` |
+| Test baseline | **340 passed, 1 failed, 2 skipped** in 104s. The one failure is `tests/test_integration.py::test_pipeline_pdf_with_image_creates_note_and_saves_figures` — it needs a live MiniMax key. |
+| Real ingest | **blocked.** `MINIMAX_API_KEY` is empty in `.env`, so enrichment returns the fallback and Track B gates every note as "content too thin". Nothing has been ingestible since the key was cleared — this, not just `VAULT_PATH`, is why note production died. Running it also means a paid call, which needs an explicit go-ahead. |
+| Search end-to-end | verified without the LLM: `hybrid_search("quantum mechanics")` returns correctly ranked notes with real titles from the rebuilt index. |
+
+**Two new correctness findings, both from lancedb 0.20 (add to Stage 5):**
+
+- `vector_store.py:182` — `LanceTable` has no `.to_list()`. `get_all_paths()` raises
+  `AttributeError` into its own bare `except`, so it **always returns `[]`**, silently.
+- `vector_store.py:220` — same call in `get_recent_notes()`, with no `try`, so it
+  raises outright. `/recent` is dead.
+- Related: `search().limit(n).to_list()` **defaults to 10** when unlimited. Line 302's
+  graph-hop scan is silently truncated to 10 rows regardless of vault size.
+
+Corrections to the measured-state table above: BM25 returning `[]` and the 0-note
+vault were both consequences of `VAULT_PATH`; with the vault populated, the
+vector stream works. The empty `MINIMAX_API_KEY` was missed entirely by the audit.
+
 Everything below is re-validated against what Stage 0 observes. Findings marked
 **(inferred)** have not been executed and may not survive contact.
 
