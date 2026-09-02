@@ -2,12 +2,15 @@ import json
 import os
 import subprocess
 import tempfile
+import urllib.error
 import urllib.request
 from pathlib import Path
 
 from pr_repair_utils import validate_model_decision, validate_patch_paths, validate_sha
 
 
+DEFAULT_ENDPOINT = "https://openrouter.ai/api/v1/chat/completions"
+DEFAULT_MODEL = "nvidia/nemotron-3-ultra-550b-a55b:free"
 _MAX_DIFF_CHARS = 120_000
 
 
@@ -86,18 +89,55 @@ def _write_result(artifact_dir: Path, result: dict) -> None:
     )
 
 
+def build_request_body(instructions: str, context: dict, diff: str, model: str | None = None) -> dict:
+    return {
+        "model": model or DEFAULT_MODEL,
+        "temperature": 0.1,
+        "messages": [
+            {
+                "role": "system",
+                "content": (
+                    "You are a careful software repair agent. Return JSON only with exactly these keys: "
+                    "action (one of patch, no_change, blocked), patch (a unified git diff string), "
+                    "summary (string), tests (array of strings), and fixed_comment_ids (array of integers). "
+                    "Never return shell commands."
+                ),
+            },
+            {
+                "role": "user",
+                "content": (
+                    instructions
+                    + "\n\nCurrent PR state:\n"
+                    + json.dumps(context, indent=2)
+                    + "\n\nCurrent PR diff:\n```diff\n"
+                    + diff
+                    + "\n```\n"
+                    + "Return a minimal patch only for verified actionable findings. "
+                    + "If no safe fix is possible, return action=blocked or action=no_change and an empty patch."
+                ),
+            },
+        ],
+    }
+
+
 def _model_request(request_body: dict) -> dict:
     request = urllib.request.Request(
-        os.environ.get("DEEPINFRA_ENDPOINT", "https://api.deepinfra.com/v1/openai/chat/completions"),
+        os.environ.get("OPENROUTER_ENDPOINT", DEFAULT_ENDPOINT),
         data=json.dumps(request_body).encode("utf-8"),
         headers={
-            "Authorization": f"Bearer {os.environ['DEEPINFRA_TOKEN']}",
+            "Authorization": f"Bearer {os.environ['OPENROUTER_API_KEY']}",
             "Content-Type": "application/json",
+            "HTTP-Referer": "https://github.com/vladbrincoveanu/PersonalWiki",
+            "X-OpenRouter-Title": "PR Repair Agent",
         },
         method="POST",
     )
-    with urllib.request.urlopen(request, timeout=300) as response:
-        return json.load(response)
+    try:
+        with urllib.request.urlopen(request, timeout=300) as response:
+            return json.load(response)
+    except urllib.error.HTTPError as error:
+        detail = error.read().decode("utf-8", errors="replace")[:500]
+        raise RuntimeError(f"OpenRouter request failed ({error.code}): {detail}") from error
 
 
 def _strip_json_fence(content: str) -> str:
@@ -143,39 +183,16 @@ def main() -> None:
     if len(diff) > _MAX_DIFF_CHARS:
         diff = diff[:_MAX_DIFF_CHARS] + "\n[diff truncated]\n"
 
-    request_body = {
-        "model": os.environ.get(
-            "DEEPINFRA_MODEL", "deepinfra/deepseek-ai/DeepSeek-V4-Flash-0731"
-        ),
-        "temperature": 0.1,
-        "response_format": {"type": "json_object"},
-        "messages": [
-            {
-                "role": "system",
-                "content": (
-                    "You are a careful software repair agent. Return JSON only with exactly these keys: "
-                    "action (one of patch, no_change, blocked), patch (a unified git diff string), "
-                    "summary (string), tests (array of strings), and fixed_comment_ids (array of integers). "
-                    "Never return shell commands."
-                ),
-            },
-            {
-                "role": "user",
-                "content": (
-                    instructions
-                    + "\n\nCurrent PR state:\n"
-                    + json.dumps(context, indent=2)
-                    + "\n\nCurrent PR diff:\n```diff\n"
-                    + diff
-                    + "\n```\n"
-                    + "Return a minimal patch only for verified actionable findings. "
-                    + "If no safe fix is possible, return action=blocked or action=no_change and an empty patch."
-                ),
-            },
-        ],
-    }
+    request_body = build_request_body(
+        instructions,
+        context,
+        diff,
+        model=os.environ.get("OPENROUTER_MODEL"),
+    )
 
-    raw_content = _model_request(request_body).get("choices", [{}])[0].get("message", {}).get("content")
+    response = _model_request(request_body)
+    choices = response.get("choices") or []
+    raw_content = (choices[0].get("message") or {}).get("content") if choices else None
     try:
         decision = validate_model_decision(json.loads(_strip_json_fence(raw_content)))
     except (AttributeError, IndexError, KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
