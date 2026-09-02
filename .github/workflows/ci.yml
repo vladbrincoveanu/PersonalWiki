@@ -13,15 +13,13 @@ permissions:
 env:
   VAULT_PATH: ${{ github.workspace }}/.ci-vault
   INDEX_PATH: ${{ github.workspace }}/.ci-index
+  SENTRY_DSN: ""
+  OTEL_EXPORTER_OTLP_ENDPOINT: ""
+  OTEL_SDK_DISABLED: "false"
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
-
-env:
-  SENTRY_DSN: ""
-  OTEL_EXPORTER_OTLP_ENDPOINT: ""
-  OTEL_SDK_DISABLED: "false"
 
 jobs:
   test:

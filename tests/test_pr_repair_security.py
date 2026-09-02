@@ -249,6 +249,15 @@ def test_workflow_blocks_until_openrouter_helper_is_trusted():
     assert "OpenRouter helper is not yet available on the trusted default branch" in workflow
 
 
+def test_ci_workflow_has_one_top_level_environment_block():
+    workflow = (GITHUB_DIR / "workflows" / "ci.yml").read_text()
+
+    assert workflow.count("\nenv:\n") == 1
+    assert 'SENTRY_DSN: ""' in workflow
+    assert 'OTEL_EXPORTER_OTLP_ENDPOINT: ""' in workflow
+    assert 'OTEL_SDK_DISABLED: "false"' in workflow
+
+
 def test_prepare_bootstraps_matrix_without_executing_pr_helper_code():
     workflow = (GITHUB_DIR / "workflows" / "pr-repair-agent.yml").read_text()
     prepare = workflow.split("\n  repair:", 1)[0]
