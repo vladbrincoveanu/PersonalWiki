@@ -204,7 +204,16 @@ jobs:
           EXPECTED_BASE_SHA: ${{ matrix.base_sha }}
           REPAIR_WORKSPACE: ${{ github.workspace }}/target
           REPAIR_ARTIFACT_DIR: ${{ runner.temp }}/pr-repair-${{ matrix.number }}
-        run: python .github/pr-repair-openrouter.py
+        run: |
+          set -euo pipefail
+          if [ -f ".github/pr-repair-openrouter.py" ]; then
+            python .github/pr-repair-openrouter.py
+          else
+            echo "::warning::OpenRouter helper is not yet available on the trusted default branch."
+            mkdir -p "$REPAIR_ARTIFACT_DIR"
+            printf '%s\n' '{"action":"blocked","patch":"","summary":"OpenRouter helper is not yet available on the trusted default branch.","tests":[],"fixed_comment_ids":[],"changed_paths":[]}' > "$REPAIR_ARTIFACT_DIR/repair-result.json"
+            printf '%s\n' 'OpenRouter helper is not yet available on the trusted default branch.' > "$REPAIR_ARTIFACT_DIR/repair-result.md"
+          fi
 
       - name: Validate staged repair
         env:

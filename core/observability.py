@@ -566,7 +566,7 @@ def observed_span(
     with runtime.observed_span(name, attributes) as span:
         try:
             yield span
-        except Exception as error:
+        except BaseException as error:
             record_handled_error(span, error)
             raise
 

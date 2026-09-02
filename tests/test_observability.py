@@ -1,4 +1,6 @@
+import asyncio
 import pytest
+from contextlib import contextmanager
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 
@@ -264,6 +266,28 @@ def test_redaction_removes_http_payloads_and_exception_messages(monkeypatch):
         "raw exception secret" not in str(event.attributes)
         for event in finished[0].events
     )
+
+
+def test_observed_span_records_cancellation_before_reraising(monkeypatch):
+    from core import observability
+
+    span = Mock()
+    runtime = Mock()
+
+    @contextmanager
+    def active_span(*args, **kwargs):
+        yield span
+
+    runtime.observed_span.side_effect = active_span
+    monkeypatch.setattr(observability, "_runtime", runtime)
+
+    with pytest.raises(asyncio.CancelledError):
+        with observability.observed_span("personalwiki.test"):
+            raise asyncio.CancelledError
+
+    span.set_attribute.assert_called_once_with("error.type", "CancelledError")
+    span.record_exception.assert_called_once()
+    span.set_status.assert_called_once()
 
 
 def test_redacting_processor_forwards_a_public_sanitized_span_copy():

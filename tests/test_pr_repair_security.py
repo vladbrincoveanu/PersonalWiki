@@ -241,6 +241,14 @@ def test_workflow_uses_openrouter_repair_credentials():
     assert "DEEPINFRA" not in workflow
 
 
+def test_workflow_blocks_until_openrouter_helper_is_trusted():
+    workflow = (GITHUB_DIR / "workflows" / "pr-repair-agent.yml").read_text()
+
+    assert 'if [ -f ".github/pr-repair-openrouter.py" ]; then' in workflow
+    assert '"action":"blocked"' in workflow
+    assert "OpenRouter helper is not yet available on the trusted default branch" in workflow
+
+
 def test_prepare_bootstraps_matrix_without_executing_pr_helper_code():
     workflow = (GITHUB_DIR / "workflows" / "pr-repair-agent.yml").read_text()
     prepare = workflow.split("\n  repair:", 1)[0]
