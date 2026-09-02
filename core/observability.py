@@ -27,7 +27,7 @@ from opentelemetry.sdk.resources import (
     SERVICE_VERSION,
     Resource,
 )
-from opentelemetry.sdk.trace import Span, TracerProvider
+from opentelemetry.sdk.trace import Event, ReadableSpan, Span, TracerProvider
 from opentelemetry.sdk.trace.export import (
     BatchSpanProcessor,
     SpanExporter,
@@ -130,49 +130,56 @@ def _safe_span_attributes(attributes: Mapping[str, object] | None) -> dict[str, 
     return safe
 
 
+def _safe_span_events(events: Sequence[object]) -> tuple[Event, ...]:
+    safe_events: list[Event] = []
+    for event in events:
+        if getattr(event, "name", None) != "exception":
+            continue
+        attributes = getattr(event, "attributes", {}) or {}
+        exception_type = attributes.get("exception.type")
+        safe_events.append(
+            Event(
+                "exception",
+                {"exception.type": _bounded(exception_type)} if exception_type else {},
+                timestamp=getattr(event, "timestamp", None),
+            )
+        )
+    return tuple(safe_events)
+
+
+def _safe_readable_span(span: ReadableSpan) -> ReadableSpan:
+    return ReadableSpan(
+        name=span.name,
+        context=span.context,
+        parent=span.parent,
+        resource=span.resource,
+        attributes=_safe_span_attributes(span.attributes),
+        events=_safe_span_events(span.events),
+        links=span.links,
+        kind=span.kind,
+        instrumentation_info=span.instrumentation_info,
+        instrumentation_scope=span.instrumentation_scope,
+        status=span.status,
+        start_time=span.start_time,
+        end_time=span.end_time,
+    )
+
+
 class RedactingSpanProcessor(SpanProcessor):
+    def __init__(self, delegate: SpanProcessor):
+        self._delegate = delegate
+
     def on_start(self, span: Span, parent_context: object | None = None) -> None:
-        return None
+        self._delegate.on_start(span, parent_context)
 
-    def on_end(self, span: Any) -> None:
-        attributes = getattr(span, "_attributes", None)
-        if attributes is not None:
-            immutable = getattr(attributes, "_immutable", None)
-            attributes._immutable = False
-            try:
-                for key in list(attributes):
-                    if key not in _SAFE_SPAN_KEYS:
-                        attributes.pop(key, None)
-                    elif key in {"server.address", "net.peer.name"}:
-                        attributes[key] = _normalise_host(attributes[key])
-                    elif isinstance(attributes[key], str):
-                        attributes[key] = _bounded(attributes[key])
-            finally:
-                if immutable is not None:
-                    attributes._immutable = immutable
-
-        for event in getattr(span, "_events", ()):
-            if event.name != "exception":
-                continue
-            event_attributes = getattr(event, "_attributes", None)
-            if event_attributes is None:
-                continue
-            immutable = getattr(event_attributes, "_immutable", None)
-            event_attributes._immutable = False
-            try:
-                exception_type = event_attributes.get("exception.type")
-                event_attributes.clear()
-                if exception_type:
-                    event_attributes["exception.type"] = _bounded(exception_type)
-            finally:
-                if immutable is not None:
-                    event_attributes._immutable = immutable
+    def on_end(self, span: ReadableSpan) -> None:
+        self._delegate.on_end(_safe_readable_span(span))
 
     def shutdown(self) -> None:
-        return None
+        self._delegate.shutdown()
 
     def force_flush(self, timeout_millis: int = 30000) -> bool:
-        return True
+        return self._delegate.force_flush(timeout_millis)
 
 
 def redact_sentry_event(event: dict[str, Any], hint: dict[str, Any]) -> dict[str, Any]:
@@ -448,7 +455,6 @@ def _build_runtime(
 
     resource = _resource(settings)
     tracer_provider = TracerProvider(resource=resource, sampler=_sampler(settings))
-    tracer_provider.add_span_processor(RedactingSpanProcessor())
     exporters: list[SpanExporter] = []
 
     if settings.otlp_endpoint:
@@ -459,13 +465,15 @@ def _build_runtime(
                     _signal_endpoint(settings.otlp_endpoint, "traces"),
                 )
             )
-            tracer_provider.add_span_processor(BatchSpanProcessor(exporter))
+            tracer_provider.add_span_processor(
+                RedactingSpanProcessor(BatchSpanProcessor(exporter))
+            )
             exporters.append(exporter)
         except Exception as error:
             _logger.warning("OTLP trace exporter setup failed: %s", type(error).__name__)
 
     for processor in extra_span_processors:
-        tracer_provider.add_span_processor(processor)
+        tracer_provider.add_span_processor(RedactingSpanProcessor(processor))
 
     if register_globals:
         trace.set_tracer_provider(tracer_provider)

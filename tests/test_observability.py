@@ -266,6 +266,50 @@ def test_redaction_removes_http_payloads_and_exception_messages(monkeypatch):
     )
 
 
+def test_redacting_processor_forwards_a_public_sanitized_span_copy():
+    from core.observability import RedactingSpanProcessor
+    from opentelemetry.sdk.trace import Event, ReadableSpan
+    from opentelemetry.sdk.trace.export import SpanProcessor
+
+    class CapturingProcessor(SpanProcessor):
+        def __init__(self):
+            self.spans = []
+
+        def on_end(self, span):
+            self.spans.append(span)
+
+    original = ReadableSpan(
+        name="personalwiki.test",
+        attributes={
+            "http.route": "/items/{item_id}",
+            "request.body": "raw document text",
+        },
+        events=(
+            Event(
+                "exception",
+                {
+                    "exception.type": "ValueError",
+                    "exception.message": "raw exception secret",
+                },
+            ),
+            Event("custom", {"message": "raw event secret"}),
+        ),
+    )
+    delegate = CapturingProcessor()
+
+    RedactingSpanProcessor(delegate).on_end(original)
+
+    assert len(delegate.spans) == 1
+    sanitized = delegate.spans[0]
+    assert isinstance(sanitized, ReadableSpan)
+    assert sanitized is not original
+    assert dict(sanitized.attributes) == {"http.route": "/items/{item_id}"}
+    assert len(sanitized.events) == 1
+    assert dict(sanitized.events[0].attributes) == {"exception.type": "ValueError"}
+    assert dict(original.attributes)["request.body"] == "raw document text"
+    assert dict(original.events[0].attributes)["exception.message"] == "raw exception secret"
+
+
 def test_sentry_event_redaction_drops_request_and_exception_values():
     from core.observability import redact_sentry_event
 
