@@ -33,19 +33,19 @@ URL / PDF → [Router] → [Ingester] → [Extract] → [Vector Search] → [LLM
 
 **Background Discovery (`core/discovery_scheduler.py`)**:
 - Periodically extracts "interests" automatically from your Obsidian graph.
-- Searches for new content across arXiv, Hacker News, MiniMax search, and DespreBursa.
+- Searches for new content across arXiv, Hacker News, LLM web search, and DespreBursa.
 - Automatically pipelines newly discovered URLs if they aren't in LanceDB yet.
 
 **Pipeline (`pipeline.py`):**
 1. **Extract** — Raw markdown from URL (via router) or PDF (via Docling)
 2. **Find similar** — Embed query via FastEmbed, search LanceDB for top-3 similar notes
-3. **Enrich** — Minimax LLM synthesizes title, summary, key facts, tags, entities, cross-links, figure captions, "why I saved this"
+3. **Enrich** — the configured LLM synthesizes title, summary, key facts, tags, entities, cross-links, figure captions, "why I saved this"
 4. **Resolve Entities** — Checks GitHub/PyPI for library statuses and detects missing "gap entities" in your vault (triggering backfill searches)
 5. **Write** — Saves structured `.md` note to `ObsidianVault/notes/`
 6. **Index** — Upserts note into LanceDB for future retrieval
 
 **Core modules:**
-- `core/minimax_client.py` — Minimax API wrapper, prompt templates per content type
+- `core/llm_client.py` — OpenAI-compatible LLM wrapper, prompt templates per content type
 - `core/embeddings.py` — FastEmbed wrapper (`BAAI/bge-small-en-v1.5`, 384 dims, local CPU)
 - `core/vector_store.py` — LanceDB table init, upsert, vector similarity search
 - `core/discovery_scheduler.py` — Background timer triggering discovery loops
@@ -119,7 +119,7 @@ pip install -r requirements.txt
 
 # 3. Configure environment
 cp .env.example .env
-# Edit .env: set MINIMAX_API_KEY, MINIMAX_GROUP_ID, VAULT_PATH
+# Edit .env: set LLM_API_KEY, VAULT_PATH
 
 # 4. Index existing vault notes (optional — runs automatically if index is empty)
 python vault/scanner.py
@@ -146,9 +146,10 @@ async for msg in run_pipeline(url="https://arxiv.org/abs/2309.11157"):
 |----------|---------|-------------|
 | `VAULT_PATH` | `~/Documents/ObsidianVault` | Path to Obsidian vault |
 | `INDEX_PATH` | `./.vke_index` | LanceDB storage directory |
-| `MINIMAX_API_KEY` | *(required)* | Minimax API key |
-| `MINIMAX_GROUP_ID` | *(required)* | Minimax group ID |
-| `MINIMAX_MODEL` | `abab6.5s-chat` | Minimax model name |
+| `LLM_API_KEY` | *(required)* | API key for the OpenAI-compatible endpoint |
+| `LLM_BASE_URL` | `https://api.deepinfra.com/v1/openai` | OpenAI-compatible base URL |
+| `LLM_MODEL` | `deepseek-ai/DeepSeek-V4-Flash-0731` | Chat model |
+| `LLM_VISION_MODEL` | `Qwen/Qwen3-VL-235B-A22B-Instruct` | Vision model for PDFs with figures |
 
 ---
 
@@ -167,7 +168,7 @@ User input (URL or PDF)
   [Embed + Search] — FastEmbed → LanceDB vector search
        │              ← similar note titles injected as context
        ▼
-  [Enrich] — Minimax LLM → structured JSON note dict
+  [Enrich] — LLM → structured JSON note dict
        │
        ▼
   [Entity Checks] — Fetch lib status (GitHub/PyPI) & run Gap Detection searches
@@ -184,7 +185,7 @@ User input (URL or PDF)
 
 ## Tech Stack
 
-- **LLM:** Minimax `abab6.5s-chat`
+- **LLM:** DeepInfra `deepseek-ai/DeepSeek-V4-Flash-0731` (any OpenAI-compatible endpoint)
 - **Embeddings:** FastEmbed `BAAI/bge-small-en-v1.5` (local CPU)
 - **Vector store:** LanceDB (local, no server)
 - **PDF extraction:** Docling (layout-aware, tables + figures)
@@ -206,7 +207,7 @@ personalWiki/
 ├── pipeline.py             # 5-stage async pipeline orchestrator
 ├── config.py               # Environment + defaults
 ├── core/
-│   ├── minimax_client.py   # LLM enrichment + prompt templates
+│   ├── llm_client.py       # LLM enrichment + prompt templates
 │   ├── embeddings.py       # FastEmbed wrapper
 │   ├── vector_store.py     # LanceDB table + search
 │   ├── discovery_scheduler.py # Background discovery timer

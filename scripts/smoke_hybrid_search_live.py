@@ -10,7 +10,7 @@ import traceback
 from datetime import date
 
 from ingesters.router import extract
-from core.minimax_client import enrich
+from core.llm_client import enrich
 from core.embeddings import embed
 from core.vector_store import get_store
 from vault.writer import write_note

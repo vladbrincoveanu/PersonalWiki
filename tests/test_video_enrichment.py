@@ -3,7 +3,7 @@ from unittest.mock import patch, MagicMock
 
 
 def test_enrich_includes_video_fields():
-    from core.minimax_client import enrich
+    from core.llm_client import enrich
 
     video_transcript = "Chapter 1: Introduction. " * 100 + "Chapter 2: Core concepts. " * 100
 
@@ -22,7 +22,7 @@ def test_enrich_includes_video_fields():
         }]
     }
 
-    with patch("core.minimax_client.MINIMAX_API_KEY", "fake"):
+    with patch("core.llm_client.LLM_API_KEY", "fake"):
         with patch("requests.post", return_value=MagicMock(
             json=lambda: mock_response, raise_for_status=lambda: None
         )):

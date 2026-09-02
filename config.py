@@ -13,11 +13,12 @@ VAULT_PATH = Path(os.getenv("VAULT_PATH", "/Users/vladbrincoveanu/Library/Mobile
 NOTES_DIR = VAULT_PATH / "notes"
 INDEX_PATH = Path(os.getenv("INDEX_PATH", "./.vke_index"))
 
-MINIMAX_API_KEY = os.getenv("MINIMAX_API_KEY", "")
-MINIMAX_GROUP_ID = os.getenv("MINIMAX_GROUP_ID", "")
-MINIMAX_MODEL = os.getenv("MINIMAX_MODEL", "MiniMax-M2.7")
-MINIMAX_API_URL = "https://api.minimax.io/v1/text/chatcompletion_v2"
-MINIMAX_VISION_MODEL = os.getenv("MINIMAX_VISION_MODEL", "MiniMax-VL")
+# OpenAI-compatible chat completions endpoint (DeepInfra by default).
+LLM_API_KEY = os.getenv("LLM_API_KEY", "")
+LLM_BASE_URL = os.getenv("LLM_BASE_URL", "https://api.deepinfra.com/v1/openai")
+LLM_API_URL = f"{LLM_BASE_URL.rstrip('/')}/chat/completions"
+LLM_MODEL = os.getenv("LLM_MODEL", "deepseek-ai/DeepSeek-V4-Flash-0731")
+LLM_VISION_MODEL = os.getenv("LLM_VISION_MODEL", "Qwen/Qwen3-VL-235B-A22B-Instruct")
 
 EMBED_MODEL = "BAAI/bge-small-en-v1.5"
 TOP_K_SIMILAR = 3

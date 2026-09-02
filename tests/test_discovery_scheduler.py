@@ -297,7 +297,7 @@ def test_search_minimax_includes_tools_parameter_for_function_calling():
     def fake_urlopen(req, timeout=None):
         return FakeHTTPResponse(status=200)
 
-    with patch("config.MINIMAX_API_KEY", "test-key"):
+    with patch("config.LLM_API_KEY", "test-key"):
         with patch.object(ds_requests, "post", side_effect=fake_post):
             with patch("core.discovery_scheduler.urllib.request.urlopen", side_effect=fake_urlopen):
                 async def fake_fetch(url):
@@ -423,7 +423,7 @@ def test_minimax_search_rejects_http_urls():
         })
         return m
 
-    with patch("config.MINIMAX_API_KEY", "test-key"):
+    with patch("config.LLM_API_KEY", "test-key"):
         with patch("core.discovery_scheduler.urllib.request.urlopen", side_effect=fake_urlopen):
             with patch("core.discovery_scheduler.requests.post", side_effect=fake_post):
                 async def fake_fetch(url):

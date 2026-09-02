@@ -99,7 +99,7 @@ async def test_pipeline_video_uses_semantic_chunking():
     """Video with long transcript → semantic_chunk path → enrich_video_synthesis."""
     import pipeline as pipeline_module
     from pipeline import run_pipeline
-    from core import minimax_client
+    from core import llm_client
 
     mock_store = MagicMock()
     mock_store.exists.return_value = False
@@ -177,7 +177,7 @@ async def test_pipeline_video_uses_semantic_chunking():
     original_extract = pipeline_module.extract
     original_enrich = pipeline_module.enrich
 
-    # Patch at core.minimax_client level (not pipeline) because pipeline imports these locally inside the video branch
+    # Patch at core.llm_client level (not pipeline) because pipeline imports these locally inside the video branch
     mock_semantic_chunk = MagicMock(return_value=fake_chunks)
     mock_enrich_video_synthesis = MagicMock(return_value=synthesis_result)
 
@@ -187,8 +187,8 @@ async def test_pipeline_video_uses_semantic_chunking():
     try:
         with patch.object(pipeline_module, 'get_store', return_value=mock_store), \
              patch.object(pipeline_module, 'embed', return_value=[0.1] * 384), \
-             patch.object(minimax_client, 'semantic_chunk', mock_semantic_chunk), \
-             patch.object(minimax_client, 'enrich_video_synthesis', mock_enrich_video_synthesis):
+             patch.object(llm_client, 'semantic_chunk', mock_semantic_chunk), \
+             patch.object(llm_client, 'enrich_video_synthesis', mock_enrich_video_synthesis):
             messages = []
             async for msg in run_pipeline(url="https://youtube.com/watch?v=abc123DEF12"):
                 messages.append(msg)

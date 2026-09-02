@@ -100,7 +100,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Tech Stack
 
 - **Language:** Python 3.13
-- **LLM:** Minimax API (`MINIMAX_MODEL`, default `MiniMax-M2.7-HighSpeed`)
+- **LLM:** any OpenAI-compatible endpoint (`LLM_BASE_URL`/`LLM_MODEL`); default DeepInfra + `deepseek-ai/DeepSeek-V4-Flash-0731`
 - **Embeddings:** FastEmbed `BAAI/bge-small-en-v1.5` (local CPU)
 - **Vector store:** LanceDB (local, no server)
 - **PDF extraction:** Docling (layout-aware, tables + figures)
@@ -145,7 +145,7 @@ URL / PDF / DOCX / MD / TXT
 [Embed + LanceDB Search] → top-3 similar note titles as context
     │
     ▼
-[Enrich via Minimax] → title, summary, key_facts, tags, entities, cross_links, figure_captions, why_saved_hint
+[Enrich via LLM] → title, summary, key_facts, tags, entities, cross_links, figure_captions, why_saved_hint
     │
     ▼
 [_gate_enriched_content] — rejects thin/noise-heavy enriched output (Track B, prose ≥300 chars, ratio ≥20%)
@@ -173,7 +173,7 @@ personalWiki/
 ├── pipeline.py             # 6-stage async pipeline orchestrator
 ├── config.py               # Environment + defaults
 ├── core/
-│   ├── minimax_client.py   # LLM enrichment, prompt templates, semantic chunking
+│   ├── llm_client.py       # LLM enrichment, prompt templates, semantic chunking
 │   ├── embeddings.py       # FastEmbed wrapper
 │   ├── vector_store.py     # LanceDB table + search
 │   ├── discovery_scheduler.py # Background discovery timer
@@ -209,8 +209,9 @@ personalWiki/
 |----------|---------|-------------|
 | `VAULT_PATH` | `~/Documents/.../PersonalWiki` | Obsidian vault path |
 | `INDEX_PATH` | `./.vke_index` | LanceDB storage |
-| `MINIMAX_API_KEY` | *(required)* | Minimax API key |
-| `MINIMAX_GROUP_ID` | *(required)* | Minimax group ID |
+| `LLM_API_KEY` | *(required)* | API key for the OpenAI-compatible endpoint |
+| `LLM_BASE_URL` | `https://api.deepinfra.com/v1/openai` | OpenAI-compatible base URL |
+| `LLM_MODEL` | `deepseek-ai/DeepSeek-V4-Flash-0731` | Chat model |
 | `YOUTUBE_PROXY` | `""` | SOCKS5 or HTTPS proxy for YouTube extraction (server IP is blocked by YouTube) |
 
 ## Docker
@@ -230,7 +231,7 @@ docker compose up --build
 
 `core/discovery_scheduler.py` periodically:
 1. Extracts interests from your Obsidian vault graph edges
-2. Searches arXiv, Hacker News, MiniMax search, and DespreBursa for new content
+2. Searches arXiv, Hacker News, LLM web search, and DespreBursa for new content
 3. Auto-pipelines URLs not yet in LanceDB
 
 ## How I Work

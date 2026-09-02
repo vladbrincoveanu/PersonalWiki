@@ -4,7 +4,7 @@ import re
 import requests
 from dataclasses import dataclass
 from typing import List
-from config import MINIMAX_API_KEY, MINIMAX_MODEL, MINIMAX_API_URL, MINIMAX_VISION_MODEL
+from config import LLM_API_KEY, LLM_MODEL, LLM_API_URL, LLM_VISION_MODEL
 
 _logger = logging.getLogger(__name__)
 
@@ -236,43 +236,41 @@ def _build_prompt(raw_text: str, similar_titles: list[str], source: str) -> str:
 
 
 def enrich(raw_text: str, similar_titles: list[str], source: str) -> dict:
-    if not MINIMAX_API_KEY:
-        _logger.warning("MINIMAX_API_KEY is not set — returning fallback for source=%s", source)
+    if not LLM_API_KEY:
+        _logger.warning("LLM_API_KEY is not set — returning fallback for source=%s", source)
         return _make_fallback_note(raw_text)
     prompt = _build_prompt(raw_text, similar_titles, source)
     headers = {
-        "Authorization": f"Bearer {MINIMAX_API_KEY}",
+        "Authorization": f"Bearer {LLM_API_KEY}",
         "Content-Type": "application/json",
     }
     payload = {
-        "model": MINIMAX_MODEL,
+        "model": LLM_MODEL,
         "messages": [
             {"role": "system", "content": _SYSTEM_PROMPT},
             {"role": "user", "content": prompt},
         ],
     }
     try:
-        resp = requests.post(MINIMAX_API_URL, headers=headers, json=payload, timeout=60)
+        resp = requests.post(LLM_API_URL, headers=headers, json=payload, timeout=60)
         resp.raise_for_status()
         data = resp.json()
-        # Check for API-level errors
-        base_resp = data.get("base_resp", {})
-        if base_resp.get("status_code") and base_resp["status_code"] != 0:
-            _logger.warning("MiniMax API error %s: %s", base_resp["status_code"], base_resp.get("status_msg"))
+        if data.get("error"):
+            _logger.warning("LLM API error for source=%s: %s", source, data["error"])
             return _make_fallback_note(raw_text)
         if "choices" not in data or not data["choices"]:
-            _logger.error("Minimax response missing choices for source=%s", source)
+            _logger.error("LLM response missing choices for source=%s", source)
             return _make_fallback_note(raw_text)
         content = data["choices"][0]["message"]["content"]
     except Exception as e:
-        _logger.warning("Minimax enrich failed for source=%s: %s", source, e)
+        _logger.warning("LLM enrich failed for source=%s: %s", source, e)
         return _make_fallback_note(raw_text)
 
     try:
         content = content.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
         data = json.loads(content)
     except (json.JSONDecodeError, AttributeError) as e:
-        _logger.warning("Minimax returned invalid JSON for source=%s: %s", source, e)
+        _logger.warning("LLM returned invalid JSON for source=%s: %s", source, e)
         return _make_fallback_note(raw_text)
 
     # Add defaults
@@ -302,42 +300,41 @@ def _build_vision_messages(prompt: str, images: list[bytes]) -> list[dict]:
 
 def enrich_with_images(raw_text: str, similar_titles: list[str], source: str, images: list[bytes]) -> dict:
     """Enrich content using vision model when images are present."""
-    if not MINIMAX_API_KEY:
-        _logger.warning("MINIMAX_API_KEY is not set — returning fallback for source=%s", source)
+    if not LLM_API_KEY:
+        _logger.warning("LLM_API_KEY is not set — returning fallback for source=%s", source)
         return _make_fallback_note(raw_text)
     prompt = _build_prompt(raw_text, similar_titles, source)
     headers = {
-        "Authorization": f"Bearer {MINIMAX_API_KEY}",
+        "Authorization": f"Bearer {LLM_API_KEY}",
         "Content-Type": "application/json",
     }
     payload = {
-        "model": MINIMAX_VISION_MODEL,
+        "model": LLM_VISION_MODEL,
         "messages": [
             {"role": "system", "content": _SYSTEM_PROMPT},
             *_build_vision_messages(prompt, images),
         ],
     }
     try:
-        resp = requests.post(MINIMAX_API_URL, headers=headers, json=payload, timeout=120)
+        resp = requests.post(LLM_API_URL, headers=headers, json=payload, timeout=120)
         resp.raise_for_status()
         data = resp.json()
-        base_resp = data.get("base_resp", {})
-        if base_resp.get("status_code") and base_resp["status_code"] != 0:
-            _logger.warning("MiniMax Vision API error %s: %s", base_resp["status_code"], base_resp.get("status_msg"))
+        if data.get("error"):
+            _logger.warning("LLM vision API error for source=%s: %s", source, data["error"])
             return _make_fallback_note(raw_text)
         if "choices" not in data or not data["choices"]:
-            _logger.error("Minimax vision response missing choices for source=%s", source)
+            _logger.error("LLM vision response missing choices for source=%s", source)
             return _make_fallback_note(raw_text)
         content = data["choices"][0]["message"]["content"]
     except Exception as e:
-        _logger.warning("Minimax vision enrich failed for source=%s: %s", source, e)
+        _logger.warning("LLM vision enrich failed for source=%s: %s", source, e)
         return _make_fallback_note(raw_text)
 
     try:
         content = content.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
         result = json.loads(content)
     except (json.JSONDecodeError, AttributeError) as e:
-        _logger.warning("Minimax vision returned invalid JSON for source=%s: %s", source, e)
+        _logger.warning("LLM vision returned invalid JSON for source=%s: %s", source, e)
         return _make_fallback_note(raw_text)
 
     result.setdefault("entities", [])
@@ -435,27 +432,26 @@ def enrich_video_synthesis(chunk_results: List[dict], source: str, similar_title
         related=similar_str,
     )
 
-    if not MINIMAX_API_KEY:
+    if not LLM_API_KEY:
         return {**chunk_results[0], "error": True}
 
     headers = {
-        "Authorization": f"Bearer {MINIMAX_API_KEY}",
+        "Authorization": f"Bearer {LLM_API_KEY}",
         "Content-Type": "application/json",
     }
     payload = {
-        "model": MINIMAX_MODEL,
+        "model": LLM_MODEL,
         "messages": [
             {"role": "system", "content": _SYNTHESIS_SYSTEM},
             {"role": "user", "content": prompt},
         ],
     }
     try:
-        resp = requests.post(MINIMAX_API_URL, headers=headers, json=payload, timeout=120)
+        resp = requests.post(LLM_API_URL, headers=headers, json=payload, timeout=120)
         resp.raise_for_status()
         data = resp.json()
-        base_resp = data.get("base_resp", {})
-        if base_resp.get("status_code") and base_resp["status_code"] != 0:
-            raise ValueError(f"MiniMax API error {base_resp['status_code']}: {base_resp.get('status_msg')}")
+        if data.get("error"):
+            raise ValueError(f"LLM API error: {data['error']}")
         content = data["choices"][0]["message"]["content"]
         content = content.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
         result = json.loads(content)

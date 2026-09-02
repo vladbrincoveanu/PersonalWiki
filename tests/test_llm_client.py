@@ -1,6 +1,6 @@
 import json
 from unittest.mock import patch, MagicMock
-from core.minimax_client import enrich, _build_prompt
+from core.llm_client import enrich, _build_prompt
 
 def test_build_prompt_includes_raw_text():
     prompt = _build_prompt(
@@ -27,8 +27,8 @@ def test_enrich_returns_structured_note():
             }
         }]
     }
-    with patch("core.minimax_client.MINIMAX_API_KEY", "test-key"), \
-         patch("core.minimax_client.requests.post") as mock_post:
+    with patch("core.llm_client.LLM_API_KEY", "test-key"), \
+         patch("core.llm_client.requests.post") as mock_post:
         mock_post.return_value = MagicMock(
             status_code=200,
             json=lambda: mock_response,
@@ -49,7 +49,7 @@ def test_enrich_returns_structured_note():
     assert result["why_saved_hint"] == ""
 
 def test_enrich_fallback_on_api_error():
-    with patch("core.minimax_client.requests.post") as mock_post:
+    with patch("core.llm_client.requests.post") as mock_post:
         mock_post.side_effect = Exception("connection refused")
         result = enrich(
             raw_text="Some content about neural networks.",
@@ -81,8 +81,8 @@ def test_enrich_returns_entities_and_figure_captions():
             }
         }]
     }
-    with patch("core.minimax_client.MINIMAX_API_KEY", "test-key"), \
-         patch("core.minimax_client.requests.post") as mock_post:
+    with patch("core.llm_client.LLM_API_KEY", "test-key"), \
+         patch("core.llm_client.requests.post") as mock_post:
         mock_post.return_value = MagicMock(
             status_code=200,
             json=lambda: mock_response,
@@ -99,7 +99,7 @@ def test_enrich_returns_entities_and_figure_captions():
 
 
 def test_enrich_fallback_includes_new_field_defaults():
-    with patch("core.minimax_client.requests.post") as mock_post:
+    with patch("core.llm_client.requests.post") as mock_post:
         mock_post.side_effect = Exception("connection refused")
         result = enrich(
             raw_text="Some content.",
@@ -114,9 +114,9 @@ def test_enrich_fallback_includes_new_field_defaults():
 
 def test_enrich_no_api_key_fallback_includes_new_field_defaults():
     from unittest.mock import patch
-    from core.minimax_client import enrich
+    from core.llm_client import enrich
 
-    with patch("core.minimax_client.MINIMAX_API_KEY", ""):
+    with patch("core.llm_client.LLM_API_KEY", ""):
         result = enrich(raw_text="x", similar_titles=[], source="https://example.com")
 
     assert result["entities"] == []
@@ -126,7 +126,7 @@ def test_enrich_no_api_key_fallback_includes_new_field_defaults():
 
 def test_enrich_handles_unexpected_response_shape(monkeypatch):
     """Malformed or unexpected MiniMax response shapes must not silently pass."""
-    from core.minimax_client import enrich
+    from core.llm_client import enrich
 
     def mock_post(url, headers, json, timeout):
         class FakeResp:
@@ -142,7 +142,7 @@ def test_enrich_handles_unexpected_response_shape(monkeypatch):
                 }
         return FakeResp()
 
-    monkeypatch.setattr("core.minimax_client.MINIMAX_API_KEY", "test-key")
+    monkeypatch.setattr("core.llm_client.LLM_API_KEY", "test-key")
     monkeypatch.setattr("requests.post", mock_post)
     result = enrich("raw text", [], "http://example.com")
     assert result.get("title") == "Test"
@@ -150,29 +150,55 @@ def test_enrich_handles_unexpected_response_shape(monkeypatch):
 
 
 def test_enrich_api_error_returns_fallback(monkeypatch):
-    """MiniMax API error (non-zero status) must return fallback note with error=True."""
-    from core.minimax_client import enrich
+    """An OpenAI-style error body must return a fallback note with error=True."""
+    from core.llm_client import enrich
 
     def mock_post(url, headers, json, timeout):
         class FakeResp:
             status_code = 200
             def raise_for_status(self): pass
             def json(self):
-                return {
-                    "base_resp": {"status_code": 10001, "status_msg": "rate limited"},
-                    "choices": []
-                }
+                return {"error": {"message": "rate limited", "type": "rate_limit_error"}}
         return FakeResp()
 
+    monkeypatch.setattr("core.llm_client.LLM_API_KEY", "test-key")
     monkeypatch.setattr("requests.post", mock_post)
     result = enrich("raw text", [], "http://example.com")
     assert result.get("title") == "Untitled"
     assert result.get("error") is True
 
 
+def test_enrich_posts_to_configured_openai_endpoint(monkeypatch):
+    """Requests go to the configured OpenAI-compatible endpoint with the configured model."""
+    from core import llm_client
+
+    seen = {}
+
+    def mock_post(url, headers, json, timeout):
+        seen["url"] = url
+        seen["model"] = json["model"]
+        seen["auth"] = headers["Authorization"]
+
+        class FakeResp:
+            status_code = 200
+            def raise_for_status(self): pass
+            def json(self):
+                return {"choices": [{"message": {"content": '{"title": "T"}'}}]}
+        return FakeResp()
+
+    monkeypatch.setattr("core.llm_client.LLM_API_KEY", "test-key")
+    monkeypatch.setattr("requests.post", mock_post)
+    llm_client.enrich("raw text", [], "http://example.com")
+
+    assert seen["url"].endswith("/chat/completions")
+    assert "minimax" not in seen["url"]
+    assert seen["model"] == llm_client.LLM_MODEL
+    assert seen["auth"] == "Bearer test-key"
+
+
 def test_enrich_json_decode_error_returns_fallback(monkeypatch):
     """Invalid JSON in MiniMax response must return fallback note, not crash."""
-    from core.minimax_client import enrich
+    from core.llm_client import enrich
 
     def mock_post(url, headers, json, timeout):
         class FakeResp:
@@ -193,7 +219,7 @@ def test_enrich_json_decode_error_returns_fallback(monkeypatch):
 
 def test_video_synthesis_preserves_raw_text(monkeypatch):
     """Single-chunk video synthesis must preserve raw_text in returned note."""
-    from core.minimax_client import enrich_video_synthesis
+    from core.llm_client import enrich_video_synthesis
 
     def mock_post(url, headers, json, timeout):
         class FakeResp:

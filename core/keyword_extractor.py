@@ -1,12 +1,12 @@
 # core/keyword_extractor.py
 """
 Extract candidate keywords from a newly written note.
-Uses MiniMax to analyze note content and suggest 3-5 new search keywords.
+Uses the configured LLM to analyze note content and suggest 3-5 new search keywords.
 """
 import logging
 from pathlib import Path
 import requests
-from config import MINIMAX_API_KEY, MINIMAX_MODEL, MINIMAX_API_URL
+from config import LLM_API_KEY, LLM_MODEL, LLM_API_URL
 
 _logger = logging.getLogger(__name__)
 
@@ -49,8 +49,8 @@ def extract_and_classify(
 
 
 def extract_keywords_from_note(title: str, raw_text: str) -> list[str]:
-    if not MINIMAX_API_KEY:
-        _logger.debug("No MINIMAX_API_KEY — skipping keyword extraction")
+    if not LLM_API_KEY:
+        _logger.debug("No LLM_API_KEY — skipping keyword extraction")
         return []
 
     if not raw_text or len(raw_text.strip()) < 100:
@@ -59,10 +59,10 @@ def extract_keywords_from_note(title: str, raw_text: str) -> list[str]:
     prompt = _KEYWORD_PROMPT.format(title=title, content=raw_text[:3000])
     try:
         resp = requests.post(
-            MINIMAX_API_URL,
-            headers={"Authorization": f"Bearer {MINIMAX_API_KEY}", "Content-Type": "application/json"},
+            LLM_API_URL,
+            headers={"Authorization": f"Bearer {LLM_API_KEY}", "Content-Type": "application/json"},
             json={
-                "model": MINIMAX_MODEL,
+                "model": LLM_MODEL,
                 "messages": [
                     {"role": "system", "content": "You are a keyword extraction assistant. Return only valid JSON."},
                     {"role": "user", "content": prompt},

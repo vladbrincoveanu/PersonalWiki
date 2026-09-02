@@ -5,7 +5,7 @@ from unittest.mock import patch, MagicMock
 def test_extracts_keywords_from_note():
     from core.keyword_extractor import extract_keywords_from_note
 
-    with patch("core.keyword_extractor.MINIMAX_API_KEY", "test-key"), \
+    with patch("core.keyword_extractor.LLM_API_KEY", "test-key"), \
          patch("core.keyword_extractor.requests.post") as mock_post:
         mock_post.return_value = MagicMock(
             json=lambda: {
@@ -23,14 +23,14 @@ def test_extracts_keywords_from_note():
 
 def test_returns_empty_when_no_api_key():
     from core.keyword_extractor import extract_keywords_from_note
-    with patch("core.keyword_extractor.MINIMAX_API_KEY", ""):
+    with patch("core.keyword_extractor.LLM_API_KEY", ""):
         result = extract_keywords_from_note("Title", "Some content.")
         assert result == []
 
 
 def test_returns_empty_for_short_content():
     from core.keyword_extractor import extract_keywords_from_note
-    with patch("core.keyword_extractor.MINIMAX_API_KEY", "fake"):
+    with patch("core.keyword_extractor.LLM_API_KEY", "fake"):
         result = extract_keywords_from_note("Title", "Too short")
         assert result == []
 
@@ -71,7 +71,7 @@ def test_extract_and_classify_empty_text(tmp_path):
 
 def test_handles_malformed_json():
     from core.keyword_extractor import extract_keywords_from_note
-    with patch("core.keyword_extractor.MINIMAX_API_KEY", "fake"):
+    with patch("core.keyword_extractor.LLM_API_KEY", "fake"):
         with patch("requests.post") as mock_post:
             mock_post.return_value = MagicMock(
                 json=lambda: {"choices": [{"message": {"content": "not json"}}]},

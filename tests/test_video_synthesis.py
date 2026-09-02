@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import patch, MagicMock
-from core.minimax_client import semantic_chunk, Chunk, enrich_video_synthesis
+from core.llm_client import semantic_chunk, Chunk, enrich_video_synthesis
 
 
 def test_semantic_chunk_short_transcript_under_60k():
@@ -86,7 +86,7 @@ def test_synthesis_unified_narrative_not_chunk_list(monkeypatch):
                 }
         return FakeResp()
     monkeypatch.setattr("requests.post", mock_post)
-    monkeypatch.setattr("core.minimax_client.MINIMAX_API_KEY", "test-key")
+    monkeypatch.setattr("core.llm_client.LLM_API_KEY", "test-key")
 
     chunk_results = [
         {"title": "Chunk 1 Title", "summary": "Summary of chunk 1", "chapters": [{"time": "00:00", "title": "First"}], "key_quotes": [], "entities": [], "key_facts": [], "topics_covered": [], "tags": []},
@@ -142,10 +142,10 @@ def test_pipeline_video_routes_to_synthesis(monkeypatch):
                 "chapters": [{"time": "00:00", "title": "Start"}], "key_quotes": [], "entities": [],
                 "key_facts": [], "topics_covered": [], "tags": [], "cross_links": [], "why_saved_hint": ""}
 
-    monkeypatch.setattr("core.minimax_client.semantic_chunk", mock_chunk)
-    monkeypatch.setattr("core.minimax_client.enrich", mock_enrich)
+    monkeypatch.setattr("core.llm_client.semantic_chunk", mock_chunk)
+    monkeypatch.setattr("core.llm_client.enrich", mock_enrich)
     monkeypatch.setattr("pipeline.enrich", mock_enrich)
-    monkeypatch.setattr("core.minimax_client.enrich_video_synthesis", mock_synthesis)
+    monkeypatch.setattr("core.llm_client.enrich_video_synthesis", mock_synthesis)
 
     class MockDoc:
         raw_text = "full transcript " * 10000

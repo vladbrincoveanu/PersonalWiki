@@ -1,14 +1,14 @@
 """
 Flexible entity extraction from content. Extracts projects, people, companies,
-investments, and ideas using MiniMax LLM.
+investments, and ideas using the configured LLM.
 """
-from config import MINIMAX_API_KEY, MINIMAX_API_URL, MINIMAX_MODEL, MINIMAX_GROUP_ID
+from config import LLM_API_KEY, LLM_API_URL, LLM_MODEL
 import requests
 import json
 
 def extract_entities(text: str, content_type: str = "web") -> list[dict]:
     """
-    Extract structured entities from text using MiniMax LLM.
+    Extract structured entities from text using the configured LLM.
     Returns list of dicts with keys: entity_type, entity_name, summary, metadata.
     """
     if not text or len(text) < 100:
@@ -27,15 +27,15 @@ Content (first 3000 chars):
 {text[:3000]}
 """
 
-    headers = {"Authorization": f"Bearer {MINIMAX_API_KEY}", "Content-Type": "application/json"}
+    headers = {"Authorization": f"Bearer {LLM_API_KEY}", "Content-Type": "application/json"}
     payload = {
-        "model": MINIMAX_MODEL,
+        "model": LLM_MODEL,
         "messages": [{"role": "user", "content": prompt}],
         "max_tokens": 500,
     }
     try:
         resp = requests.post(
-            f"{MINIMAX_API_URL}?GroupId={MINIMAX_GROUP_ID}",
+            LLM_API_URL,
             headers=headers,
             json=payload,
             timeout=30,

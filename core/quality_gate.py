@@ -43,8 +43,8 @@ class QualityGate:
         if not raw_text or not keyword:
             return GateResult(pass_=True)
 
-        from config import MINIMAX_API_KEY, MINIMAX_MODEL, MINIMAX_API_URL
-        if not MINIMAX_API_KEY:
+        from config import LLM_API_KEY, LLM_MODEL, LLM_API_URL
+        if not LLM_API_KEY:
             return GateResult(pass_=True)
 
         prompt = (
@@ -57,10 +57,10 @@ class QualityGate:
         )
         try:
             resp = requests.post(
-                MINIMAX_API_URL,
-                headers={"Authorization": f"Bearer {MINIMAX_API_KEY}", "Content-Type": "application/json"},
+                LLM_API_URL,
+                headers={"Authorization": f"Bearer {LLM_API_KEY}", "Content-Type": "application/json"},
                 json={
-                    "model": MINIMAX_MODEL,
+                    "model": LLM_MODEL,
                     "messages": [
                         {"role": "system", "content": "You are a relevance classifier. Answer only Yes or No."},
                         {"role": "user", "content": prompt},

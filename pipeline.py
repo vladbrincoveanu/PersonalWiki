@@ -6,7 +6,7 @@ from config import TOP_K_SIMILAR, MAX_EMBED_CHARS
 from core.embeddings import embed
 from core.prose import measure_prose
 from core.vector_store import get_store
-from core.minimax_client import enrich, enrich_with_images, _MIN_CHUNK_SIZE
+from core.llm_client import enrich, enrich_with_images, _MIN_CHUNK_SIZE
 from core.entity_extractor import extract_entities
 from core.gap_detector import detect_gaps
 from ingesters.router import extract, extract_pdf, extract_docx, extract_markdown
@@ -166,10 +166,10 @@ async def run_pipeline(
     yield f"Finding similar notes ({len(similar)} found)..."
 
     # Step 3: Enrich
-    yield "Enriching with Minimax..."
+    yield "Enriching with LLM..."
     if doc.content_type == "video" and len(raw_text) > _MIN_CHUNK_SIZE:
         # Video + long transcript: use semantic chunking + synthesis
-        from core.minimax_client import semantic_chunk, enrich_video_synthesis
+        from core.llm_client import semantic_chunk, enrich_video_synthesis
         chunks = await asyncio.to_thread(semantic_chunk, raw_text)
         chunk_results = await asyncio.gather(*[
             asyncio.to_thread(enrich, chunk.text, similar_titles, source)

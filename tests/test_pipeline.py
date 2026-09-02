@@ -49,7 +49,7 @@ async def test_pipeline_url_yields_progress_steps():
 
     assert any("Extracting" in m for m in messages)
     assert any("similar" in m.lower() for m in messages)
-    assert any("Minimax" in m for m in messages)
+    assert any("Enriching with LLM" in m for m in messages)
     assert any("Saved" in m for m in messages)
 
 

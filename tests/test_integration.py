@@ -136,6 +136,14 @@ async def test_pipeline_pdf_with_image_creates_note_and_saves_figures():
             patch("pipeline.get_store", return_value=mock_store),
             patch("pipeline.embed", return_value=[0.0] * 384),
             patch("pipeline.enrich", side_effect=fake_enrich),
+            # The PDF path routes through enrich_with_images when figures are
+            # present; without this the test makes a real (paid) vision call.
+            patch(
+                "pipeline.enrich_with_images",
+                side_effect=lambda raw_text, similar_titles, source, images: fake_enrich(
+                    raw_text, similar_titles, source
+                ),
+            ),
             patch("core.quality_gate.QualityGate") as mock_gate_cls,
             patch("vault.writer.VAULT_PATH", tmp_path),
             patch("vault.writer.NOTES_DIR", notes_dir),

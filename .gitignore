@@ -28,3 +28,12 @@ TestResults/
 *.ses
 .superpowers/
 .opencode/node_modules/
+.claude/skills/open-knowledge/
+.cursor/skills/open-knowledge/
+.codex/skills/open-knowledge/
+.github/skills/open-knowledge/
+.opencode/skills/open-knowledge/
+.pi/skills/open-knowledge/
+
+# Retired LanceDB index snapshots (Stage 0 recovery)
+.vke_index.retired-*

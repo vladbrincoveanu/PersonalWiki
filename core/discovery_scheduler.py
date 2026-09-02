@@ -432,9 +432,9 @@ class DiscoveryScheduler:
 
         Returns list of {url, title, snippet, source}.
         """
-        from config import MINIMAX_API_KEY, MINIMAX_MODEL, MINIMAX_API_URL
+        from config import LLM_API_KEY, LLM_MODEL, LLM_API_URL
 
-        if not MINIMAX_API_KEY:
+        if not LLM_API_KEY:
             return []
 
         # Define the web_search tool for function-calling
@@ -456,9 +456,9 @@ class DiscoveryScheduler:
         ]
 
         prompt = f"Search the web for: {keyword}"
-        headers = {"Authorization": f"Bearer {MINIMAX_API_KEY}", "Content-Type": "application/json"}
+        headers = {"Authorization": f"Bearer {LLM_API_KEY}", "Content-Type": "application/json"}
         payload = {
-            "model": MINIMAX_MODEL,
+            "model": LLM_MODEL,
             "messages": [
                 {"role": "system", "content": "You are a web search assistant. Use the web_search tool to find real, current URLs for the given query."},
                 {"role": "user", "content": prompt},
@@ -466,7 +466,7 @@ class DiscoveryScheduler:
             "tools": tools,
             "tool_choice": {"type": "function", "function": {"name": "web_search"}},
         }
-        resp = requests.post(MINIMAX_API_URL, headers=headers, json=payload, timeout=30)
+        resp = requests.post(LLM_API_URL, headers=headers, json=payload, timeout=30)
         resp.raise_for_status()
         data = resp.json()
 
