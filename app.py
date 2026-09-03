@@ -17,6 +17,7 @@ from core.discovery_scheduler import DiscoveryScheduler, KEYWORDS_FILE
 from core.discovery_logger import get_discovery_logger as _get_dl_logger
 from core.keywords_manager import load_manual_keywords, add_keyword as _add_keyword
 from core.doctor_scheduler import DoctorScheduler
+from core.observability import configure_observability, shutdown_observability
 
 _logger = logging.getLogger(__name__)
 _job_queues: dict[str, tuple[asyncio.Queue, asyncio.Event]] = {}
@@ -138,6 +139,7 @@ async def _get_scheduler() -> DiscoveryScheduler:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    configure_observability(app)
     preview_cleanup_task = asyncio.create_task(_preview_cleanup_loop())
     try:
         try:
@@ -148,14 +150,17 @@ async def lifespan(app: FastAPI):
             print(f"Startup: scan_vault failed ({e}), starting without vault index.")
         yield
     finally:
-        preview_cleanup_task.cancel()
         try:
-            await preview_cleanup_task
-        except asyncio.CancelledError:
-            pass
-        _purge_expired_previews(force=True)
-        if _doctor_scheduler:
-            _doctor_scheduler.stop()
+            preview_cleanup_task.cancel()
+            try:
+                await preview_cleanup_task
+            except asyncio.CancelledError:
+                pass
+            _purge_expired_previews(force=True)
+            if _doctor_scheduler:
+                _doctor_scheduler.stop()
+        finally:
+            shutdown_observability()
 
 app = FastAPI(lifespan=lifespan)
 templates = Jinja2Templates(directory="templates")

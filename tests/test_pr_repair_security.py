@@ -19,6 +19,19 @@ def _load_script(name: str, module_name: str):
     return module
 
 
+def test_openrouter_request_uses_supported_nemotron_configuration():
+    repair = _load_script("pr-repair-openrouter.py", "pr_repair_openrouter_config")
+
+    body = repair.build_request_body(
+        instructions="Review the change.",
+        context={"pull_request": {"base": "main"}},
+        diff="diff --git a/example.py b/example.py",
+    )
+
+    assert body["model"] == "nvidia/nemotron-3-ultra-550b-a55b:free"
+    assert "response_format" not in body
+
+
 def test_patch_path_validation_rejects_protected_deletion():
     utils = _load_script("pr_repair_utils.py", "pr_repair_utils")
     patch = """\
@@ -86,7 +99,7 @@ def test_model_decision_rejects_invalid_types_before_side_effects():
 
 
 def test_repair_patch_stages_only_paths_from_the_patch(tmp_path):
-    repair = _load_script("pr-repair-deepinfra.py", "pr_repair_deepinfra")
+    repair = _load_script("pr-repair-openrouter.py", "pr_repair_openrouter")
     subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
     subprocess.run(["git", "-C", str(tmp_path), "config", "user.email", "test@example.com"], check=True)
     subprocess.run(["git", "-C", str(tmp_path), "config", "user.name", "Test"], check=True)
@@ -216,6 +229,54 @@ def test_workflow_keeps_privileged_job_from_running_pr_code():
     assert "BASE_SHA: ${{ matrix.base_sha }}" in workflow
 
 
+def test_workflow_uses_openrouter_repair_credentials():
+    workflow = (GITHUB_DIR / "workflows" / "pr-repair-agent.yml").read_text()
+
+    assert "Run OpenRouter repair cycle" in workflow
+    assert "OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}" in workflow
+    assert "OPENROUTER_MODEL: nvidia/nemotron-3-ultra-550b-a55b:free" in workflow
+    assert "python .github/pr-repair-openrouter.py" in workflow
+    assert "AUTH_HEADER=\"$(printf 'x-access-token:%s' \"$GITHUB_TOKEN\" | base64 -w 0)\"" in workflow
+    assert 'http.extraheader=Authorization: Basic ${AUTH_HEADER}' in workflow
+    assert "DEEPINFRA" not in workflow
+
+
+def test_workflow_blocks_until_openrouter_helper_is_trusted():
+    workflow = (GITHUB_DIR / "workflows" / "pr-repair-agent.yml").read_text()
+
+    assert 'if [ -f ".github/pr-repair-openrouter.py" ]; then' in workflow
+    assert '"action":"blocked"' in workflow
+    assert "OpenRouter helper is not yet available on the trusted default branch" in workflow
+
+
+def test_ci_workflow_has_one_top_level_environment_block():
+    workflow = (GITHUB_DIR / "workflows" / "ci.yml").read_text()
+
+    assert workflow.count("\nenv:\n") == 1
+    assert 'SENTRY_DSN: ""' in workflow
+    assert 'OTEL_EXPORTER_OTLP_ENDPOINT: ""' in workflow
+    assert 'OTEL_SDK_DISABLED: "false"' in workflow
+
+
+def test_docker_lock_contains_all_runtime_requirements():
+    root = Path(__file__).parents[1]
+
+    def package_names(path: Path) -> set[str]:
+        names = set()
+        for line in path.read_text().splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or line.startswith("-"):
+                continue
+            name = line.split("==", 1)[0].split("[", 1)[0]
+            names.add(name.replace("_", "-").lower())
+        return names
+
+    direct = package_names(root / "requirements.txt")
+    locked = package_names(root / "requirements.lock.txt")
+
+    assert direct <= locked
+
+
 def test_prepare_bootstraps_matrix_without_executing_pr_helper_code():
     workflow = (GITHUB_DIR / "workflows" / "pr-repair-agent.yml").read_text()
     prepare = workflow.split("\n  repair:", 1)[0]
@@ -228,7 +289,7 @@ def test_prepare_bootstraps_matrix_without_executing_pr_helper_code():
 
 def test_context_artifacts_are_written_to_the_run_directory():
     context = (GITHUB_DIR / "pr-repair-context.py").read_text()
-    repair = (GITHUB_DIR / "pr-repair-deepinfra.py").read_text()
+    repair = (GITHUB_DIR / "pr-repair-openrouter.py").read_text()
 
     assert "REPAIR_ARTIFACT_DIR" in context
     assert "REPAIR_ARTIFACT_DIR" in repair
@@ -237,7 +298,7 @@ def test_context_artifacts_are_written_to_the_run_directory():
 
 
 def test_repair_requires_the_matrix_selected_commit():
-    repair = _load_script("pr-repair-deepinfra.py", "pr_repair_deepinfra_heads")
+    repair = _load_script("pr-repair-openrouter.py", "pr_repair_openrouter_heads")
     context = {"pull_request": {"head_sha": "a" * 40, "base_sha": "b" * 40}}
 
     with pytest.raises(ValueError, match="head SHA"):

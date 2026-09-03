@@ -115,7 +115,10 @@ cd personalWiki
 
 # 2. Create venv and install
 python -m venv .venv && source .venv/bin/activate
+# Runtime dependencies
 pip install -r requirements.txt
+# Development and test environments can use this instead:
+# pip install -r requirements-dev.txt
 
 # 3. Configure environment
 cp .env.example .env
@@ -149,8 +152,37 @@ async for msg in run_pipeline(url="https://arxiv.org/abs/2309.11157"):
 | `MINIMAX_API_KEY` | *(required)* | Minimax API key |
 | `MINIMAX_GROUP_ID` | *(required)* | Minimax group ID |
 | `MINIMAX_MODEL` | `abab6.5s-chat` | Minimax model name |
+| `SENTRY_DSN` | empty | Enables Sentry error monitoring and OpenTelemetry trace export to Sentry |
+| `SENTRY_ENVIRONMENT` | SDK default | Sentry deployment environment |
+| `SENTRY_RELEASE` | SDK default | Sentry release identifier |
+| `OTEL_SERVICE_NAME` | `personalwiki` | OpenTelemetry service name |
+| `OTEL_SERVICE_VERSION` | empty | Optional OpenTelemetry service version |
+| `OTEL_RESOURCE_ATTRIBUTES` | empty | Optional standard resource attributes, excluding secrets |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | empty | Base OTLP HTTP/protobuf endpoint for external traces and metrics |
+| `OTEL_EXPORTER_OTLP_HEADERS` | empty | Optional collector authentication headers; supplied outside source control |
+| `OTEL_TRACES_SAMPLER` | `parentbased_traceidratio` | OpenTelemetry trace sampler |
+| `OTEL_TRACES_SAMPLER_ARG` | `0.1` | Default 10% trace ratio |
+| `OTEL_SDK_DISABLED` | `false` | Standard emergency opt-out |
 
 ---
+
+### Observability
+
+`SENTRY_DSN` enables Sentry error monitoring and Sentry's OpenTelemetry trace
+export. `OTEL_EXPORTER_OTLP_ENDPOINT` enables external OTLP HTTP/protobuf
+traces and metrics. Either variable may be set alone; both use one correlated
+OpenTelemetry provider.
+
+When both variables are empty, telemetry is disabled and produces no exporter
+network traffic. Traces use parent-based 10% sampling by default; metrics are
+not sampled.
+
+Request bodies, headers, query values, raw URLs, vault content, credentials,
+and exception messages are intentionally excluded from telemetry.
+
+`OTEL_EXPORTER_OTLP_HEADERS` belongs in the deployment environment and must
+never be committed. There is no Prometheus endpoint and no OpenTelemetry log
+export.
 
 ## Data Flow Detail
 
