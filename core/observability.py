@@ -40,8 +40,10 @@ from opentelemetry.sdk.trace.sampling import (
     Sampler,
     TraceIdRatioBased,
 )
-from opentelemetry.trace import Status, StatusCode
+from opentelemetry.trace import Link, Status, StatusCode
+from sentry_sdk.consts import EndpointType, VERSION
 from sentry_sdk.integrations.otlp import OTLPIntegration
+from sentry_sdk.utils import Dsn
 
 from config import TelemetrySettings, get_telemetry_settings
 
@@ -147,6 +149,10 @@ def _safe_span_events(events: Sequence[object]) -> tuple[Event, ...]:
     return tuple(safe_events)
 
 
+def _safe_span_links(links: Sequence[Link]) -> tuple[Link, ...]:
+    return tuple(Link(link.context) for link in links)
+
+
 def _safe_readable_span(span: ReadableSpan) -> ReadableSpan:
     return ReadableSpan(
         name=span.name,
@@ -155,11 +161,11 @@ def _safe_readable_span(span: ReadableSpan) -> ReadableSpan:
         resource=span.resource,
         attributes=_safe_span_attributes(span.attributes),
         events=_safe_span_events(span.events),
-        links=span.links,
+        links=_safe_span_links(span.links),
         kind=span.kind,
         instrumentation_info=span.instrumentation_info,
         instrumentation_scope=span.instrumentation_scope,
-        status=span.status,
+        status=Status(span.status.status_code),
         start_time=span.start_time,
         end_time=span.end_time,
     )
@@ -196,6 +202,11 @@ def redact_sentry_event(event: dict[str, Any], hint: dict[str, Any]) -> dict[str
         "contexts.runtime",
         "modules",
         "message",
+        "transaction",
+        "spans",
+        "logentry",
+        "tags",
+        "threads",
     ):
         redacted.pop(key, None)
     exception = redacted.get("exception")
@@ -287,6 +298,14 @@ def _exporter_kwargs(settings: TelemetrySettings, endpoint: str) -> dict[str, ob
     if settings.otlp_headers:
         kwargs["headers"] = _parse_headers(settings.otlp_headers)
     return kwargs
+
+
+def _sentry_exporter_kwargs(dsn: str) -> dict[str, object]:
+    auth = Dsn(dsn).to_auth(f"sentry.python/{VERSION}")
+    return {
+        "endpoint": auth.get_api_url(EndpointType.OTLP_TRACES),
+        "headers": {"X-Sentry-Auth": auth.to_header()},
+    }
 
 
 @dataclass
@@ -435,6 +454,7 @@ def _build_runtime(
     settings: TelemetrySettings,
     *,
     trace_exporter_factory: Any = OTLPSpanExporter,
+    sentry_trace_exporter_factory: Any = OTLPSpanExporter,
     metric_exporter_factory: Any = OTLPMetricExporter,
     extra_span_processors: Sequence[SpanProcessor] = (),
     extra_metric_readers: Sequence[MetricReader] = (),
@@ -482,7 +502,12 @@ def _build_runtime(
     if settings.sentry_dsn:
         sentry_kwargs: dict[str, object] = {
             "dsn": settings.sentry_dsn,
-            "integrations": [OTLPIntegration(capture_exceptions=True)],
+            "integrations": [
+                OTLPIntegration(
+                    setup_otlp_traces_exporter=False,
+                    capture_exceptions=True,
+                )
+            ],
             "instrumenter": "otel",
             "send_default_pii": False,
             "max_request_body_size": "never",
@@ -498,6 +523,13 @@ def _build_runtime(
         try:
             sentry_init(**sentry_kwargs)
             sentry_initialized = True
+            sentry_exporter = sentry_trace_exporter_factory(
+                **_sentry_exporter_kwargs(settings.sentry_dsn)
+            )
+            tracer_provider.add_span_processor(
+                RedactingSpanProcessor(BatchSpanProcessor(sentry_exporter))
+            )
+            exporters.append(sentry_exporter)
         except Exception as error:
             _logger.warning("Sentry telemetry setup failed: %s", type(error).__name__)
 
