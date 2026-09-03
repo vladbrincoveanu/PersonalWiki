@@ -108,6 +108,80 @@ def test_sentry_only_uses_otlp_integration_on_the_shared_provider(monkeypatch):
     assert runtime.metric_readers == ()
 
 
+def test_sentry_trace_exporter_uses_the_shared_redaction_processor(monkeypatch):
+    monkeypatch.setenv("SENTRY_DSN", "https://public@example.invalid/1")
+    monkeypatch.delenv("OTEL_EXPORTER_OTLP_ENDPOINT", raising=False)
+    monkeypatch.setenv("OTEL_TRACES_SAMPLER", "always_on")
+
+    from config import get_telemetry_settings
+    from core.observability import _build_runtime
+    from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+    from opentelemetry.trace import Link, SpanContext, Status, StatusCode, TraceFlags, TraceState
+
+    exporter = InMemorySpanExporter()
+    sentry_init = Mock()
+    runtime = _build_runtime(
+        get_telemetry_settings(),
+        sentry_trace_exporter_factory=Mock(return_value=exporter),
+        sentry_init=sentry_init,
+        register_globals=False,
+    )
+
+    with runtime.tracer.start_as_current_span(
+        "personalwiki.test",
+        attributes={
+            "http.route": "/items/{item_id}",
+            "http.url": "https://private.example/items/42?token=secret",
+        },
+        links=(
+            Link(
+                SpanContext(
+                    1,
+                    2,
+                    TraceFlags(1),
+                    False,
+                    TraceState(),
+                ),
+                {"secret.link": "raw link secret"},
+            ),
+        ),
+    ) as span:
+        span.set_status(Status(StatusCode.ERROR, "raw status secret"))
+
+    runtime.tracer_provider.force_flush()
+
+    finished = exporter.get_finished_spans()
+    assert len(finished) == 1
+    assert dict(finished[0].attributes) == {"http.route": "/items/{item_id}"}
+    assert finished[0].status.description is None
+    assert not finished[0].links[0].attributes
+
+    integration = sentry_init.call_args.kwargs["integrations"][0]
+    assert integration.setup_otlp_traces_exporter is False
+
+
+def test_sentry_redaction_removes_transaction_and_log_payloads():
+    from core.observability import redact_sentry_event, redact_sentry_transaction
+
+    event = {
+        "transaction": "https://private.example/items/42?token=secret",
+        "spans": [{
+            "description": "GET https://private.example/items/42",
+            "data": {"url": "https://private.example/items/42?token=secret"},
+        }],
+        "logentry": {"message": "raw log secret"},
+        "tags": {"source": "raw tag secret"},
+    }
+
+    for redactor in (redact_sentry_event, redact_sentry_transaction):
+        redacted = redactor(event, {})
+        assert "transaction" not in redacted
+        assert "spans" not in redacted
+        assert "logentry" not in redacted
+        assert "tags" not in redacted
+        assert "raw" not in str(redacted)
+
+
 def test_external_otlp_adds_trace_and_metric_exporters(monkeypatch):
     monkeypatch.delenv("SENTRY_DSN", raising=False)
     monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://collector:4318/")
@@ -182,7 +256,7 @@ def test_both_backends_share_one_provider_and_do_not_duplicate_instrumentation(m
         runtime.instrument_app(test_app)
         runtime.instrument_app(test_app)
 
-    assert len(runtime.exporters) == 1
+    assert len(runtime.exporters) == 2
     assert sentry_init.call_count == 1
     instrument_app.assert_called_once_with(test_app, tracer_provider=runtime.tracer_provider)
     assert instrument_requests.call_count == 1
