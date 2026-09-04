@@ -1,10 +1,6 @@
 import asyncio
-import sys
 import pytest
-from unittest.mock import patch, MagicMock, AsyncMock
-
-# Mock whisper before importing app to avoid ModuleNotFoundError
-sys.modules["whisper"] = MagicMock()
+from unittest.mock import patch, AsyncMock
 
 
 def test_keywords_endpoints_import():
