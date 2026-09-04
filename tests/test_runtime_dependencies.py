@@ -39,6 +39,16 @@ def test_pin_drift_reports_missing_and_mismatched_versions():
     assert _pin_drift(manifest, lock) == {"bar": ("2.0", "3.0")}
 
 
+def test_pin_drift_reports_missing_inherited_pins():
+    runtime_manifest = "runtime-only==1.0\n"
+    dev_manifest = "-r requirements.txt\ndev-only==2.0\n"
+    dev_lock = "dev-only==2.0\n"
+
+    assert _pin_drift(dev_manifest, dev_lock, inherited_manifest=runtime_manifest) == {
+        "runtime-only": ("1.0", None)
+    }
+
+
 def _normalize_package_name(name):
     return re.sub(r"[-_.]+", "-", name).lower()
 
@@ -68,8 +78,9 @@ def _parse_exact_pins(text):
     return pins
 
 
-def _pin_drift(manifest, lock):
-    expected = _parse_exact_pins(manifest)
+def _pin_drift(manifest, lock, inherited_manifest=""):
+    expected = _parse_exact_pins(inherited_manifest)
+    expected.update(_parse_exact_pins(manifest))
     actual = _parse_exact_pins(lock)
     return {
         package: (version, actual.get(package))
@@ -106,13 +117,14 @@ def test_direct_requirements_exclude_heavy_ml_packages():
 
 def test_direct_requirement_pins_match_generated_locks():
     pairs = (
-        ("requirements.txt", "requirements.lock.txt"),
-        ("requirements-dev.txt", "requirements-dev.lock.txt"),
+        ("requirements.txt", "requirements.lock.txt", None),
+        ("requirements-dev.txt", "requirements-dev.lock.txt", "requirements.txt"),
     )
-    for requirements_name, lock_name in pairs:
+    for requirements_name, lock_name, inherited_name in pairs:
         drift = _pin_drift(
             (ROOT / requirements_name).read_text(),
             (ROOT / lock_name).read_text(),
+            inherited_manifest=(ROOT / inherited_name).read_text() if inherited_name else "",
         )
         assert drift == {}, f"{requirements_name} differs from {lock_name}: {drift}"
 
