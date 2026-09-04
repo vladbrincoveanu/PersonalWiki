@@ -82,7 +82,7 @@ FFmpeg leaves both Docker stages. Playwright remains pinned consistently with th
 
 1. **YouTube:** write failing behavior and dependency tests, remove Whisper/audio/metadata fallback, remove FFmpeg and `openai-whisper`, regenerate locks, then run focused and full tests.
 2. **Reranker:** write failing interface tests for the FastEmbed adapter, replace sentence-transformers, remove direct sentence-transformers and transformers requirements when no longer directly used, regenerate locks, then run focused and full tests.
-3. **PDF:** write extractor contract tests against representative fixtures, replace Docling while preserving `PdfExtractResult`, remove Docling requirements, regenerate locks, then run focused and full tests.
+3. **PDF:** establish a representative corpus covering text, multi-column, table, image-bearing, and scanned PDFs; write extractor contract tests against it; replace Docling while preserving `PdfExtractResult`; remove Docling requirements only when every required corpus case produces useful content; regenerate locks; then run focused and full tests.
 4. **Runtime proof:** build the Docker image, inspect installed packages, run the container, and execute local smoke ingestion across the supported input matrix.
 
 A slice may remove a dependency only after its replacement behavior passes. No slice combines unrelated scheduler, persistence, security, or deployment changes.
@@ -136,4 +136,4 @@ Measure and record the final image size and compare it with the pre-change image
 
 ## Rollback
 
-Each delivery slice is independently revertible. If the replacement PDF extractor materially degrades representative content, retain the completed YouTube and reranker slices and stop before removing Docling. Do not restore Whisper or CUDA merely to keep the PDF slice moving.
+Each delivery slice is independently revertible. Docling removal is blocked unless the replacement produces useful content for every required case in the representative PDF corpus. If it fails that gate, retain the completed YouTube and reranker slices and keep Docling temporarily. Do not restore Whisper or CUDA merely to keep the PDF slice moving.
