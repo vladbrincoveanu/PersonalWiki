@@ -186,6 +186,36 @@ def test_extract_pdf_raises_for_invalid_pdf(tmp_path):
         extract_pdf(str(path))
 
 
+def test_extract_pdf_raises_public_error_for_encrypted_pdf(tmp_path):
+    path = tmp_path / "encrypted.pdf"
+    document = pymupdf.open()
+    page = document.new_page()
+    page.insert_text((72, 100), "Protected content")
+    document.save(
+        path,
+        encryption=pymupdf.PDF_ENCRYPT_AES_256,
+        owner_pw="owner-secret",
+        user_pw="user-secret",
+    )
+    document.close()
+
+    with pytest.raises(ValueError, match=f"Failed to extract PDF: {path}"):
+        extract_pdf(str(path))
+
+
+def test_extract_pdf_raises_public_error_for_zero_page_pdf(tmp_path):
+    path = tmp_path / "zero-pages.pdf"
+    path.write_bytes(
+        b"%PDF-1.4\n"
+        b"1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n"
+        b"2 0 obj<</Type/Pages/Count 0/Kids[]>>endobj\n"
+        b"trailer<</Root 1 0 R>>\n%%EOF"
+    )
+
+    with pytest.raises(ValueError, match=f"Failed to extract PDF: {path}"):
+        extract_pdf(str(path))
+
+
 @pytest.mark.parametrize("invalid_kind", ["missing", "outside"])
 def test_extract_pdf_full_skips_unreadable_or_unexpected_images(
     tmp_path, monkeypatch, invalid_kind
@@ -201,9 +231,11 @@ def test_extract_pdf_full_skips_unreadable_or_unexpected_images(
         invalid_path = tmp_path / "outside.png"
         invalid_path.write_bytes(b"outside-image")
 
+    invalid_link = f"![unavailable]({invalid_path})"
+    external_link = "![diagram](https://example.com/a.png)"
     markdown = (
         f"Useful text before ![]({valid_path}) and between "
-        f"![]({invalid_path}) useful text after."
+        f"{invalid_link} and {external_link} useful text after."
     )
     monkeypatch.setattr(
         pdf_ingester.tempfile,
@@ -225,7 +257,8 @@ def test_extract_pdf_full_skips_unreadable_or_unexpected_images(
 
     assert result.images == [b"valid-image"]
     assert result.markdown.count("<!-- image -->") == 1
-    assert "![" not in result.markdown
+    assert invalid_link in result.markdown
+    assert external_link in result.markdown
     assert "Useful text before" in result.markdown
     assert "useful text after" in result.markdown
     if invalid_kind == "outside":

@@ -22,7 +22,17 @@ class PdfExtractResult:
     images: list[bytes] = field(default_factory=list)
 
 
+def _preflight_pdf(pdf_path: str) -> None:
+    try:
+        with pymupdf.open(pdf_path) as document:
+            if document.needs_pass or document.page_count == 0:
+                raise ValueError(f"Failed to extract PDF: {pdf_path}")
+    except pymupdf.FileDataError as exc:
+        raise ValueError(f"Failed to extract PDF: {pdf_path}") from exc
+
+
 def _to_markdown(pdf_path: str, **kwargs) -> str:
+    _preflight_pdf(pdf_path)
     try:
         return pymupdf4llm.to_markdown(
             pdf_path,
@@ -65,10 +75,10 @@ def extract_pdf_full(pdf_path: str) -> PdfExtractResult:
             try:
                 image_path = Path(raw_path.replace(r"\ ", " ")).resolve()
                 if not image_path.is_relative_to(image_root):
-                    return ""
+                    return match.group(0)
                 image_bytes = image_path.read_bytes()
             except (OSError, ValueError):
-                return ""
+                return match.group(0)
             images.append(image_bytes)
             return "<!-- image -->"
 
