@@ -1,9 +1,12 @@
 import io
+from contextlib import nullcontext
+from pathlib import Path
 
 import pymupdf
 import pytest
 from PIL import Image
 
+import ingesters.pdf as pdf_ingester
 from ingesters.pdf import PdfExtractResult, extract_pdf, extract_pdf_full
 
 
@@ -179,5 +182,51 @@ def test_extract_pdf_raises_for_invalid_pdf(tmp_path):
     path = tmp_path / "invalid.pdf"
     path.write_bytes(b"not a pdf")
 
-    with pytest.raises(Exception):
+    with pytest.raises(ValueError, match=f"Failed to extract PDF: {path}"):
         extract_pdf(str(path))
+
+
+@pytest.mark.parametrize("invalid_kind", ["missing", "outside"])
+def test_extract_pdf_full_skips_unreadable_or_unexpected_images(
+    tmp_path, monkeypatch, invalid_kind
+):
+    image_dir = tmp_path / "private-images"
+    image_dir.mkdir()
+    valid_path = image_dir / "valid.png"
+    valid_path.write_bytes(b"valid-image")
+
+    if invalid_kind == "missing":
+        invalid_path = image_dir / "missing.png"
+    else:
+        invalid_path = tmp_path / "outside.png"
+        invalid_path.write_bytes(b"outside-image")
+
+    markdown = (
+        f"Useful text before ![]({valid_path}) and between "
+        f"![]({invalid_path}) useful text after."
+    )
+    monkeypatch.setattr(
+        pdf_ingester.tempfile,
+        "TemporaryDirectory",
+        lambda: nullcontext(str(image_dir)),
+    )
+    monkeypatch.setattr(pdf_ingester, "_to_markdown", lambda *args, **kwargs: markdown)
+
+    original_read_bytes = Path.read_bytes
+    read_paths = []
+
+    def track_read(path):
+        read_paths.append(path.resolve())
+        return original_read_bytes(path)
+
+    monkeypatch.setattr(Path, "read_bytes", track_read)
+
+    result = extract_pdf_full("source.pdf")
+
+    assert result.images == [b"valid-image"]
+    assert result.markdown.count("<!-- image -->") == 1
+    assert "![" not in result.markdown
+    assert "Useful text before" in result.markdown
+    assert "useful text after" in result.markdown
+    if invalid_kind == "outside":
+        assert invalid_path.resolve() not in read_paths

@@ -3,6 +3,7 @@ import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import pymupdf
 import pymupdf4llm
 
 _LOW_QUALITY_THRESHOLD = 200
@@ -22,12 +23,15 @@ class PdfExtractResult:
 
 
 def _to_markdown(pdf_path: str, **kwargs) -> str:
-    return pymupdf4llm.to_markdown(
-        pdf_path,
-        use_ocr=True,
-        ocr_language="eng",
-        **kwargs,
-    )
+    try:
+        return pymupdf4llm.to_markdown(
+            pdf_path,
+            use_ocr=True,
+            ocr_language="eng",
+            **kwargs,
+        )
+    except pymupdf.FileDataError as exc:
+        raise ValueError(f"Failed to extract PDF: {pdf_path}") from exc
 
 
 def extract_pdf(pdf_path: str, return_quality: bool = False) -> str | tuple[str, bool]:
@@ -58,10 +62,14 @@ def extract_pdf_full(pdf_path: str) -> PdfExtractResult:
 
         def collect_image(match: re.Match) -> str:
             raw_path = match.group("angle") or match.group("plain")
-            image_path = Path(raw_path.replace(r"\ ", " ")).resolve()
-            if not image_path.is_relative_to(image_root):
-                raise ValueError(f"Extracted image path escaped temporary directory: {raw_path}")
-            images.append(image_path.read_bytes())
+            try:
+                image_path = Path(raw_path.replace(r"\ ", " ")).resolve()
+                if not image_path.is_relative_to(image_root):
+                    return ""
+                image_bytes = image_path.read_bytes()
+            except (OSError, ValueError):
+                return ""
+            images.append(image_bytes)
             return "<!-- image -->"
 
         markdown = _IMAGE_LINK.sub(collect_image, markdown)
