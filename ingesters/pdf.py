@@ -1,10 +1,17 @@
-import io
+import re
+import tempfile
 from dataclasses import dataclass, field
-from docling.document_converter import DocumentConverter, PdfFormatOption
-from docling.datamodel.pipeline_options import PdfPipelineOptions
-from docling.datamodel.base_models import InputFormat
+from pathlib import Path
 
-_LOW_QUALITY_THRESHOLD = 200  # characters
+import pymupdf4llm
+
+_LOW_QUALITY_THRESHOLD = 200
+_IMAGE_LINK = re.compile(
+    r"!\[(?:\\.|[^\]\\])*\]\(\s*"
+    r"(?:<(?P<angle>[^>\n]+)>|(?P<plain>(?:\\.|[^)\s])+))"
+    r"(?:\s+(?:\"(?:\\.|[^\"])*\"|'(?:\\.|[^'])*'|\((?:\\.|[^)])*\)))?"
+    r"\s*\)"
+)
 
 
 @dataclass
@@ -14,45 +21,53 @@ class PdfExtractResult:
     images: list[bytes] = field(default_factory=list)
 
 
-def extract_pdf(pdf_path: str, return_quality: bool = False) -> str | tuple[str, bool]:
-    converter = DocumentConverter()
-    result = converter.convert(pdf_path)
-    markdown = result.document.export_to_markdown()
+def _to_markdown(pdf_path: str, **kwargs) -> str:
+    return pymupdf4llm.to_markdown(
+        pdf_path,
+        use_ocr=True,
+        ocr_language="eng",
+        **kwargs,
+    )
 
-    if not markdown:
+
+def extract_pdf(pdf_path: str, return_quality: bool = False) -> str | tuple[str, bool]:
+    markdown = _to_markdown(pdf_path)
+    if not markdown.strip():
         raise ValueError(f"No text extracted from PDF: {pdf_path}")
 
     low_quality = len(markdown.strip()) < _LOW_QUALITY_THRESHOLD
-
     if return_quality:
         return markdown, low_quality
     return markdown
 
 
 def extract_pdf_full(pdf_path: str) -> PdfExtractResult:
-    """Extract PDF text and figures. Returns markdown + PNG bytes for each figure."""
-    pipeline_opts = PdfPipelineOptions()
-    pipeline_opts.generate_picture_images = True
+    """Extract PDF text and image bytes in markdown order."""
+    with tempfile.TemporaryDirectory() as image_dir:
+        markdown = _to_markdown(
+            pdf_path,
+            write_images=True,
+            image_path=image_dir,
+            image_format="png",
+        )
+        if not markdown.strip():
+            raise ValueError(f"No text extracted from PDF: {pdf_path}")
 
-    converter = DocumentConverter(
-        format_options={
-            InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_opts)
-        }
+        image_root = Path(image_dir).resolve()
+        images: list[bytes] = []
+
+        def collect_image(match: re.Match) -> str:
+            raw_path = match.group("angle") or match.group("plain")
+            image_path = Path(raw_path.replace(r"\ ", " ")).resolve()
+            if not image_path.is_relative_to(image_root):
+                raise ValueError(f"Extracted image path escaped temporary directory: {raw_path}")
+            images.append(image_path.read_bytes())
+            return "<!-- image -->"
+
+        markdown = _IMAGE_LINK.sub(collect_image, markdown)
+
+    return PdfExtractResult(
+        markdown=markdown,
+        low_quality=len(markdown.strip()) < _LOW_QUALITY_THRESHOLD,
+        images=images,
     )
-    result = converter.convert(pdf_path)
-    markdown = result.document.export_to_markdown()
-
-    if not markdown:
-        raise ValueError(f"No text extracted from PDF: {pdf_path}")
-
-    low_quality = len(markdown.strip()) < _LOW_QUALITY_THRESHOLD
-
-    images: list[bytes] = []
-    for picture in result.document.pictures:
-        if picture.image is None:
-            continue
-        buf = io.BytesIO()
-        picture.image.pil_image.save(buf, format="PNG")
-        images.append(buf.getvalue())
-
-    return PdfExtractResult(markdown=markdown, low_quality=low_quality, images=images)
