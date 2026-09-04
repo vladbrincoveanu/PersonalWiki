@@ -1,13 +1,14 @@
 """
 Cross-encoder reranking for vector search results.
-Uses sentence-transformers CrossEncoder for query-document scoring.
+Uses FastEmbed TextCrossEncoder for query-document scoring.
 """
-from sentence_transformers import CrossEncoder
 import logging
+
+from fastembed.rerank.cross_encoder import TextCrossEncoder
 
 _logger = logging.getLogger(__name__)
 
-_MODEL_NAME = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+_MODEL_NAME = "Xenova/ms-marco-MiniLM-L-6-v2"
 
 
 class CrossEncoderReranker:
@@ -18,7 +19,11 @@ class CrossEncoderReranker:
     def model(self):
         if self._model is None:
             try:
-                self._model = CrossEncoder(_MODEL_NAME, max_length=512)
+                self._model = TextCrossEncoder(
+                    model_name=_MODEL_NAME,
+                    lazy_load=True,
+                    cuda=False,
+                )
             except Exception as e:
                 _logger.warning("CrossEncoder model failed to load: %s", e)
                 self._model = None
@@ -30,10 +35,10 @@ class CrossEncoderReranker:
         if self.model is None:
             return results[:top_k]
         try:
-            pairs = [(query, r.get("text", "")) for r in results]
-            scores = self.model.predict(pairs)
-            for i, r in enumerate(results):
-                r["rerank_score"] = float(scores[i])
+            documents = [r.get("text", "") for r in results]
+            scores = list(self.model.rerank(query, documents))
+            for result, score in zip(results, scores):
+                result["rerank_score"] = float(score)
             reranked = sorted(results, key=lambda r: r["rerank_score"], reverse=True)
             return reranked[:top_k]
         except Exception as e:
