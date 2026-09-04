@@ -36,9 +36,13 @@ class CrossEncoderReranker:
             return results[:top_k]
         try:
             documents = [r.get("text", "") for r in results]
-            scores = list(self.model.rerank(query, documents))
+            scores = [float(score) for score in self.model.rerank(query, documents)]
+            if len(scores) != len(results):
+                raise ValueError(
+                    f"Reranker returned {len(scores)} scores for {len(results)} results"
+                )
             for result, score in zip(results, scores):
-                result["rerank_score"] = float(score)
+                result["rerank_score"] = score
             reranked = sorted(results, key=lambda r: r["rerank_score"], reverse=True)
             return reranked[:top_k]
         except Exception as e:
