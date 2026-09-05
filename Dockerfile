@@ -13,6 +13,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     make \
     && rm -rf /var/lib/apt/lists/*
 
+# Install PyTorch CPU-first to avoid CUDA dependencies
+RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu torch torchvision
+
 # Install Python deps from the committed transitive lock.
 COPY requirements.lock.txt .
 RUN pip install --no-cache-dir -r requirements.lock.txt
