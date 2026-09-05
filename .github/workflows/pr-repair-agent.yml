@@ -5,10 +5,8 @@ on:
     types: [opened, reopened, synchronize, ready_for_review]
   issue_comment:
     types: [created, edited]
-  pull_request_review_comment:
-    types: [created, edited]
-  pull_request_review:
-    types: [submitted]
+  # Review events can load PR-version YAML against main-version helpers.
+  # The scheduled reconciliation still collects inline comments and reviews.
   schedule:
     - cron: "17 * * * *"
   workflow_dispatch:
@@ -17,6 +15,9 @@ permissions: {}
 
 jobs:
   prepare:
+    # Reject manual dispatches and PR base workflows from non-default branches.
+    if: >-
+      github.workflow_ref == format('{0}/.github/workflows/pr-repair-agent.yml@refs/heads/{1}', github.repository, github.event.repository.default_branch)
     runs-on: ubuntu-24.04
     permissions:
       contents: read
