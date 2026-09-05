@@ -2,7 +2,6 @@ name: Dependency Review
 
 on:
   pull_request:
-    branches: [ main ]
 
 permissions:
   contents: read
@@ -17,3 +16,4 @@ jobs:
         uses: actions/dependency-review-action@1e966ba708e4b64bb0c9bfb7abb5a232840be16a # main
         with:
           fail-on-severity: high
+          config-file: .github/dependency-review-config.yml
