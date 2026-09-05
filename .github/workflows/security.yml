@@ -2,7 +2,6 @@ name: Security
 
 on:
   pull_request:
-    branches: [main]
   push:
     branches: [main]
   schedule:
@@ -116,7 +115,7 @@ jobs:
           if-no-files-found: ignore
 
   security_gate:
-    name: Security gate
+    name: Security summary
     if: always()
     needs: [codeql, python_audit, npm_audit]
     runs-on: ubuntu-24.04
