@@ -66,11 +66,27 @@ def _parse_requirement_names(text):
 
 def _parse_exact_pins(text):
     pins = {}
-    for line in text.splitlines():
+    # Join continuation lines (ending with \)
+    lines = text.splitlines()
+    joined = []
+    buffer = ""
+    for line in lines:
+        stripped = line.rstrip()
+        if stripped.endswith("\\"):
+            buffer += stripped[:-1].rstrip() + " "
+        else:
+            buffer += stripped
+            joined.append(buffer)
+            buffer = ""
+    if buffer:
+        joined.append(buffer)
+    
+    for line in joined:
         if not line.strip() or line.lstrip().startswith(("#", "-")):
             continue
-        match = re.fullmatch(
-            r"\s*([A-Za-z0-9_.-]+)(?:\[[^\]]+\])?==([^\s;]+)(?:\s*;.*)?\s*",
+        # Match package==version, ignoring any trailing hashes or markers
+        match = re.match(
+            r"\s*([A-Za-z0-9_.-]+)(?:\[[^\]]+\])?==([^\s;]+)",
             line,
         )
         if match:
