@@ -21,15 +21,15 @@ def test_required_checks_run_for_every_pr_target(name):
 
 
 @pytest.mark.parametrize(
-    ("name", "job", "required_name"),
-    [("ci.yml", "gate", "Required CI summary"),
-     ("security.yml", "security_gate", "Security summary")],
+    ("name", "job", "required_name", "needs"),
+    [("ci.yml", "gate", "Required CI summary", ["static", "test", "integration", "docker"]),
+     ("security.yml", "security_gate", "Security summary", ["codeql", "python_audit"])],
 )
-def test_summary_names_match_repository_ruleset(name, job, required_name):
+def test_summary_names_match_repository_ruleset(name, job, required_name, needs):
     summary = workflow(name)["jobs"][job]
     assert summary["name"] == required_name
     assert summary["if"] == "always()"
-    assert summary["needs"]
+    assert summary["needs"] == needs
 
 
 def test_extended_suite_installs_ocr_before_running_pdf_tests():
