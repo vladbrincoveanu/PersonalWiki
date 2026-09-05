@@ -22,10 +22,10 @@ pytestmark = pytest.mark.integration
 def _make_pdf_with_embedded_image() -> bytes:
     """Build a minimal PDF containing a JPEG image using raw PDF structures.
 
-    Docling's picture extraction requires a real XObject image in the PDF.
-    This is tested to produce exactly 1 picture with ``generate_picture_images=True``.
+    The PDF extractor requires a real XObject image in the PDF.
+    This helper is tested to produce exactly one extracted image.
     """
-    # Create a small RGB image (100×100) so docling recognises it as a figure
+    # Create a small RGB image so the extractor recognizes it as a figure.
     img = Image.new("RGB", (100, 100), color=(200, 100, 50))
     from PIL import ImageDraw
     draw = ImageDraw.Draw(img)

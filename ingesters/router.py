@@ -158,7 +158,7 @@ async def extract(url: str) -> Document:
             with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
                 tmp_path = tmp.name
             await asyncio.to_thread(_download_pdf, safe_url, tmp_path)
-            # Validate magic bytes before passing to docling
+            # Validate magic bytes before passing to the PDF extractor.
             with open(tmp_path, "rb") as f:
                 header = f.read(5)
             if header != b"%PDF-":

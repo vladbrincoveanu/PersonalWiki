@@ -33,10 +33,12 @@ def test_reranker_returns_correct_count():
 
 def test_reranker_fallback_when_model_unavailable():
     from core.reranker import CrossEncoderReranker
-    reranker = CrossEncoderReranker()
-    reranker._model = None  # simulate model unavailable
-    results = [{"path": f"notes/{i}.md", "text": f"doc {i}"} for i in range(5)]
-    reranked = reranker.rerank("query", results, top_k=3)
+
+    with patch("core.reranker.TextCrossEncoder", side_effect=RuntimeError):
+        reranker = CrossEncoderReranker()
+        results = [{"path": f"notes/{i}.md", "text": f"doc {i}"} for i in range(5)]
+        reranked = reranker.rerank("query", results, top_k=3)
+
     assert len(reranked) == 3  # returns results as-is
 
 
@@ -46,8 +48,67 @@ def test_reranker_adds_rerank_score():
     results = [{"path": "notes/a.md", "text": "test content"}]
     # Mock the _model instance variable directly
     mock_model = MagicMock()
-    mock_model.predict.return_value = [0.95]
+    mock_model.rerank.return_value = iter([0.95])
     reranker._model = mock_model
     reranked = reranker.rerank("test query", results)
+    mock_model.rerank.assert_called_once_with("test query", ["test content"])
     assert "rerank_score" in reranked[0]
     assert reranked[0]["rerank_score"] == 0.95
+
+
+def test_reranker_falls_back_when_too_few_scores_are_returned():
+    from core.reranker import CrossEncoderReranker
+
+    reranker = CrossEncoderReranker()
+    results = [
+        {"path": "notes/a.md", "text": "first"},
+        {"path": "notes/b.md", "text": "second"},
+    ]
+    mock_model = MagicMock()
+    mock_model.rerank.return_value = iter([0.95])
+    reranker._model = mock_model
+
+    reranked = reranker.rerank("test query", results)
+
+    assert reranked == results
+    assert all("rerank_score" not in result for result in results)
+
+
+def test_reranker_falls_back_when_too_many_scores_are_returned():
+    from core.reranker import CrossEncoderReranker
+
+    reranker = CrossEncoderReranker()
+    results = [
+        {"path": "notes/a.md", "text": "first"},
+        {"path": "notes/b.md", "text": "second"},
+    ]
+    mock_model = MagicMock()
+    mock_model.rerank.return_value = iter([0.1, 0.9, 0.8])
+    reranker._model = mock_model
+
+    reranked = reranker.rerank("test query", results)
+
+    assert reranked == results
+    assert all("rerank_score" not in result for result in results)
+
+
+def test_reranker_falls_back_when_score_generator_raises():
+    from core.reranker import CrossEncoderReranker
+
+    def failing_scores():
+        yield 0.95
+        raise RuntimeError("inference failed")
+
+    reranker = CrossEncoderReranker()
+    results = [
+        {"path": "notes/a.md", "text": "first"},
+        {"path": "notes/b.md", "text": "second"},
+    ]
+    mock_model = MagicMock()
+    mock_model.rerank.return_value = failing_scores()
+    reranker._model = mock_model
+
+    reranked = reranker.rerank("test query", results)
+
+    assert reranked == results
+    assert all("rerank_score" not in result for result in results)

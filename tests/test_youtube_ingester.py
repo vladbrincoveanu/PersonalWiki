@@ -1,6 +1,6 @@
 import os
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock
 from contextlib import contextmanager
 from ingesters import Document
 
@@ -115,10 +115,9 @@ def test_extract_youtube_all_tiers_fail_then_transcript_api(monkeypatch, tmp_pat
         api_calls.append(video_id)
         return "API transcript text here"
 
-    # yt-dlp fails (no VTT files), Whisper also fails
+    # yt-dlp fails (no VTT files)
     monkeypatch.setattr("ingesters.youtube._run_yt_dlp", lambda *a, **kw: None)
     monkeypatch.setattr("ingesters.youtube._try_youtube_transcript_api", mock_ytt_api)
-    monkeypatch.setattr("ingesters.youtube.whisper.load_model", lambda m: (_ for _ in ()).throw(Exception("no whisper")))
 
     # Use 11-char video ID so _extract_video_id matches
     doc = yt.extract_youtube("https://youtube.com/watch?v=abc123DEF12")
@@ -136,7 +135,6 @@ def test_extract_youtube_returns_stub_when_all_fail(monkeypatch):
 
     monkeypatch.setattr("ingesters.youtube._run_yt_dlp", lambda *a, **kw: None)
     monkeypatch.setattr("ingesters.youtube._try_youtube_transcript_api", mock_ytt_api)
-    monkeypatch.setattr("ingesters.youtube.whisper.load_model", lambda m: (_ for _ in ()).throw(Exception("no whisper")))
 
     doc = yt.extract_youtube("https://youtube.com/watch?v=abc")
     assert doc.raw_text.startswith("[NO_TRANSCRIPT]")
@@ -199,61 +197,6 @@ def test_auto_caption_tier_finds_english_auto_subs(monkeypatch, tmp_path):
     result = yt._try_subtitle_tiers("https://youtube.com/watch?v=abc123DEF12", str(tmp_path))
     assert result is not None
     assert "Hello from auto-generated captions" in result
-
-
-def test_auto_caption_tier_skips_non_english(monkeypatch, tmp_path):
-    """auto-en tier with non-English VTT falls through to Whisper."""
-    import ingesters.youtube as yt
-    from youtube_transcript_api import NoTranscriptFound
-
-    # Japanese auto-captions — no lang=en, low Latin ratio
-    vtt_content = (
-        "WEBVTT\n\n"
-        "00:00:00.000 --> 00:00:05.000\n"
-        "これは日本語の字幕です\n\n"
-        "00:00:05.000 --> 00:00:10.000\n"
-        "日本語の自動字幕"
-    )
-    vtt_file = tmp_path / "video.en.vtt"
-    vtt_file.write_text(vtt_content)
-
-    # Create fake audio file (Whisper reads this)
-    audio_file = tmp_path / "audio.mp3"
-    audio_file.write_bytes(b"fake mp3 audio")
-
-    # Mock TemporaryDirectory to return tmp_path (where fake audio was created)
-    class MockTemporaryDirectory:
-        def __init__(self):
-            self._path = str(tmp_path)
-        def __enter__(self):
-            return self._path
-        def __exit__(self, *args):
-            pass
-
-    whisper_calls = []
-    def mock_whisper_load(model_name):
-        whisper_calls.append(model_name)
-        m = MagicMock()
-        m.transcribe.return_value = {"text": "Whisper fallback transcript"}
-        return m
-
-    class MockCompletedProcess:
-        returncode = 0
-
-    # Mock YouTubeTranscriptApi to raise NoTranscriptFound when instantiated
-    def mock_ytt_ctor():
-        raise NoTranscriptFound("abc123DEF12", ["en"], [])
-
-    monkeypatch.setattr("ingesters.youtube._run_yt_dlp", lambda *a, **kw: None)
-    monkeypatch.setattr("ingesters.youtube.YouTubeTranscriptApi", mock_ytt_ctor)
-    monkeypatch.setattr("ingesters.youtube.whisper.load_model", mock_whisper_load)
-    monkeypatch.setattr("subprocess.run", lambda *a, **kw: MockCompletedProcess())
-    monkeypatch.setattr("tempfile.TemporaryDirectory", MockTemporaryDirectory)
-
-    doc = yt.extract_youtube("https://youtube.com/watch?v=abc123DEF12")
-    # Should have fallen through to Whisper
-    assert whisper_calls == ["base"]
-    assert "Whisper fallback transcript" in doc.raw_text
 
 
 def test_youtube_transcript_api_manually_created(monkeypatch):
@@ -346,93 +289,6 @@ def test_youtube_transcript_api_falls_through(monkeypatch):
     assert result is None
 
 
-def test_whisper_transcription(monkeypatch, tmp_path):
-    """yt-dlp downloads audio, Whisper transcribes it."""
-    from unittest.mock import MagicMock
-
-    # Create a fake audio file in tmpdir
-    audio_file = tmp_path / "audio.mp3"
-    audio_file.write_bytes(b"fake mp3 audio")
-
-    subprocess_calls = []
-    class MockCompletedProcess:
-        returncode = 0
-    def mock_run(cmd, **kwargs):
-        subprocess_calls.append(cmd)
-        return MockCompletedProcess()
-
-    mock_model = MagicMock()
-    mock_model.transcribe.return_value = {"text": "Whisper transcribed text from audio"}
-
-    whisper_calls = []
-    def mock_load_model(model_name):
-        whisper_calls.append(model_name)
-        return mock_model
-
-    # Mock TemporaryDirectory class that mimics the real one
-    import tempfile
-    class MockTemporaryDirectory:
-        def __init__(self):
-            self._path = str(tmp_path)
-        def __enter__(self):
-            return self._path
-        def __exit__(self, *args):
-            pass
-
-    # Use patch.object for whisper; must import youtube inside the patch
-    # context so it captures the patched whisper.load_model
-    import whisper as whisper_module
-    from unittest.mock import patch
-
-    # Reset the module-level cache before the test
-    import ingesters.youtube as yt_module
-    yt_module._whisper_model = None
-
-    with patch.object(whisper_module, "load_model", mock_load_model):
-        monkeypatch.setattr("subprocess.run", mock_run)
-        monkeypatch.setattr("tempfile.TemporaryDirectory", MockTemporaryDirectory)
-
-        # Import youtube AFTER patches are active
-        import ingesters.youtube as yt
-        result = yt._try_whisper_transcription("https://youtube.com/watch?v=abc123DEF12")
-
-    assert result is not None
-    assert "Whisper transcribed text" in result
-    assert "abc123DEF12" in subprocess_calls[0][-1]
-
-
-def test_whisper_model_cached_not_reloaded(monkeypatch):
-    """Whisper model must be loaded once and cached, not reloaded on every call."""
-    import whisper as whisper_module
-
-    # Reset the module-level cache before the test
-    import ingesters.youtube as yt
-    yt._whisper_model = None
-
-    load_count = 0
-    mock_model = MagicMock()
-    mock_model.transcribe.return_value = {"text": "transcribed text"}
-
-    def counting_load_model(name):
-        nonlocal load_count
-        load_count += 1
-        return mock_model
-
-    # Patch at the module level that ingesters.youtube uses
-    monkeypatch.setattr(whisper_module, "load_model", counting_load_model)
-    # Also mock subprocess.run to avoid actually downloading
-    monkeypatch.setattr("subprocess.run", lambda *a, **kw: MagicMock(returncode=0))
-
-    # Import after patches are active to get the patched reference
-    from ingesters.youtube import _try_whisper_transcription
-
-    # Call twice — model should only be loaded once
-    _try_whisper_transcription("https://youtube.com/watch?v=dummy")
-    _try_whisper_transcription("https://youtube.com/watch?v=dummy2")
-
-    assert load_count == 1, f"Whisper model loaded {load_count} times instead of 1 (should be cached)"
-
-
 def test_extract_youtube_full_pipeline_all_fail(monkeypatch):
     """All sources fail → returns NO_TRANSCRIPT stub."""
     import ingesters.youtube as yt
@@ -445,11 +301,29 @@ def test_extract_youtube_full_pipeline_all_fail(monkeypatch):
     # yt-dlp returns no subtitle files
     monkeypatch.setattr("ingesters.youtube._run_yt_dlp", lambda *a, **kw: None)
 
-    # Whisper fails
-    monkeypatch.setattr("ingesters.youtube.whisper.load_model", lambda m: (_ for _ in ()).throw(Exception("whisper fail")))
-
     monkeypatch.setattr("ingesters.youtube.YouTubeTranscriptApi", mock_ytt_api)
 
     doc = yt.extract_youtube("https://youtube.com/watch?v=abc123DEF12")
     assert doc.raw_text.startswith("[NO_TRANSCRIPT]")
     assert doc.content_type == "video"
+
+
+def test_extract_youtube_stops_after_caption_sources(monkeypatch):
+    """Caption exhaustion returns the quality-gate marker without more subprocesses."""
+    import ingesters.youtube as yt
+
+    url = "https://youtube.com/watch?v=abc123DEF12"
+    subprocess_calls = []
+
+    def record_run(*args, **kwargs):
+        subprocess_calls.append((args, kwargs))
+        return MagicMock(returncode=1)
+
+    monkeypatch.setattr(yt, "_try_youtube_transcript_api", lambda *args: None)
+    monkeypatch.setattr(yt, "_try_subtitle_tiers", lambda *args: None)
+    monkeypatch.setattr(yt.subprocess, "run", record_run)
+
+    doc = yt.extract_youtube(url)
+
+    assert doc.raw_text == f"[NO_TRANSCRIPT] {url}"
+    assert subprocess_calls == []
