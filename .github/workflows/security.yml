@@ -38,7 +38,11 @@ jobs:
       - name: Run pip audit
         run: |
           mkdir -p artifacts
-          pip-audit --requirement requirements.txt --format json --output artifacts/pip-audit.json --strict
+          # PYSEC-2026-3740 (NLTK model-artifact path traversal) has no fix version.
+          # The application does not use NLTK's model persistence APIs (TransitionParser,
+          # AveragedPerceptron, PerceptronTagger, maxent params), so this vulnerability
+          # is not exploitable in our code paths.
+          pip-audit --requirement requirements.txt --format json --output artifacts/pip-audit.json --strict --ignore-vuln PYSEC-2026-3740
 
       - name: Upload pip audit report
         if: always()
