@@ -146,6 +146,7 @@ def test_pipeline_video_routes_to_synthesis(monkeypatch):
     monkeypatch.setattr("core.llm_client.enrich", mock_enrich)
     monkeypatch.setattr("pipeline.enrich", mock_enrich)
     monkeypatch.setattr("core.llm_client.enrich_video_synthesis", mock_synthesis)
+    monkeypatch.setattr("core.embeddings.embed", lambda text: [0.1] * 384)
 
     class MockDoc:
         raw_text = "full transcript " * 10000
@@ -166,9 +167,11 @@ def test_pipeline_video_routes_to_synthesis(monkeypatch):
 
     # Override module-level references before pipeline runs
     original_extract = pipeline_module.extract
+    original_embed = pipeline_module.embed
     async def mock_extract(url):
         return MockDoc()
     pipeline_module.extract = mock_extract
+    pipeline_module.embed = lambda text: [0.1] * 384
 
     original_get_store = pipeline_module.get_store
     pipeline_module.get_store = lambda: MockStore()
@@ -217,12 +220,13 @@ def test_video_under_60k_no_synthesis_needed(monkeypatch):
 
     import pipeline as pipeline_module
     original_extract = pipeline_module.extract
+    original_get_store = pipeline_module.get_store
+    original_embed = pipeline_module.embed
     async def mock_extract(url):
         return MockDoc()
     pipeline_module.extract = mock_extract
-
-    original_get_store = pipeline_module.get_store
     pipeline_module.get_store = lambda: MockStore()
+    pipeline_module.embed = lambda text: [0.1] * 384
 
     # Patch at pipeline module level since enrich was imported there
     original_enrich = pipeline_module.enrich
@@ -239,6 +243,7 @@ def test_video_under_60k_no_synthesis_needed(monkeypatch):
     finally:
         pipeline_module.extract = original_extract
         pipeline_module.get_store = original_get_store
+        pipeline_module.embed = original_embed
         pipeline_module.enrich = original_enrich
 
     assert "enrich" in result
