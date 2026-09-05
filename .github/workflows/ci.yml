@@ -4,7 +4,6 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
   workflow_dispatch:
 
 # CI never needs to write to the repository, even for same-repository PRs.
@@ -208,7 +207,7 @@ jobs:
         run: docker compose down --remove-orphans --volumes
 
   gate:
-    name: CI gate
+    name: Required CI summary
     if: always()
     needs: [static, test, integration, docker]
     runs-on: ubuntu-24.04
