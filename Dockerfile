@@ -14,11 +14,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Install PyTorch CPU-first to avoid CUDA dependencies
-RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu torch torchvision
+RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu torch==2.13.0 torchvision==0.28.0
 
-# Install Python deps from the committed transitive lock.
+# Install Python deps from the committed transitive lock, excluding torch/torchvision
 COPY requirements.lock.txt .
-RUN pip install --no-cache-dir -r requirements.lock.txt
+RUN grep -v -E '^(torch|torchvision)==' requirements.lock.txt > requirements-no-torch.lock.txt && \
+    pip install --no-cache-dir -r requirements-no-torch.lock.txt
 
 # Stage 2: runtime
 # Same pinned base as the builder stage, observed 2026-08-31.
