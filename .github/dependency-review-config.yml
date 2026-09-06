@@ -1,0 +1,5 @@
+# Dependency Review Action Configuration
+# Allows specific GHSA IDs that are false positives or have mitigations
+
+allow-ghsas:
+  - GHSA-8mgp-746c-j5xp  # NLTK: Model-artifact path traversal - mitigated by not using vulnerable APIs
