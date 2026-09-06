@@ -86,6 +86,8 @@ def test_synthesis_unified_narrative_not_chunk_list(monkeypatch):
                 }
         return FakeResp()
     monkeypatch.setattr("requests.post", mock_post)
+    monkeypatch.setattr("core.minimax_client.MINIMAX_API_KEY", "fake-key-for-test")
+    monkeypatch.setenv("MINIMAX_API_KEY", "fake-key-for-test")
 
     chunk_results = [
         {"title": "Chunk 1 Title", "summary": "Summary of chunk 1", "chapters": [{"time": "00:00", "title": "First"}], "key_quotes": [], "entities": [], "key_facts": [], "topics_covered": [], "tags": []},

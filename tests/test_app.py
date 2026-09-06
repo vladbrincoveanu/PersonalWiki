@@ -15,7 +15,8 @@ def test_index_returns_html():
     resp = client.get("/")
     assert resp.status_code == 200
     assert "personalWiki" in resp.text
-    assert 'action="/ingest"' in resp.text  # form posts to /ingest
+    assert '<form id="ingest-form"' in resp.text
+    assert "fetch('/ingest/preview'" in resp.text
 
 def test_ingest_url_returns_job_json():
     """Ingest endpoint returns JSON with job_id field, not HTML."""
@@ -172,7 +173,7 @@ def test_keywords_returns_graph_and_manual():
     assert body["total"] == len(body["manual"]) + len(body["graph"])
 
 
-def test_ingest_docx_file_returns_job_json():
+def test_ingest_docx_file_returns_job_json(tmp_path):
     """DOCX file upload to /ingest returns job_id JSON, not HTML or error."""
     import os
     import app as app_module
@@ -190,10 +191,13 @@ def test_ingest_docx_file_returns_job_json():
         yield "Extracting DOCX content..."
         yield "Saved → notes/test.docx.md"
 
+    docx_path = tmp_path / "test_docx.docx"
+    docx_path.write_bytes(b"test docx payload")
+
     try:
         client = make_client()
         with patch("app.run_pipeline", fake_pipeline):
-            with open("/tmp/test_docx.docx", "rb") as f:
+            with docx_path.open("rb") as f:
                 resp = client.post(
                     "/ingest",
                     files={"file": ("test_docx.docx", f, "application/vnd.openxmlformats-officedocument.wordprocessingml.document")}
@@ -296,7 +300,7 @@ def test_trigger_discovery_returns_triggered():
         app_module._scheduler = prior_scheduler
 
 
-def test_ingest_docx_routes_to_correct_extractor():
+def test_ingest_docx_routes_to_correct_extractor(tmp_path):
     """DOCX file with .docx extension should route to extract_docx via docx_path."""
     import app as app_module
 
@@ -311,10 +315,13 @@ def test_ingest_docx_routes_to_correct_extractor():
         captured_kwargs.update(kwargs)
         yield "done"
 
+    docx_path = tmp_path / "test_docx.docx"
+    docx_path.write_bytes(b"test docx payload")
+
     try:
         client = make_client()
         with patch("app.run_pipeline", capture_pipeline):
-            with open("/tmp/test_docx.docx", "rb") as f:
+            with docx_path.open("rb") as f:
                 resp = client.post(
                     "/ingest",
                     files={"file": ("my_document.docx", f, "application/vnd.openxmlformats-officedocument.wordprocessingml.document")}
@@ -339,6 +346,7 @@ def test_ingest_docx_routes_to_correct_extractor():
     os.environ.get("SKIP_PLAYWRIGHT") == "1",
     reason="Playwright browser test — set SKIP_PLAYWRIGHT=1 to skip"
 )
+@pytest.mark.integration
 def test_docx_upload_shows_badge_and_progress_via_browser():
     """
     End-to-end browser test: upload DOCX → badge appears with correct type

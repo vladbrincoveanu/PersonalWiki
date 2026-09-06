@@ -943,6 +943,7 @@
         allKeywords.forEach(({ kw, existing }) => {
             const chip = document.createElement('span');
             chip.className = 'kw-chip' + (existing ? ' existing' : ' new');
+            chip.dataset.keyword = kw;
 
             if (!existing) {
                 const checkbox = document.createElement('input');
@@ -1004,7 +1005,9 @@
         const checkboxes = document.querySelectorAll('#keyword-chips input[type="checkbox"]:checked');
         const acceptedKeywords = Array.from(checkboxes).map(cb => cb.dataset.keyword);
         // Also collect manually-added keywords (no checkbox, has data-keyword)
-        const manualChips = document.querySelectorAll('#keyword-chips .kw-chip[data-keyword]');
+        const manualChips = document.querySelectorAll(
+            '#keyword-chips .kw-chip:not(.new):not(.existing)[data-keyword]'
+        );
         manualChips.forEach(chip => {
             const kw = chip.dataset.keyword;
             if (kw && !acceptedKeywords.includes(kw)) {

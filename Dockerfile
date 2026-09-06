@@ -1,5 +1,6 @@
 # Stage 1: builder
-FROM python:3.13-slim AS builder
+# Base pinned by digest (index of python:3.13-slim, Debian trixie), observed 2026-08-31.
+FROM python:3.13-slim@sha256:7ce4b6dfe35e55397b7cda544f8a13f191b7ae28dc5aad71fe664dbc9bc2623f AS builder
 
 WORKDIR /app
 
@@ -12,12 +13,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     make \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python deps
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Install PyTorch CPU-first to avoid CUDA dependencies
+RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu torch==2.13.0 torchvision==0.28.0
+
+# Install triton (required by openai-whisper)
+RUN pip install --no-cache-dir triton==3.8.0
+
+# Install Python deps from the committed transitive lock, excluding torch/torchvision
+COPY requirements.lock.txt .
+RUN grep -v -E '^(torch|torchvision)==' requirements.lock.txt > requirements-no-torch.lock.txt && \
+    pip install --no-cache-dir -r requirements-no-torch.lock.txt
 
 # Stage 2: runtime
-FROM python:3.13-slim
+# Same pinned base as the builder stage, observed 2026-08-31.
+FROM python:3.13-slim@sha256:7ce4b6dfe35e55397b7cda544f8a13f191b7ae28dc5aad71fe664dbc9bc2623f
 
 WORKDIR /app
 

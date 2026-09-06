@@ -1,0 +1,7 @@
+name: PersonalWiki CodeQL
+
+paths-ignore:
+  - 'tests/Vke.Core.Tests/**'
+  - 'tests/Vke.E2e.Tests/**'
+  - '**/bin/**'
+  - '**/obj/**'

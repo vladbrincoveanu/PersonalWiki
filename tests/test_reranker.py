@@ -2,6 +2,7 @@ import pytest
 from unittest.mock import patch, MagicMock
 
 
+@pytest.mark.slow
 def test_reranker_boosts_relevant_results():
     from core.reranker import CrossEncoderReranker
     reranker = CrossEncoderReranker()
@@ -20,6 +21,7 @@ def test_reranker_boosts_relevant_results():
     assert "notes/transformers.md" not in paths  # not in top 2 for RL query
 
 
+@pytest.mark.slow
 def test_reranker_returns_correct_count():
     from core.reranker import CrossEncoderReranker
     reranker = CrossEncoderReranker()
@@ -31,9 +33,9 @@ def test_reranker_returns_correct_count():
 def test_reranker_fallback_when_model_unavailable():
     from core.reranker import CrossEncoderReranker
     reranker = CrossEncoderReranker()
-    reranker._model = None  # simulate model unavailable
     results = [{"path": f"notes/{i}.md", "text": f"doc {i}"} for i in range(5)]
-    reranked = reranker.rerank("query", results, top_k=3)
+    with patch("core.reranker.CrossEncoder", side_effect=RuntimeError("model unavailable")):
+        reranked = reranker.rerank("query", results, top_k=3)
     assert len(reranked) == 3  # returns results as-is
 
 

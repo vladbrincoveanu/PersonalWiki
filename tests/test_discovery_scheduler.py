@@ -297,12 +297,13 @@ def test_search_minimax_includes_tools_parameter_for_function_calling():
     def fake_urlopen(req, timeout=None):
         return FakeHTTPResponse(status=200)
 
-    with patch.object(ds_requests, "post", side_effect=fake_post):
-        with patch("core.discovery_scheduler.urllib.request.urlopen", side_effect=fake_urlopen):
-            async def fake_fetch(url):
-                return "Real article content."
-            with patch.object(ds, "_fetch_article_snippet", fake_fetch):
-                results = asyncio.run(ds._search_minimax("reinforcement learning"))
+    with patch("config.MINIMAX_API_KEY", "test-key"):
+        with patch.object(ds_requests, "post", side_effect=fake_post):
+            with patch("core.discovery_scheduler.urllib.request.urlopen", side_effect=fake_urlopen):
+                async def fake_fetch(url):
+                    return "Real article content."
+                with patch.object(ds, "_fetch_article_snippet", fake_fetch):
+                    results = asyncio.run(ds._search_minimax("reinforcement learning"))
 
     assert len(results) >= 1, f"Expected at least 1 result, got {len(results)}"
     assert all(r["source"] == "minimax" for r in results)
@@ -422,12 +423,13 @@ def test_minimax_search_rejects_http_urls():
         })
         return m
 
-    with patch("core.discovery_scheduler.urllib.request.urlopen", side_effect=fake_urlopen):
-        with patch("core.discovery_scheduler.requests.post", side_effect=fake_post):
-            async def fake_fetch(url):
-                return "Real article content."
-            with patch.object(ds, "_fetch_article_snippet", fake_fetch):
-                results = asyncio.run(ds._search_minimax("test"))
+    with patch("config.MINIMAX_API_KEY", "test-key"):
+        with patch("core.discovery_scheduler.urllib.request.urlopen", side_effect=fake_urlopen):
+            with patch("core.discovery_scheduler.requests.post", side_effect=fake_post):
+                async def fake_fetch(url):
+                    return "Real article content."
+                with patch.object(ds, "_fetch_article_snippet", fake_fetch):
+                    results = asyncio.run(ds._search_minimax("test"))
 
     urls = [r["url"] for r in results]
     assert "http://insecure.example.com/page" not in urls, "http:// URL was not rejected"

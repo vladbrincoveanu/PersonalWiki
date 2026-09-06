@@ -115,6 +115,9 @@ async def test_pipeline_pdf_with_image_creates_note_and_saves_figures():
             "error": False,
         }
 
+    def fake_enrich_with_images(raw_text, similar_titles, source, images):
+        return fake_enrich(raw_text, similar_titles, source)
+
     # -- Create temp PDF on disk ----------------------------------------------
     pdf_bytes = _make_pdf_with_embedded_image()
 
@@ -134,6 +137,7 @@ async def test_pipeline_pdf_with_image_creates_note_and_saves_figures():
             patch("pipeline.get_store", return_value=mock_store),
             patch("pipeline.embed", return_value=[0.0] * 384),
             patch("pipeline.enrich", side_effect=fake_enrich),
+            patch("pipeline.enrich_with_images", side_effect=fake_enrich_with_images),
             patch("core.quality_gate.QualityGate") as mock_gate_cls,
             patch("vault.writer.VAULT_PATH", tmp_path),
             patch("vault.writer.NOTES_DIR", notes_dir),
