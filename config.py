@@ -1,4 +1,5 @@
 import os
+from dataclasses import dataclass
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -30,3 +31,40 @@ INTEREST_HUB_TOP_K = int(os.getenv("INTEREST_HUB_TOP_K", "15"))
 INTEREST_LEAF_TOP_K = int(os.getenv("INTEREST_LEAF_TOP_K", "10"))
 INTEREST_REFRESH_INTERVAL = int(os.getenv("INTEREST_REFRESH_INTERVAL", "21600"))
 MAX_URLS_PER_CYCLE = int(os.getenv("MAX_URLS_PER_CYCLE", "10"))
+
+
+@dataclass(frozen=True)
+class TelemetrySettings:
+    sentry_dsn: str
+    sentry_environment: str | None
+    sentry_release: str | None
+    service_name: str
+    service_version: str | None
+    resource_attributes: str
+    otlp_endpoint: str
+    otlp_headers: str
+    traces_sampler: str
+    traces_sampler_arg: str
+    sdk_disabled: bool
+
+
+def get_telemetry_settings() -> TelemetrySettings:
+    def optional(name: str) -> str | None:
+        value = os.getenv(name, "").strip()
+        return value or None
+
+    return TelemetrySettings(
+        sentry_dsn=os.getenv("SENTRY_DSN", "").strip(),
+        sentry_environment=optional("SENTRY_ENVIRONMENT"),
+        sentry_release=optional("SENTRY_RELEASE"),
+        service_name=os.getenv("OTEL_SERVICE_NAME", "personalwiki").strip() or "personalwiki",
+        service_version=optional("OTEL_SERVICE_VERSION"),
+        resource_attributes=os.getenv("OTEL_RESOURCE_ATTRIBUTES", "").strip(),
+        otlp_endpoint=os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "").strip(),
+        otlp_headers=os.getenv("OTEL_EXPORTER_OTLP_HEADERS", "").strip(),
+        traces_sampler=os.getenv(
+            "OTEL_TRACES_SAMPLER", "parentbased_traceidratio"
+        ).strip().lower(),
+        traces_sampler_arg=os.getenv("OTEL_TRACES_SAMPLER_ARG", "0.1").strip() or "0.1",
+        sdk_disabled=os.getenv("OTEL_SDK_DISABLED", "false").strip().lower() == "true",
+    )

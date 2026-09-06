@@ -31,6 +31,13 @@ from vault.doctor import cleanup_junk
 from core.discovery_link_extractor import DiscoveryLinkExtractor
 from core.interest_domain_matcher import InterestDomainMatcher
 from core.discovery_logger import get_discovery_logger
+from core.observability import (
+    observed_span,
+    record_discovery_candidate,
+    record_discovery_cycle,
+    record_discovery_queue_depth,
+    record_handled_error,
+)
 
 _logger = logging.getLogger(__name__)
 
@@ -255,6 +262,7 @@ class DiscoveryScheduler:
                 _logger.info("Discovery: discovered via %s: %s", domain, url)
                 dl_logger.record(url, None, f"sitemap: {domain}", "enqueued")
                 self._sitemap_queue.put_nowait(url)
+                record_discovery_queue_depth(self._sitemap_queue.qsize())
 
     def _try_sitemap(self, domain: str) -> list[str]:
         """Try to fetch sitemap for a domain and return article URLs."""
@@ -312,12 +320,20 @@ class DiscoveryScheduler:
         results = []
 
         try:
-            results.extend(await self._search_arxiv(keyword))
+            with observed_span(
+                "personalwiki.discovery.search",
+                {"discovery.source": "arxiv"},
+            ):
+                results.extend(await self._search_arxiv(keyword))
         except Exception as e:
             _logger.warning("Discovery: arXiv search failed for %s: %s", keyword, e)
 
         try:
-            results.extend(await self._search_hn(keyword))
+            with observed_span(
+                "personalwiki.discovery.search",
+                {"discovery.source": "hn"},
+            ):
+                results.extend(await self._search_hn(keyword))
         except Exception as e:
             _logger.warning("Discovery: HN search failed for %s: %s", keyword, e)
 
@@ -327,7 +343,11 @@ class DiscoveryScheduler:
             _logger.warning("Discovery: MiniMax search failed for %s: %s", keyword, e)
 
         try:
-            results.extend(await self._search_desprebursa(keyword))
+            with observed_span(
+                "personalwiki.discovery.search",
+                {"discovery.source": "desprebursa"},
+            ):
+                results.extend(await self._search_desprebursa(keyword))
         except Exception as e:
             _logger.warning("Discovery: DespreBursa search failed for %s: %s", keyword, e)
 
@@ -650,6 +670,19 @@ class DiscoveryScheduler:
                     _logger.debug("Discovery: link extraction failed for %s: %s", url, e)
 
     async def _run_discovery_cycle(self):
+        outcome = "success"
+        with observed_span("personalwiki.discovery.cycle") as cycle_span:
+            try:
+                await self._run_discovery_cycle_impl()
+            except Exception:
+                outcome = "error"
+                raise
+            finally:
+                if cycle_span is not None:
+                    cycle_span.set_attribute("discovery.outcome", outcome)
+                record_discovery_cycle(outcome)
+
+    async def _run_discovery_cycle_impl(self):
         """One discovery pass: search all keywords, ingest new URLs, extract links."""
         from core.vector_store import get_store
         store = get_store()
@@ -664,11 +697,14 @@ class DiscoveryScheduler:
                 break
             results = await self._search_keyword(keyword)
             for result in results:
-                url = result["url"]
+                candidate_source = result.get("source", "other")
+                url = result.get("url", "")
                 if not url or not self._is_new_url(url):
+                    record_discovery_candidate(candidate_source, "skipped")
                     continue
                 if store.exists(url):
                     self._seen_urls.add(url)
+                    record_discovery_candidate(candidate_source, "skipped")
                     continue
 
                 _logger.info("Discovery: ingesting %s — %s", url, result["title"])
@@ -676,8 +712,13 @@ class DiscoveryScheduler:
                 dl_logger = get_discovery_logger()
                 dl_logger.record(url, result.get("title"), f"keyword: {keyword}", "enqueued")
                 try:
+                    pipeline_succeeded = True
                     if self._pipeline_func:
-                        await self._run_pipeline(url, keyword=keyword)
+                        pipeline_succeeded = await self._run_pipeline(url, keyword=keyword)
+                    record_discovery_candidate(
+                        candidate_source,
+                        "success" if pipeline_succeeded is not False else "error",
+                    )
                     ingested += 1
                     self._seen_urls.add(url)
 
@@ -690,6 +731,7 @@ class DiscoveryScheduler:
                     except Exception as e:
                         _logger.debug("Discovery: link extraction failed for %s: %s", url, e)
                 except Exception as e:
+                    record_discovery_candidate(candidate_source, "error")
                     _logger.error("Discovery: failed to queue %s: %s", url, e)
                 finally:
                     self._in_flight.discard(url)
@@ -701,20 +743,27 @@ class DiscoveryScheduler:
         self._persist_seen_urls()
 
         # Phase 2: drain sitemap queue
-        while ingested < MAX_URLS_PER_CYCLE:
-            try:
-                url = self._sitemap_queue.get_nowait()
-            except asyncio.QueueEmpty:
-                break
+        with observed_span("personalwiki.discovery.queue_drain"):
+            while ingested < MAX_URLS_PER_CYCLE:
+                try:
+                    url = self._sitemap_queue.get_nowait()
+                    record_discovery_queue_depth(self._sitemap_queue.qsize())
+                except asyncio.QueueEmpty:
+                    break
 
-            if url in seen_this_cycle or store.exists(url):
+                if url in seen_this_cycle or store.exists(url):
+                    self._seen_urls.add(url)
+                    record_discovery_candidate("sitemap", "skipped")
+                    continue
+
+                seen_this_cycle.add(url)
+                pipeline_succeeded = await self._run_pipeline(url)
+                record_discovery_candidate(
+                    "sitemap",
+                    "success" if pipeline_succeeded is not False else "error",
+                )
+                ingested += 1
                 self._seen_urls.add(url)
-                continue
-
-            seen_this_cycle.add(url)
-            await self._run_pipeline(url)
-            ingested += 1
-            self._seen_urls.add(url)
 
         # Write daily digest
         from core.digest_writer import write_daily_digest
@@ -736,17 +785,28 @@ class DiscoveryScheduler:
     async def _run_pipeline(self, url: str, keyword: str | None = None):
         """Run ingestion pipeline for a single URL."""
         dl_logger = get_discovery_logger()
-        try:
-            from pipeline import run_pipeline
-            async for _ in run_pipeline(
-                url=url, is_discovery=True, source_keyword=keyword,
-                keywords=[keyword] if keyword else [],
-            ):
-                pass
-            dl_logger.update_status(url, "ingested")
-        except Exception as e:
-            dl_logger.update_status(url, "failed", error=str(e))
-            _logger.error("Discovery: pipeline failed for %s: %s", url, e)
+        outcome = "success"
+        with observed_span(
+            "personalwiki.discovery.ingest",
+            {"discovery": "true"},
+        ) as ingest_span:
+            try:
+                from pipeline import run_pipeline
+                async for _ in run_pipeline(
+                    url=url, is_discovery=True, source_keyword=keyword,
+                    keywords=[keyword] if keyword else [],
+                ):
+                    pass
+                dl_logger.update_status(url, "ingested")
+            except Exception as e:
+                outcome = "error"
+                record_handled_error(ingest_span, e)
+                dl_logger.update_status(url, "failed", error=str(e))
+                _logger.error("Discovery: pipeline failed for %s: %s", url, e)
+            finally:
+                if ingest_span is not None:
+                    ingest_span.set_attribute("discovery.outcome", outcome)
+        return outcome == "success"
 
     async def _scheduler_loop(self):
         """Main timer loop."""
