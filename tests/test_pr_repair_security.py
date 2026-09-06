@@ -19,6 +19,59 @@ def _load_script(name: str, module_name: str):
     return module
 
 
+def test_openrouter_request_uses_supported_nemotron_configuration():
+    repair = _load_script("pr-repair-openrouter.py", "pr_repair_openrouter_config")
+
+    body = repair.build_request_body(
+        instructions="Review the change.",
+        context={"pull_request": {"base": "main"}},
+        diff="diff --git a/example.py b/example.py",
+    )
+
+    assert body["model"] == "nvidia/nemotron-3-ultra-550b-a55b:free"
+    assert "response_format" not in body
+
+
+def test_workflow_uses_openrouter_repair_credentials():
+    workflow = (GITHUB_DIR / "workflows" / "pr-repair-agent.yml").read_text()
+
+    assert "Run OpenRouter repair cycle" in workflow
+    assert "OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}" in workflow
+    assert "OPENROUTER_MODEL: nvidia/nemotron-3-ultra-550b-a55b:free" in workflow
+    assert "python .github/pr-repair-openrouter.py" in workflow
+    assert "AUTH_HEADER=\"$(printf 'x-access-token:%s' \"$GITHUB_TOKEN\" | base64 -w 0)\"" in workflow
+    assert "http.extraheader=Authorization: Basic ${AUTH_HEADER}" in workflow
+    assert "DEEPINFRA" not in workflow
+
+
+def test_model_request_requires_openrouter_api_key(monkeypatch):
+    repair = _load_script("pr-repair-openrouter.py", "pr_repair_openrouter_credentials")
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+
+    with pytest.raises(RuntimeError, match="OPENROUTER_API_KEY"):
+        repair._model_request({})
+
+
+def test_model_request_wraps_network_errors(monkeypatch):
+    repair = _load_script("pr-repair-openrouter.py", "pr_repair_openrouter_network")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+
+    def fail_request(*_args, **_kwargs):
+        raise repair.urllib.error.URLError("offline")
+
+    monkeypatch.setattr(repair.urllib.request, "urlopen", fail_request)
+
+    with pytest.raises(RuntimeError, match="OpenRouter request failed"):
+        repair._model_request({})
+
+
+def test_model_response_requires_text_content():
+    repair = _load_script("pr-repair-openrouter.py", "pr_repair_openrouter_response")
+
+    with pytest.raises(ValueError, match="model response"):
+        repair._response_content({"error": {"message": "unavailable"}})
+
+
 def test_patch_path_validation_rejects_protected_deletion():
     utils = _load_script("pr_repair_utils.py", "pr_repair_utils")
     patch = """\
@@ -86,7 +139,7 @@ def test_model_decision_rejects_invalid_types_before_side_effects():
 
 
 def test_repair_patch_stages_only_paths_from_the_patch(tmp_path):
-    repair = _load_script("pr-repair-deepinfra.py", "pr_repair_deepinfra")
+    repair = _load_script("pr-repair-openrouter.py", "pr_repair_openrouter")
     subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
     subprocess.run(["git", "-C", str(tmp_path), "config", "user.email", "test@example.com"], check=True)
     subprocess.run(["git", "-C", str(tmp_path), "config", "user.name", "Test"], check=True)
@@ -228,7 +281,7 @@ def test_prepare_bootstraps_matrix_without_executing_pr_helper_code():
 
 def test_context_artifacts_are_written_to_the_run_directory():
     context = (GITHUB_DIR / "pr-repair-context.py").read_text()
-    repair = (GITHUB_DIR / "pr-repair-deepinfra.py").read_text()
+    repair = (GITHUB_DIR / "pr-repair-openrouter.py").read_text()
 
     assert "REPAIR_ARTIFACT_DIR" in context
     assert "REPAIR_ARTIFACT_DIR" in repair
@@ -237,7 +290,7 @@ def test_context_artifacts_are_written_to_the_run_directory():
 
 
 def test_repair_requires_the_matrix_selected_commit():
-    repair = _load_script("pr-repair-deepinfra.py", "pr_repair_deepinfra_heads")
+    repair = _load_script("pr-repair-openrouter.py", "pr_repair_openrouter_heads")
     context = {"pull_request": {"head_sha": "a" * 40, "base_sha": "b" * 40}}
 
     with pytest.raises(ValueError, match="head SHA"):
