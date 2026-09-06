@@ -16,6 +16,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Install PyTorch CPU-first to avoid CUDA dependencies
 RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu torch==2.13.0 torchvision==0.28.0
 
+# Install triton (required by openai-whisper)
+RUN pip install --no-cache-dir triton==3.8.0
+
 # Install Python deps from the committed transitive lock, excluding torch/torchvision
 COPY requirements.lock.txt .
 RUN grep -v -E '^(torch|torchvision)==' requirements.lock.txt > requirements-no-torch.lock.txt && \
