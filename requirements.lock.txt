@@ -3537,9 +3537,9 @@ scipy==1.18.1 \
     #   docling-slim
     #   scikit-learn
     #   sentence-transformers
-semchunk==3.2.5 \
-    --hash=sha256:ee15e9a06a69a411937dd8fcf0a25d7ef389c5195863140436872a02c95b0218 \
-    --hash=sha256:fd09cc5f380bd010b8ca773bd81893f7eaf11d37dd8362a83d46cedaf5dae076
+semchunk==4.1.1 \
+    --hash=sha256:acbc535e89824dce954a554e297438b2ee3506b71505f1472eb2bf8057fcba3c \
+    --hash=sha256:f27dc85716a0e9509a3f99c78b961cc476b3120efe711ee9a9a950ed1bd0f8ba
     # via docling-core
 sentence-transformers==6.0.0 \
     --hash=sha256:9e8c2c24f3b1c7473cd5f519a3d3cff60daaeb95533b82d045ffb43ee5f2dac4 \
