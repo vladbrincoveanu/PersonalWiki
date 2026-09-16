@@ -1,0 +1,91 @@
+<h2>Section 2 — Generic Depth Drill: Decision Flow</h2>
+<p class="subtitle">When _fetch_article_snippet returns thin content, drill up to 5 levels deeper to find actual articles</p>
+
+<div class="mockup">
+  <div class="mockup-header">Depth Drill State Machine</div>
+  <div class="mockup-body" style="font-size:12px">
+    <div style="display:flex;flex-direction:column;align-items:center;gap:6px">
+
+      <!-- Level 0: Initial fetch -->
+      <div style="display:flex;align-items:center;gap:8px">
+        <div class="placeholder" style="width:100px;background:#1e40af;color:white;border-radius:8px;text-align:center;padding:8px;font-size:11px">
+          🌐 URL<br><span style="font-size:10px;opacity:0.8">Discovered URL</span>
+        </div>
+        <div style="color:#888;font-size:18px">→</div>
+        <div class="placeholder" style="width:110px;background:#dc2626;color:white;border-radius:8px;text-align:center;padding:8px;font-size:11px">
+          📄 Fetch<br><span style="font-size:10px;opacity:0.8">Crawl4AI extract</span>
+        </div>
+        <div style="color:#888;font-size:18px">→</div>
+        <div class="placeholder" style="width:110px;background:#ca8a04;color:white;border-radius:8px;text-align:center;padding:8px;font-size:11px">
+          ⚖️ Quality Check<br><span style="font-size:10px;opacity:0.8">Thin?</span>
+        </div>
+      </div>
+
+      <!-- Quality check branch -->
+      <div style="display:flex;gap:16px;align-items:flex-start">
+        <!-- Thin branch -->
+        <div style="display:flex;flex-direction:column;align-items:center;gap:4px">
+          <div style="color:#22c55e;font-size:14px">✅ Not thin</div>
+          <div class="placeholder" style="width:90px;background:#166534;color:white;border-radius:8px;text-align:center;padding:6px;font-size:10px">
+            ✅ Return<br>result
+          </div>
+          <div style="font-size:10px;color:#888;text-align:center">Use snippet in results</div>
+        </div>
+
+        <div style="color:#ef4444;font-size:14px">❌ Thin</div>
+
+        <!-- Drill branch -->
+        <div style="display:flex;flex-direction:column;align-items:center;gap:4px">
+          <div style="color:#ef4444;font-size:14px">→ Drill</div>
+          <div class="placeholder" style="width:110px;background:#7c3aed;color:white;border-radius:8px;text-align:center;padding:6px;font-size:10px">
+            🔗 Extract<br>article links
+          </div>
+          <div style="font-size:10px;color:#888;text-align:center">Find href links<br>on page</div>
+          <div style="color:#888;font-size:14px">↓</div>
+          <div class="placeholder" style="width:110px;background:#0891b2;color:white;border-radius:8px;text-align:center;padding:6px;font-size:10px">
+            🎯 Pick best<br>link
+          </div>
+          <div style="font-size:10px;color:#888;text-align:center">Keyword relevance<br>or first link</div>
+          <div style="color:#888;font-size:14px">↓</div>
+          <div style="display:flex;align-items:center;gap:4px">
+            <div class="placeholder" style="width:60px;background:#dc2626;color:white;border-radius:8px;text-align:center;padding:4px;font-size:10px">
+              L+1
+            </div>
+            <span style="font-size:10px;color:#888">→ back to Fetch</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Level limit -->
+      <div style="margin-top:8px;padding:8px 16px;background:#1e293b;border-radius:6px;font-size:11px;color:#94a3b8">
+        <span style="color:#ef4444">⛔ Stop:</span>
+        depth ≥ 5 &nbsp;|&nbsp; No article links found &nbsp;|&nbsp; Found valid content
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<div style="margin-top:12px;font-size:12px;color:#94a3b8">
+  <strong>Thin = BOTH true:</strong> prose_char_count &lt; 500 AND prose_ratio &lt; 30%
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px;font-size:12px">
+  <div>
+    <h3 style="color:#22c55e;margin-bottom:8px">✅ Not thin — use as result</h3>
+    <ul style="color:#cbd5e1;margin:0;padding-left:20px">
+      <li>First paragraph &gt;80 chars extracted as snippet</li>
+      <li>Returned to caller with snippet populated</li>
+      <li>Drill stops — we have content</li>
+    </ul>
+  </div>
+  <div>
+    <h3 style="color:#ef4444;margin-bottom:8px">❌ Thin — drill 1 level deeper</h3>
+    <ul style="color:#cbd5e1;margin:0;padding-left:20px">
+      <li>Extract all href links from current page</li>
+      <li>Filter: same domain, not nav/footer links</li>
+      <li>Pick: best keyword match in URL text, or first valid link</li>
+      <li>Re-fetch as level+1, loop</li>
+    </ul>
+  </div>
+</div>
