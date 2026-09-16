@@ -1,0 +1,39 @@
+<h2>Bug 1: Unawaited Coroutine — Quick Fix</h2>
+<p class="subtitle">Line 202 in discovery_scheduler.py: _search_minimax is async but not awaited</p>
+
+<div class="mockup">
+  <div class="mockup-header">Before vs After</div>
+  <div class="mockup-body" style="font-size:13px">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px">
+      <div>
+        <div class="label" style="color:#ef4444;margin-bottom:8px">❌ Before (broken)</div>
+        <pre style="background:#1e293b;color:#f87171;padding:12px;border-radius:8px;font-size:11px;overflow-x:auto">results.extend(
+  self._search_minimax(keyword)  # ← async, no await
+)
+RuntimeWarning: coroutine
+  '_search_minimax' was never awaited</pre>
+        <ul style="color:#f87171;font-size:12px;margin-top:8px;padding-left:20px">
+          <li>MiniMax results silently discarded</li>
+          <li>RuntimeWarning on every call</li>
+          <li>Other sources still run, but results list is incomplete</li>
+        </ul>
+      </div>
+      <div>
+        <div class="label" style="color:#22c55e;margin-bottom:8px">✅ After (fixed)</div>
+        <pre style="background:#1e293b;color:#86efac;padding:12px;border-radius:8px;font-size:11px;overflow-x:auto">results.extend(
+  await self._search_minimax(keyword)  # ← await added
+)</pre>
+        <ul style="color:#86efac;font-size:12px;margin-top:8px;padding-left:20px">
+          <li>MiniMax results properly returned</li>
+          <li>No RuntimeWarning</li>
+          <li>All 4 sources now contribute results</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div style="margin-top:16px;padding:12px;background:#1e3a5f;border-radius:8px;font-size:12px;color:#93c5fd">
+  <strong>Fix:</strong> One word change — add <code>await</code> before <code>self._search_minimax(keyword)</code> on line 202.
+  This is a bugfix, not a design decision. Proceeding directly to Section 2 for the main feature.
+</div>
