@@ -28,7 +28,7 @@ jobs:
       matrix: ${{ steps.matrix.outputs.matrix }}
       has_prs: ${{ steps.matrix.outputs.has_prs }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.repository.default_branch }}
           persist-credentials: false
@@ -153,14 +153,14 @@ jobs:
     steps:
       # The root checkout is the immutable PR base and contains only trusted helpers.
       - name: Check out trusted repair code
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.repository.default_branch }}
           persist-credentials: false
 
       # The PR is data to inspect and patch, never code to execute in this job.
       - name: Check out PR target
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ matrix.head_sha }}
           path: target
