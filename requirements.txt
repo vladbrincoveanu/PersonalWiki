@@ -21,7 +21,7 @@ lxml_html_clean==0.4.5
 lxml==6.1.2
 pillow==12.3.0
 rank-bm25==0.2.2
-sentence-transformers==6.0.0
+sentence-transformers==6.0.1
 transformers==5.16.1
 openai-whisper==20250625
 python-docx==1.2.0
