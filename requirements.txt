@@ -19,7 +19,7 @@ yt-dlp==2026.7.4
 youtube-transcript-api==0.6.2
 lxml_html_clean==0.4.5
 lxml==6.1.2
-pillow==12.3.0
+pillow==13.0.0
 rank-bm25==0.2.2
 sentence-transformers==6.0.0
 transformers==5.16.1
